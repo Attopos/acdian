@@ -30,7 +30,14 @@ import AppKit
     private var closeApproved = false
     private var terminationPending = false
     private var lastWindowCloseApproved = false
-    func applicationDidFinishLaunching(_ notification: Notification) { NSApp.appearance = model?.appearance.nsAppearance ?? AppAppearance(rawValue:UserDefaults.standard.string(forKey:"appAppearance") ?? "")?.nsAppearance; AppDelegate.syncSystemLanguage(AppLanguage.stored()); NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps:true) }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // A drag released outside any drop target, or cancelled with Esc, gets
+        // no drop callback; the next mouse-up or key press clears its highlight.
+        NSEvent.addLocalMonitorForEvents(matching:[.leftMouseUp,.leftMouseDown,.keyDown]) { [weak self] event in
+            if let model = self?.model, model.sidebarDrop != nil || model.draggingPath != nil { DispatchQueue.main.async { model.setSidebarDrop(nil); model.draggingPath = nil } }
+            return event
+        }
+        NSApp.appearance = model?.appearance.nsAppearance ?? AppAppearance(rawValue:UserDefaults.standard.string(forKey:"appAppearance") ?? "")?.nsAppearance; AppDelegate.syncSystemLanguage(AppLanguage.stored()); NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps:true) }
     // AppKit reads its menus and bundle strings once at launch, so a language
     // change saves the choice and relaunches to load every resource in it.
     static func syncSystemLanguage(_ language: AppLanguage) { UserDefaults.standard.set([language.rawValue],forKey:"AppleLanguages") }

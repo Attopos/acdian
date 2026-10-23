@@ -8,6 +8,9 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     var title: String { switch self { case .system: return "跟随系统"; case .light: return "浅色"; case .dark: return "深色" } }
     var nsAppearance: NSAppearance? { switch self { case .system: return nil; case .light: return NSAppearance(named:.aqua); case .dark: return NSAppearance(named:.darkAqua) } }
 }
+/// Where a sidebar drag would land, shown while hovering a row.
+enum SidebarDrop: Equatable { case before, after, into }
+struct SidebarDropHighlight: Equatable { let path: String; let place: SidebarDrop }
 struct EditorInsertion: Equatable { let id = UUID(); let text: String }
 struct EditorSnapshot {
     let text: String
@@ -292,22 +295,41 @@ struct EditorSnapshot {
     }
     /// Moves a sidebar item, or reorders it within its folder. Unsaved edits are
     /// saved first when the open page moves, and it stays open at its new path.
+    // One drop highlight for the whole sidebar, so a finished or cancelled drag
+    // can never leave a stale insertion line on some other row.
+    @Published var sidebarDrop: SidebarDropHighlight?
+    var draggingPath: String?
+    func setSidebarDrop(_ highlight: SidebarDropHighlight?) { if sidebarDrop != highlight { sidebarDrop = highlight } }
     func movePage(_ relativePath: String, to target: PageDropTarget) {
+        setSidebarDrop(nil); draggingPath = nil
         guard let root = index?.root, let entry = index.flatMap({ Self.entry(relativePath, in: $0.entries) }) else { return }
         let affectsSelection = deletionAffectsSelection(entry)
         let openPath = persistedPage?.relativePath
         let action = {
             guard self.index?.root == root else { return }
             if affectsSelection, !self.saveBeforeLeaving() { return }
-            do {
-                let newPath = try PageOrganizer(root:root).move(relativePath,to:target)
-                self.loadID = UUID(); self.loading = false
-                self.reindexAfterTrashMutation(root)
-                if affectsSelection, let openPath, newPath != relativePath {
-                    let moved = openPath == relativePath ? newPath : newPath + openPath.dropFirst(relativePath.count)
-                    if let file = self.index?.files.first(where: { $0.relativePath == moved }) { self.open(file,skipConfirmation:true) }
+            let request = UUID(); self.loadID = request
+            // The move and the rescan run off the main thread, so the sidebar
+            // stays responsive; the new tree replaces the old one in one step.
+            DispatchQueue.global(qos:.userInitiated).async {
+                let result = Result { () -> (String,VaultIndex) in
+                    let newPath = try PageOrganizer(root:root).move(relativePath,to:target)
+                    return (newPath,try VaultIndex(root:root))
                 }
-            } catch { self.error = self.localizedError(error) }
+                DispatchQueue.main.async {
+                    guard self.index?.root == root else { return }
+                    switch result {
+                    case .success(let (newPath,newIndex)):
+                        if self.loadID == request { self.loading = false }
+                        self.index = newIndex; self.rebuildSearch()
+                        if affectsSelection, let openPath, newPath != relativePath {
+                            let moved = openPath == relativePath ? newPath : newPath + openPath.dropFirst(relativePath.count)
+                            if let file = newIndex.files.first(where: { $0.relativePath == moved }) { self.open(file,skipConfirmation:true) }
+                        }
+                    case .failure(let error): self.error = self.localizedError(error)
+                    }
+                }
+            }
         }
         if affectsSelection { withEditorSnapshot(action) } else { action() }
     }
