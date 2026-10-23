@@ -102,8 +102,9 @@ struct ContentView: View {
     }
     // A Feishu-style outline in the page's left margin: the page title first,
     // then its headings, with no panel chrome of its own.
-    // Editor column max width (860) plus the outline (220) and a gap on each side.
-    static let outlineFitWidth: CGFloat = 860 + 2 * (220 + 12)
+    // The editor column is at most 860 wide with 58 of empty padding inside each
+    // edge; the outline (220) fits when the margin left of the text holds it plus a gap.
+    static let outlineFitWidth: CGFloat = 860 + 2 * (220 + 12 - 58)
     private func outline(title: String, floating: Bool) -> some View {
         VStack(alignment:.leading,spacing:0) {
             Button { withAnimation(.easeInOut(duration:0.18)) { if floating { outlineFloating = false } else { model.showOutline = false } } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
