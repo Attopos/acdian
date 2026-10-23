@@ -7,6 +7,11 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-content { max-width:860px; width:100%; margin:0 auto; padding:43px 58px 120px; caret-color:#e57bad; min-height:100vh; }
 .draft-page .cm-editor .cm-content { padding-top:12px; }
 .cm-editor .cm-line { margin:0!important; padding:0; min-height:1.6em; }
+/* Each document line ends with a paragraph gap larger than the wrapped-line
+   spacing. List items, quotes and callouts stay closer; code, tables, blank
+   lines, dividers and headings keep their own spacing. */
+.cm-editor .cm-content > .cm-line:where(:not(.cm-code-line,.cm-code-fence,.cm-table-row,.cm-table-separator,.cm-blank-line,.cm-heading,.cm-divider-line,.cm-callout-line)) { padding-bottom:calc(var(--editor-font-size) * .4); }
+.cm-editor .cm-content > .cm-line.cm-list-line, .cm-editor .cm-content > .cm-line.cm-quote-line:not(.cm-callout-line) { padding-bottom:calc(var(--editor-font-size) * .15); }
 .cm-editor .cm-blank-line { height:0!important; min-height:0!important; line-height:0!important; padding:0!important; font-size:0!important; }
 .cm-editor .cm-blank-line.cm-input-blank-line { height:auto!important; min-height:1.6em!important; line-height:1.6!important; font-size:inherit!important; }
 /* Reader image spacing must not expand CodeMirror's zero-width caret buffers. */

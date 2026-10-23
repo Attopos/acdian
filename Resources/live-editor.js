@@ -279,6 +279,7 @@ function decorations(state) {
     }
     const task=/^(\s*)[-+*]\s+\[([ xX])\]\s*/.exec(line.text);
     const bullet=/^(\s*)(?:([-+*])\s+|(\d+)[.)]\s+)/.exec(line.text);
+    if(task||bullet)list.push(Decoration.line({class:'cm-list-line'}).range(line.from));
     if(task)list.push(Decoration.replace({widget:new TaskWidget(line.from,task[2].toLowerCase()==='x',state.facet(editorLanguage))}).range(line.from+task[1].length,line.from+task[0].length));
     else if(bullet)list.push(Decoration.replace({widget:new BulletWidget(bullet[3]?bullet[3]+'.':'•')}).range(line.from+bullet[1].length,line.from+bullet[0].length));
     const links=/(!?)\[\[([^\]\n]+)\]\]|\[([^\]\n]+)\]\(([^)\n]+)\)/g; let match;
