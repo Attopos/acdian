@@ -62,7 +62,9 @@ struct EditorSnapshot {
         set { statusValue = .path(newValue) }
     }
     @Published var insertion: EditorInsertion?
-    @Published var anchor = ""
+    // Every request counts, so asking for the same heading again still scrolls.
+    @Published var anchor = "" { didSet { anchorRequest &+= 1 } }
+    @Published private(set) var anchorRequest = 0
     @Published var pdfPage = 1
     @Published var pdfZoomAction = 0
     @Published var pdfPageCount = 0

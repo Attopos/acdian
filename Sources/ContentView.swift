@@ -50,7 +50,6 @@ struct ContentView: View {
             } else { Text("").font(.system(size:13)).foregroundStyle(.secondary) }
             Spacer(minLength:10)
             if model.selected?.ext == "md" {
-                Button { model.showOutline.toggle() } label: { Image(systemName:"list.bullet.indent") }.foregroundStyle(model.showOutline ? Color.acPink : Color.secondary).help(model.localized("文章目录"))
             } else if model.selected?.ext == "pdf" { pdfControls }
             else if let file = model.selected {
                 Button { NSWorkspace.shared.activateFileViewerSelecting([file.url]) } label: { Image(systemName:"folder") }.help(model.localized("在 Finder 中显示"))
@@ -73,6 +72,7 @@ struct ContentView: View {
                 if file.ext == "md" {
                     HStack(alignment:.top,spacing:0) {
                         if model.showOutline { outline(title:model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent) }
+                        else { Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = true } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,24).padding(.top,43) }
                         VStack(spacing:0) {
                             if model.isDraft { DraftTitleView(model:model) } else { PageTitleView(title:file.url.deletingPathExtension().lastPathComponent,fontSize:model.fontSize) }
                             LiveMarkdownEditor(model:model).id(model.editorDocumentID).frame(minWidth:360,maxWidth:.infinity,maxHeight:.infinity)
@@ -92,7 +92,7 @@ struct ContentView: View {
             Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = false } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
             ScrollView {
                 VStack(alignment:.leading,spacing:4) {
-                    Text(title.isEmpty ? "New Page" : title).font(.system(size:13,weight:.medium)).foregroundStyle(Color.acPink).lineLimit(2).multilineTextAlignment(.leading).padding(.vertical,5)
+                    Button { model.anchor = "#" } label: { Text(title.isEmpty ? "New Page" : title).font(.system(size:13,weight:.medium)).foregroundStyle(Color.acPink).lineLimit(2).multilineTextAlignment(.leading).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
                     ForEach(Array(model.headings.enumerated()),id:\.offset) { _,heading in
                         Button { model.anchor = heading.title } label: { Text(heading.title).font(.system(size:13)).foregroundStyle(heading.level <= 2 ? Color.primary.opacity(0.85) : Color.secondary).lineLimit(2).multilineTextAlignment(.leading).padding(.leading,CGFloat(max(0,heading.level-1))*12).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
                     }

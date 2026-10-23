@@ -42,7 +42,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         var syncFailures = 0
         var syncBlocked = false
         var lastConfig = ""
-        var lastAnchor = ""
+        var lastAnchorRequest = 0
         var pendingInsertion: UUID?
         var activeTasks = Set<ObjectIdentifier>()
         init(_ model: AppModel) {
@@ -117,9 +117,9 @@ struct LiveMarkdownEditor: NSViewRepresentable {
             } else { scroll(); insertPendingAttachment(); focusEditorIfReady() }
         }
         func scroll() {
-            guard !model.anchor.isEmpty, model.anchor != lastAnchor, let data = try? JSONSerialization.data(withJSONObject:[model.anchor]), let json = String(data:data,encoding:.utf8) else { return }
-            let anchor = model.anchor
-            view?.evaluateJavaScript("window.acdianScrollTo(\(json)[0]);") { [weak self] _,error in if error == nil { self?.lastAnchor = anchor } }
+            guard !model.anchor.isEmpty, model.anchorRequest != lastAnchorRequest, let data = try? JSONSerialization.data(withJSONObject:[model.anchor]), let json = String(data:data,encoding:.utf8) else { return }
+            let request = model.anchorRequest
+            view?.evaluateJavaScript("window.acdianScrollTo(\(json)[0]);") { [weak self] _,error in if error == nil { self?.lastAnchorRequest = request } }
         }
         func insertPendingAttachment() {
             guard isCurrent, ready, !model.loading, let insertion = model.insertion, pendingInsertion != insertion.id,
