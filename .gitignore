@@ -1,0 +1,8 @@
+.DS_Store
+.build/
+.module-cache/
+dist/
+node_modules
+core-tests
+*.orig
+*.rej
