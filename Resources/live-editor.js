@@ -6,6 +6,7 @@ import { syntaxTree, ensureSyntaxTree, syntaxHighlighting, defaultHighlightStyle
 import { GFM } from '@lezer/markdown';
 import { slashCommands } from './slash-commands.js';
 import { formatToolbar } from './format-toolbar.js';
+import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
 
@@ -415,7 +416,7 @@ function simpleListBackspace(view) {
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
   history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,
-  slashCommands(),formatToolbar(),
+  slashCommands(),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
   keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'Enter',run:simpleListEnter},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
