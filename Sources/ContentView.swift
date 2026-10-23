@@ -50,9 +50,7 @@ struct ContentView: View {
             } else { Text("").font(.system(size:13)).foregroundStyle(.secondary) }
             Spacer(minLength:10)
             if model.selected?.ext == "md" {
-                Button { model.importAttachment() } label: { Image(systemName:"paperclip") }.help(model.localized("插入附件"))
                 Button { model.showOutline.toggle() } label: { Image(systemName:"list.bullet.indent") }.foregroundStyle(model.showOutline ? Color.acPink : Color.secondary).help(model.localized("文章目录"))
-                Menu { Button(model.localized("增大字号")) { model.fontSize = min(26,model.fontSize+1); UserDefaults.standard.set(model.fontSize,forKey:"readingFontSize") }; Button(model.localized("减小字号")) { model.fontSize = max(12,model.fontSize-1); UserDefaults.standard.set(model.fontSize,forKey:"readingFontSize") }; Divider(); Button(model.localized("重新载入文件")) { model.reload() }.disabled(model.persistedPage == nil); Button(model.localized("在 Finder 中显示")) { if let url = model.persistedPage?.url { NSWorkspace.shared.activateFileViewerSelecting([url]) } }.disabled(model.persistedPage == nil) } label: { Image(systemName:"ellipsis") }.menuStyle(.borderlessButton).frame(width:20)
             } else if model.selected?.ext == "pdf" { pdfControls }
             else if let file = model.selected {
                 Button { NSWorkspace.shared.activateFileViewerSelecting([file.url]) } label: { Image(systemName:"folder") }.help(model.localized("在 Finder 中显示"))
@@ -73,12 +71,12 @@ struct ContentView: View {
         if let file = model.selected {
             VStack(spacing:0) {
                 if file.ext == "md" {
-                    HStack(spacing:0) {
+                    HStack(alignment:.top,spacing:0) {
+                        if model.showOutline { outline(title:model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent) }
                         VStack(spacing:0) {
                             if model.isDraft { DraftTitleView(model:model) } else { PageTitleView(title:file.url.deletingPathExtension().lastPathComponent,fontSize:model.fontSize) }
                             LiveMarkdownEditor(model:model).id(model.editorDocumentID).frame(minWidth:360,maxWidth:.infinity,maxHeight:.infinity)
                         }
-                        if model.showOutline { outline }
                     }
                 } else if file.ext == "pdf" { PDFPane(url:file.url,model:model).id(file.id) }
                 else if AppModel.images.contains(file.ext) { ImagePane(url:file.url).id(file.id) }
@@ -87,12 +85,20 @@ struct ContentView: View {
             }.id(file.id)
         }
     }
-    private var outline: some View {
-        VStack(alignment:.leading,spacing:18) {
-            Text(model.localized("文章目录")).font(.system(size:11,weight:.semibold)).foregroundStyle(.secondary).tracking(1).padding(.top,23)
-            ScrollView { VStack(alignment:.leading,spacing:13) { ForEach(Array(model.headings.enumerated()),id:\.offset) { _,heading in Button { model.anchor = heading.title } label: { Text(heading.title).font(.system(size:12)).foregroundStyle(heading.level == 1 ? Color.primary : Color.secondary).lineLimit(2).multilineTextAlignment(.leading).padding(.leading,CGFloat(max(0,heading.level-1))*9) }.buttonStyle(.plain) } }.frame(maxWidth:.infinity,alignment:.leading) }
-            if model.headings.isEmpty { Text(model.localized("这篇笔记还没有标题")).font(.caption).foregroundStyle(.tertiary) }
-        }.padding(.horizontal,20).frame(width:200).background(Color.rail.opacity(0.4)).overlay(alignment:.leading) { Rectangle().fill(Color.faint).frame(width:1) }
+    // A Feishu-style outline in the page's left margin: the page title first,
+    // then its headings, with no panel chrome of its own.
+    private func outline(title: String) -> some View {
+        VStack(alignment:.leading,spacing:0) {
+            Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = false } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
+            ScrollView {
+                VStack(alignment:.leading,spacing:4) {
+                    Text(title.isEmpty ? "New Page" : title).font(.system(size:13,weight:.medium)).foregroundStyle(Color.acPink).lineLimit(2).multilineTextAlignment(.leading).padding(.vertical,5)
+                    ForEach(Array(model.headings.enumerated()),id:\.offset) { _,heading in
+                        Button { model.anchor = heading.title } label: { Text(heading.title).font(.system(size:13)).foregroundStyle(heading.level <= 2 ? Color.primary.opacity(0.85) : Color.secondary).lineLimit(2).multilineTextAlignment(.leading).padding(.leading,CGFloat(max(0,heading.level-1))*12).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
+                    }
+                }.frame(maxWidth:.infinity,alignment:.leading)
+            }
+        }.padding(.leading,24).padding(.trailing,8).padding(.top,43).frame(width:220,alignment:.topLeading).frame(maxHeight:.infinity,alignment:.top)
     }
     private func unsupported(_ file: VaultEntry) -> some View { VStack(spacing:18) { Image(systemName:"doc").font(.system(size:48,weight:.ultraLight)).foregroundStyle(Color.acPink); Text(file.name).font(.title2); Text(model.localized("此类文件可在系统默认应用中打开。")).foregroundStyle(.secondary); Button(model.localized("打开文件")) { NSWorkspace.shared.open(file.url) }.buttonStyle(.bordered) }.frame(maxWidth:.infinity,maxHeight:.infinity) }
     private var statusBar: some View {

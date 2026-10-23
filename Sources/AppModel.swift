@@ -47,7 +47,7 @@ struct EditorSnapshot {
     var persistedPage: VaultEntry? { isDraft ? draftFile : selected }
     var currentPagePath: String? { persistedPage?.relativePath }
     @Published var query = ""
-    @Published var showOutline = false
+    @Published var showOutline = true
     @Published var showSidebar = true
     @Published var showingTrash = false
     @Published private(set) var trashEntries: [PageTrash.Entry] = []
