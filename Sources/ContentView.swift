@@ -75,7 +75,7 @@ struct ContentView: View {
                 if file.ext == "md" {
                     HStack(spacing:0) {
                         VStack(spacing:0) {
-                            if model.isDraft { DraftTitleView(model:model) }
+                            if model.isDraft { DraftTitleView(model:model) } else { PageTitleView(title:file.url.deletingPathExtension().lastPathComponent,fontSize:model.fontSize) }
                             LiveMarkdownEditor(model:model).id(model.editorDocumentID).frame(minWidth:360,maxWidth:.infinity,maxHeight:.infinity)
                         }
                         if model.showOutline { outline }
@@ -122,6 +122,22 @@ struct DraftTitleView: View {
             .frame(maxWidth:860,alignment:.leading)
             .frame(maxWidth:.infinity)
             .onAppear { titleFocused = true }
+    }
+}
+
+struct PageTitleView: View {
+    let title: String
+    let fontSize: Double
+    var body: some View {
+        Text(title)
+            .font(.system(size:fontSize * 2.125,weight:.bold))
+            .foregroundStyle(Color(red:0.96,green:0.95,blue:0.97))
+            .multilineTextAlignment(.leading)
+            .textSelection(.enabled)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.horizontal,58).padding(.top,43).padding(.bottom,8)
+            .frame(maxWidth:860,alignment:.leading)
+            .frame(maxWidth:.infinity)
     }
 }
 

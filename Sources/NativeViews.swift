@@ -90,7 +90,9 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         }
         func render() {
             guard ready, isCurrent, !syncBlocked, let view else { return }
-            var payload: [String:Any] = ["currentPath":representedPath,"title":model.isDraft ? model.draftTitle : model.selected?.name ?? "","draft":model.isDraft,"fontSize":model.fontSize,"editable":!model.loading,"language":model.language.rawValue]
+            // Every Markdown page shows its title natively above the editor, so the
+            // editor always uses the compact spacing below a title.
+            var payload: [String:Any] = ["currentPath":representedPath,"title":model.isDraft ? model.draftTitle : model.selected?.name ?? "","draft":true,"fontSize":model.fontSize,"editable":!model.loading,"language":model.language.rawValue]
             let sendText = !documentInstalled || model.text != lastJSText
             if sendText { payload["text"] = model.text }
             if let data = try? JSONSerialization.data(withJSONObject:payload,options:[.sortedKeys]), let json = String(data:data,encoding:.utf8), sendText || json != lastConfig {
