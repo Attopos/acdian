@@ -29,8 +29,10 @@ struct ContentView: View {
         HStack(spacing:0) {
             if model.showSidebar { SidebarView().frame(minWidth:220,idealWidth:256,maxWidth:300); Rectangle().fill(Color.faint).frame(width:1) }
             VStack(spacing:0) {
-                topBar
-                Rectangle().fill(Color.faint).frame(height:1)
+                // No top bar: a transparent strip keeps clear of the window
+                // controls and still drags the window. With the sidebar hidden
+                // it holds the button that brings the sidebar back.
+                HStack { if !model.showSidebar { SidebarToggle().padding(.leading,78) }; Spacer() }.frame(height:30).contentShape(Rectangle())
                 if model.showingTrash { TrashView(model:model) }
                 else if model.selected != nil { documentBody }
                 else { Color.canvas.frame(maxWidth:.infinity,maxHeight:.infinity) }
@@ -42,25 +44,6 @@ struct ContentView: View {
         .environment(\.locale,model.language.locale)
         .frame(minWidth:920,minHeight:620)
         .alert("acdian",isPresented:Binding(get:{model.error != nil},set:{if !$0 { model.error = nil }})) { Button(model.localized("好"),role:.cancel) { model.error = nil } } message: { Text(model.error ?? "") }
-    }
-    private var topBar: some View {
-        HStack(spacing:12) {
-            Button { withAnimation(.easeInOut(duration:0.18)) { model.showSidebar.toggle() } } label: { Image(systemName:"sidebar.left") }.help(model.localized("显示或隐藏侧栏"))
-            if model.showingTrash {
-                Label(model.localized("垃圾桶"),systemImage:"trash").font(.system(size:13,weight:.medium))
-            } else if let file = model.selected {
-                HStack(spacing:7) {
-                    Image(systemName:file.ext == "md" ? "doc.text" : file.ext == "pdf" ? "doc.richtext" : "doc").foregroundStyle(Color.acPink)
-                    Text(model.isDraft ? (model.draftTitle.isEmpty ? "New Page" : model.draftTitle) : file.name).font(.system(size:13,weight:.medium)).lineLimit(1)
-                }
-            } else { Text("").font(.system(size:13)).foregroundStyle(.secondary) }
-            Spacer(minLength:10)
-            if model.selected?.ext == "md" {
-            } else if model.selected?.ext == "pdf" { pdfControls }
-            else if let file = model.selected {
-                Button { NSWorkspace.shared.activateFileViewerSelecting([file.url]) } label: { Image(systemName:"folder") }.help(model.localized("在 Finder 中显示"))
-            }
-        }.buttonStyle(.borderless).padding(.horizontal,20).frame(height:58)
     }
     private var pdfControls: some View {
         HStack(spacing:12) {
@@ -128,10 +111,19 @@ struct ContentView: View {
             Text(model.status).lineLimit(1).truncationMode(.middle)
             Spacer()
             if model.selected?.ext == "md" { Text(model.language.characterCount(model.wordCount)); Text("·").padding(.horizontal,3); Text("Markdown"); Text("UTF-8").padding(.leading,12) }
+            else if model.selected?.ext == "pdf" { pdfControls.font(.system(size:11)).foregroundStyle(.secondary).buttonStyle(.borderless) }
+            else if let file = model.selected, !model.showingTrash { Button { NSWorkspace.shared.activateFileViewerSelecting([file.url]) } label: { Image(systemName:"folder") }.buttonStyle(.borderless).help(model.localized("在 Finder 中显示")) }
         }.font(.system(size:10)).foregroundStyle(.tertiary).padding(.horizontal,20).frame(height:29)
     }
 }
 
+struct SidebarToggle: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        Button { withAnimation(.easeInOut(duration:0.18)) { model.showSidebar.toggle() } } label: { Image(systemName:"sidebar.left").font(.system(size:14)).frame(width:24,height:22).contentShape(Rectangle()) }
+            .buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("显示或隐藏侧栏") + " ⌃⌘S")
+    }
+}
 struct DraftTitleView: View {
     @ObservedObject var model: AppModel
     @FocusState private var titleFocused: Bool
@@ -158,7 +150,7 @@ struct SidebarView: View {
     @State private var rootDropTargeted = false
     var body: some View {
         VStack(spacing:0) {
-            HStack(spacing:10) { BrandMark(size:30); Text("acdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer() }.padding(.horizontal,20).frame(height:68)
+            HStack(spacing:10) { BrandMark(size:30); Text("acdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer(); SidebarToggle() }.padding(.horizontal,20).frame(height:68)
             HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused); if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) } else { Text("⌘F").font(.system(size:10)).foregroundStyle(.tertiary) } }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
             HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:[.text],isTargeted:$rootDropTargeted) { providers in
                 // Dropping on the Pages header moves an item to the top level.

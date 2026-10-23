@@ -14,6 +14,7 @@ import AppKit
             CommandGroup(replacing:.saveItem) { Button(model.localized("保存页面")) { model.saveFromEditor() }.keyboardShortcut("s").disabled(model.selected?.ext != "md"); Button(model.localized("重新载入文件")) { model.reload() }.disabled(model.persistedPage == nil) }
             CommandGroup(after:.textEditing) { Button(model.localized("搜索页面")) { NotificationCenter.default.post(name:Notification.Name("acdianSearch"),object:nil) }.keyboardShortcut("f"); Button(model.localized("插入附件…")) { model.importAttachment() }.keyboardShortcut("i",modifiers:[.command,.shift]).disabled(model.selected?.ext != "md") }
             CommandMenu(model.localized("视图")) {
+                Button(model.localized("显示或隐藏侧栏")) { withAnimation(.easeInOut(duration:0.18)) { model.showSidebar.toggle() } }.keyboardShortcut("s",modifiers:[.control,.command])
                 Picker(model.localized("外观"),selection:$model.appearance) { ForEach(AppAppearance.allCases) { Text(model.localized($0.title)).tag($0) } }
                 Divider()
                 Button(model.localized("显示或隐藏目录")) { model.showOutline.toggle() }.keyboardShortcut("l",modifiers:[.command,.shift])
