@@ -79,7 +79,7 @@ struct ContentView: View {
                         if model.showOutline { outline(title:model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent) }
                         else { Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = true } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,24).padding(.top,43) }
                         VStack(spacing:0) {
-                            if model.isDraft { DraftTitleView(model:model) } else { PageTitleView(title:file.url.deletingPathExtension().lastPathComponent,fontSize:model.fontSize) }
+                            if model.isDraft { DraftTitleView(model:model) }
                             LiveMarkdownEditor(model:model).id(model.editorDocumentID).frame(minWidth:360,maxWidth:.infinity,maxHeight:.infinity)
                         }
                     }
@@ -136,21 +136,6 @@ struct DraftTitleView: View {
     }
 }
 
-struct PageTitleView: View {
-    let title: String
-    let fontSize: Double
-    var body: some View {
-        Text(title)
-            .font(.system(size:fontSize * 2.125,weight:.bold))
-            .foregroundStyle(Color.ink)
-            .multilineTextAlignment(.leading)
-            .textSelection(.enabled)
-            .accessibilityAddTraits(.isHeader)
-            .padding(.horizontal,58).padding(.top,43).padding(.bottom,8)
-            .frame(maxWidth:860,alignment:.leading)
-            .frame(maxWidth:.infinity)
-    }
-}
 
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel

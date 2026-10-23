@@ -11,12 +11,22 @@ import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from '
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
 
 const post = message => window.webkit?.messageHandlers?.acdian?.postMessage(message);
-const metadata = { currentPath: '', title: '', editable: true, resetToken: null, language:'en' };
+const metadata = { currentPath: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 let rawSource = '', lastSource = '', lineBreak = '\n', applyingExternal = false, revision = 0;
 const insertions = new Set();
 let rawSnapshots = new Map();
 const editability = new Compartment();
 const localization = new Compartment();
+const pageTitle = new Compartment();
+// A saved page's name is the first block of the document view, so it scrolls
+// away with the text instead of staying pinned above the editor.
+class PageTitleWidget extends WidgetType {
+  constructor(title) { super(); this.title = title; }
+  eq(other) { return this.title === other.title; }
+  toDOM() { const heading = document.createElement('h1'); heading.className = 'cm-page-title'; heading.textContent = this.title; return heading; }
+  ignoreEvent() { return true; }
+}
+const pageTitleExtension=()=>metadata.pageTitle?EditorView.decorations.of(Decoration.set([Decoration.widget({widget:new PageTitleWidget(metadata.pageTitle),block:true,side:-1}).range(0)])):[];
 const localeExtensions=()=>{
   const strings=messagesForLanguage(metadata.language);
   return [editorLanguage.of(metadata.language),placeholder(strings.placeholder),EditorView.contentAttributes.of({lang:metadata.language,'aria-label':strings.editorLabel})];
@@ -434,6 +444,7 @@ function extensions() {return [
   history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,
   slashCommands(),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
+  pageTitle.of(pageTitleExtension()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
   keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'Enter',run:simpleListEnter},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
   EditorView.updateListener.of(update=>{
@@ -448,6 +459,7 @@ window.acdianSetDocument=payload=>{
   const previousPath=metadata.currentPath,previousToken=metadata.resetToken;
   if(typeof payload.currentPath==='string')metadata.currentPath=payload.currentPath;
   if(typeof payload.title==='string'){metadata.title=payload.title;document.title=payload.title||'acdian';}
+  if(typeof payload.pageTitle==='string')metadata.pageTitle=payload.pageTitle;
   if(typeof payload.draft==='boolean')document.documentElement.classList.toggle('draft-page',payload.draft);
   if(payload.appearance==='light'||payload.appearance==='dark'){document.documentElement.classList.toggle('light',payload.appearance==='light');document.querySelector('meta[name="color-scheme"]')?.setAttribute('content',payload.appearance);}
   if(typeof payload.editable==='boolean')metadata.editable=payload.editable;
@@ -461,7 +473,7 @@ window.acdianSetDocument=payload=>{
     rawSource=payload.text;lastSource=rawSource;revision=0;lineBreak=rawSource.includes('\r\n')?'\r\n':rawSource.includes('\r')?'\r':'\n';rawSnapshots=new Map([[canonical(rawSource),rawSource]]);
     applyingExternal=true;view.setState(EditorState.create({doc:canonical(rawSource),extensions:extensions()}));view.dispatch({selection:EditorSelection.cursor(0)});applyingExternal=false;
     reportedHeading=null;requestAnimationFrame(followHeading);
-  }else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions())]});
+  }else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions()),pageTitle.reconfigure(pageTitleExtension())]});
 };
 window.acdianGetDocument=()=>({text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head});
 window.acdianInsertText=(text,insertionID)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;view.dispatch(view.state.replaceSelection(canonical(String(text))));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
@@ -472,6 +484,7 @@ window.acdianScrollTo=raw=>{
   for(let n=1;n<=view.state.doc.lines&&!found;n++){const line=view.state.doc.line(n),heading=/^#{1,6}\s+(.+?)(?:\s+#+)?$/.exec(line.text);if(heading&&(heading[1].toLowerCase()===anchor.toLowerCase()||heading[1].toLowerCase().replace(/\s+/g,'-')===anchor.toLowerCase())||line.text.endsWith(' ^'+anchor.replace(/^\^/,''))){pos=line.from;found=true;}}
   if(!found)return false;
   view.dispatch({selection:EditorSelection.cursor(pos)});
+  if(!anchor){view.scrollDOM.scrollTop=0;headingFollowPausedUntil=performance.now()+400;reportHeading(-1);return true;}
   // The scroll effect is lost when moving the caret re-lays out the live
   // decorations, so the heading is brought to the top of the scroller directly.
   const scroller=view.scrollDOM,offset=view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop;

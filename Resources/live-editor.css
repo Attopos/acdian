@@ -23,6 +23,7 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-heading-3 { font-size:1.4em; padding-top:calc(var(--editor-font-size) * 1); }
 .cm-editor .cm-heading-4 { font-size:1.1em; padding-top:calc(var(--editor-font-size) * .7); }
 .cm-editor .cm-heading-5, .cm-editor .cm-heading-6 { font-size:1em; }
+.cm-editor .cm-page-title { margin:0; padding:31px 0 8px; font-size:2.125em; font-weight:700; line-height:1.3; letter-spacing:-.02em; color:#f5f3f7; border:0; cursor:default; user-select:text; }
 .cm-editor .cm-heading-hint { color:#68616e; pointer-events:none; }
 .cm-editor .cm-plain-syntax, .cm-editor .cm-plain-syntax * { color:inherit!important; font-weight:inherit!important; text-decoration:none!important; }
 .cm-editor .cm-divider-line.cm-divider-selected { background:var(--divider-selected,#d93b8650); }
