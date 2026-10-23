@@ -8,6 +8,27 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     var title: String { switch self { case .system: return "跟随系统"; case .light: return "浅色"; case .dark: return "深色" } }
     var nsAppearance: NSAppearance? { switch self { case .system: return nil; case .light: return NSAppearance(named:.aqua); case .dark: return NSAppearance(named:.darkAqua) } }
 }
+/// The two ACdian icon colourings. Pink with a black mark is the bundle's own icon.
+enum AppIconStyle: String, CaseIterable, Identifiable {
+    case pink, black
+    var id: String { rawValue }
+    var title: String { switch self { case .pink: return "粉底黑字"; case .black: return "黑底粉字" } }
+    static func stored() -> AppIconStyle { AppIconStyle(rawValue:UserDefaults.standard.string(forKey:"appIconStyle") ?? "") ?? .pink }
+    /// Swaps the Dock icon of the running app, and gives the installed bundle a
+    /// matching Finder icon so the Dock and Finder keep it while the app is closed.
+    func apply(toBundle: Bool = true) {
+        guard NSApp != nil else { return }
+        if let url = Bundle.main.url(forResource:self == .pink ? "AppIcon-Pink" : "AppIcon-Black",withExtension:"png"), let image = NSImage(contentsOf:url) { NSApp.applicationIconImage = image }
+        guard toBundle else { return }
+        let bundle = Bundle.main.bundleURL
+        let customIcon = FileManager.default.fileExists(atPath:bundle.appendingPathComponent("Icon\r").path)
+        if self == .black, !customIcon, let url = Bundle.main.url(forResource:"AppIcon-Black",withExtension:"icns"), let image = NSImage(contentsOf:url) {
+            NSWorkspace.shared.setIcon(image,forFile:bundle.path,options:[])
+        } else if self == .pink, customIcon {
+            NSWorkspace.shared.setIcon(nil,forFile:bundle.path,options:[])
+        }
+    }
+}
 /// Where a sidebar drag would land, shown while hovering a row.
 enum SidebarDrop: Equatable { case before, after, into }
 struct SidebarDropHighlight: Equatable { let path: String; let place: SidebarDrop }
@@ -64,6 +85,9 @@ struct EditorSnapshot {
     private let preferences: UserDefaults
     @Published var appearance: AppAppearance = AppAppearance(rawValue:UserDefaults.standard.string(forKey:"appAppearance") ?? "") ?? .system {
         didSet { UserDefaults.standard.set(appearance.rawValue,forKey:"appAppearance"); NSApp?.appearance = appearance.nsAppearance }
+    }
+    @Published var iconStyle: AppIconStyle = AppIconStyle.stored() {
+        didSet { UserDefaults.standard.set(iconStyle.rawValue,forKey:"appIconStyle"); iconStyle.apply() }
     }
     @Published var language: AppLanguage = .english {
         didSet { preferences.set(language.rawValue,forKey:"appLanguage") }

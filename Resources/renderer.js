@@ -1,4 +1,4 @@
-/* acdian offline reader. The native app owns file access and navigation. */
+/* ACdian offline reader. The native app owns file access and navigation. */
 (() => {
   'use strict';
 
@@ -310,7 +310,7 @@
         const href = link.getAttribute('href') || '';
         if (isExternal(href)) { link.classList.add('external-link'); link.rel = 'noreferrer noopener'; }
       });
-      document.title = payload?.title || 'acdian';
+      document.title = payload?.title || 'ACdian';
       if (payload?.anchor) window.acdianScrollTo(payload.anchor);
       else if (previousPath !== state.currentPath) window.scrollTo({ top: 0 });
       else window.scrollTo({ top: savedScroll });

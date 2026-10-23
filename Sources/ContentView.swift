@@ -13,13 +13,47 @@ extension Color {
     static let ink = adaptive(dark:NSColor(red:0.96,green:0.95,blue:0.97,alpha:1),light:NSColor(red:0.09,green:0.086,blue:0.106,alpha:1))
     static let wash = adaptive(dark:NSColor.white.withAlphaComponent(0.045),light:NSColor.black.withAlphaComponent(0.04))
 }
+// The A and C strokes of the app icon (IconGenerator.swift), in its 1024 canvas
+// whose 914-point tile starts at 55, scaled so the tile fills the given rect.
+struct ACdianGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        var strokes = Path()
+        strokes.move(to:CGPoint(x:196,y:742)); strokes.addLine(to:CGPoint(x:328,y:318))
+        strokes.addCurve(to:CGPoint(x:374,y:318),control1:CGPoint(x:340,y:278),control2:CGPoint(x:362,y:278))
+        strokes.addLine(to:CGPoint(x:455,y:596))
+        strokes.addCurve(to:CGPoint(x:672,y:790),control1:CGPoint(x:490,y:720),control2:CGPoint(x:570,y:790))
+        strokes.addCurve(to:CGPoint(x:856,y:678),control1:CGPoint(x:762,y:790),control2:CGPoint(x:826,y:744))
+        strokes.move(to:CGPoint(x:856,y:352))
+        strokes.addCurve(to:CGPoint(x:672,y:246),control1:CGPoint(x:826,y:290),control2:CGPoint(x:762,y:246))
+        strokes.addCurve(to:CGPoint(x:540,y:296),control1:CGPoint(x:618,y:246),control2:CGPoint(x:574,y:264))
+        // translate(512 512) scale(.88) translate(-512 -512) translate(22 -4) skewX(-5), innermost first.
+        let mark = CGAffineTransform(a:1,b:0,c:tan(-5 * .pi / 180),d:1,tx:0,ty:0)
+            .concatenating(CGAffineTransform(translationX:22,y:-4))
+            .concatenating(CGAffineTransform(translationX:-512,y:-512))
+            .concatenating(CGAffineTransform(scaleX:0.88,y:0.88))
+            .concatenating(CGAffineTransform(translationX:512,y:512))
+        let scale = min(rect.width,rect.height) / 914
+        let fit = CGAffineTransform(translationX:-55,y:-55).concatenating(CGAffineTransform(scaleX:scale,y:scale)).concatenating(CGAffineTransform(translationX:rect.minX,y:rect.minY))
+        return strokes.strokedPath(StrokeStyle(lineWidth:112,lineCap:.round,lineJoin:.round)).applying(mark).applying(fit)
+    }
+}
+extension AppIconStyle {
+    static let ink = Color(.sRGB,red:0x14/255.0,green:0x12/255.0,blue:0x17/255.0,opacity:1)
+    var tile: Color { self == .pink ? .acPink : Self.ink }
+    var glyph: Color { self == .pink ? Self.ink : .acPink }
+}
 struct BrandMark: View {
     var size: CGFloat = 36
+    var style: AppIconStyle = .pink
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
+        let corner = size * 211 / 914
         ZStack {
-            RoundedRectangle(cornerRadius:size*0.29).fill(Color.acPink.opacity(0.13))
-            Text("a").font(.system(size:size*0.87,weight:.semibold,design:.rounded)).italic().foregroundStyle(Color.acPink).offset(x:-size*0.025,y:-size*0.09)
-        }.frame(width:size,height:size)
+            RoundedRectangle(cornerRadius:corner).fill(style.tile)
+            ACdianGlyph().fill(style.glyph)
+        }
+        .overlay { if style == .black && colorScheme == .dark { RoundedRectangle(cornerRadius:corner).strokeBorder(Color.white.opacity(0.10),lineWidth:1) } }
+        .frame(width:size,height:size)
     }
 }
 struct ContentView: View {
@@ -43,7 +77,7 @@ struct ContentView: View {
         .background(Color.canvas).tint(.acPink)
         .environment(\.locale,model.language.locale)
         .frame(minWidth:920,minHeight:620)
-        .alert("acdian",isPresented:Binding(get:{model.error != nil},set:{if !$0 { model.error = nil }})) { Button(model.localized("好"),role:.cancel) { model.error = nil } } message: { Text(model.error ?? "") }
+        .alert("ACdian",isPresented:Binding(get:{model.error != nil},set:{if !$0 { model.error = nil }})) { Button(model.localized("好"),role:.cancel) { model.error = nil } } message: { Text(model.error ?? "") }
     }
     private var pdfControls: some View {
         HStack(spacing:12) {
@@ -150,7 +184,7 @@ struct SidebarView: View {
     @State private var rootDropTargeted = false
     var body: some View {
         VStack(spacing:0) {
-            HStack(spacing:10) { BrandMark(size:30); Text("acdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer(); SidebarToggle() }.padding(.horizontal,20).frame(height:68)
+            HStack(spacing:10) { BrandMark(size:30,style:model.iconStyle); Text("ACdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer(); SidebarToggle() }.padding(.horizontal,20).frame(height:68)
             HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused); if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) } else { Text("⌘F").font(.system(size:10)).foregroundStyle(.tertiary) } }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
             HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:[.text],isTargeted:$rootDropTargeted) { providers in
                 // Dropping on the Pages header moves an item to the top level.
@@ -174,7 +208,7 @@ struct SidebarView: View {
             }.buttonStyle(.plain).padding(.horizontal,10).padding(.bottom,12)
                 .accessibilityIdentifier("trashButton")
             Rectangle().fill(Color.faint).frame(height:1).padding(.horizontal,16)
-            HStack(spacing:14) { LanguageMenu(); AppearanceToggle(); Spacer() }.padding(.horizontal,20).padding(.vertical,14)
+            HStack(spacing:14) { SettingsButton(); Spacer() }.padding(.horizontal,20).padding(.vertical,14)
         }.background(Color.rail)
         .onReceive(NotificationCenter.default.publisher(for:Notification.Name("acdianSearch"))) { _ in searchFocused = true; model.showSidebar = true }
     }
@@ -299,17 +333,67 @@ struct TrashView: View {
 }
 
 /// Kept outside the document identity so a language change never reloads edits.
-// Switches between light and dark; from Follow System it picks the opposite of
-// what is showing now. The icon shows the current look.
-struct AppearanceToggle: View {
+// The gear at the foot of the sidebar opens icon, language and appearance settings.
+struct SettingsButton: View {
     @EnvironmentObject var model: AppModel
-    @Environment(\.colorScheme) private var colorScheme
+    @State private var open = false
     var body: some View {
-        Button { model.appearance = colorScheme == .dark ? .light : .dark } label: {
-            Image(systemName:colorScheme == .dark ? "moon" : "sun.max").font(.system(size:14,weight:.medium)).frame(width:22,height:20)
-        }.buttonStyle(.plain).foregroundStyle(.secondary)
-        .help(model.localized(colorScheme == .dark ? "切换到浅色" : "切换到深色"))
-        .accessibilityLabel(model.localized(colorScheme == .dark ? "切换到浅色" : "切换到深色"))
+        Button { open.toggle() } label: { Image(systemName:"gearshape").font(.system(size:15,weight:.medium)).frame(width:22,height:20).contentShape(Rectangle()) }
+            .buttonStyle(.plain).foregroundStyle(open ? Color.acPink : Color.secondary)
+            .help(model.localized("设置")).accessibilityLabel(model.localized("设置")).accessibilityIdentifier("settingsButton")
+            .popover(isPresented:$open,arrowEdge:.top) { SettingsPanel().environmentObject(model) }
+    }
+}
+struct SettingsPanel: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        VStack(alignment:.leading,spacing:18) {
+            section("图标") {
+                HStack(spacing:14) {
+                    ForEach(AppIconStyle.allCases) { style in
+                        let selected = model.iconStyle == style
+                        Button { model.iconStyle = style } label: {
+                            BrandMark(size:44,style:style).padding(4)
+                                .overlay(RoundedRectangle(cornerRadius:14).strokeBorder(selected ? Color.acPink : Color.faint,lineWidth:selected ? 2 : 1))
+                        }.buttonStyle(.plain).help(model.localized(style.title))
+                        .accessibilityLabel(model.localized(style.title)).accessibilityAddTraits(selected ? .isSelected : [])
+                    }
+                }
+            }
+            section("语言") {
+                SettingsSegments(options:AppLanguage.allCases,selection:model.language,title:\.name) { AppDelegate.switchLanguage(to:$0,model:model) }
+            }
+            section("外观") {
+                SettingsSegments(options:AppAppearance.allCases,selection:model.appearance,title:{ model.localized($0.title) }) { model.appearance = $0 }
+            }
+        }.padding(18).frame(width:330,alignment:.leading).tint(.acPink)
+    }
+    private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment:.leading,spacing:8) {
+            Text(model.localized(title)).font(.system(size:11,weight:.semibold)).foregroundStyle(.secondary)
+            content()
+        }
+    }
+}
+// A compact segmented row whose selected segment takes the theme pink.
+struct SettingsSegments<Option: Identifiable & Equatable>: View {
+    let options: [Option]
+    let selection: Option
+    let title: (Option) -> String
+    let choose: (Option) -> Void
+    var body: some View {
+        HStack(spacing:2) {
+            ForEach(options) { option in
+                let selected = option == selection
+                Button { if !selected { choose(option) } } label: {
+                    Text(title(option)).font(.system(size:11,weight:selected ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.8).padding(.horizontal,3)
+                        .frame(maxWidth:.infinity).padding(.vertical,5)
+                        .foregroundStyle(selected ? Color.white : Color.primary.opacity(0.75))
+                        .background(selected ? Color.acPink : .clear,in:RoundedRectangle(cornerRadius:6))
+                        .contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }.padding(2).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint))
     }
 }
 struct LanguageMenu: View {

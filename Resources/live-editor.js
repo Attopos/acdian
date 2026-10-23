@@ -466,7 +466,7 @@ window.acdianEditor=view;
 window.acdianSetDocument=payload=>{
   const previousPath=metadata.currentPath,previousToken=metadata.resetToken;
   if(typeof payload.currentPath==='string')metadata.currentPath=payload.currentPath;
-  if(typeof payload.title==='string'){metadata.title=payload.title;document.title=payload.title||'acdian';}
+  if(typeof payload.title==='string'){metadata.title=payload.title;document.title=payload.title||'ACdian';}
   if(typeof payload.pageTitle==='string')metadata.pageTitle=payload.pageTitle;
   if(typeof payload.draft==='boolean')document.documentElement.classList.toggle('draft-page',payload.draft);
   if(payload.appearance==='light'||payload.appearance==='dark'){document.documentElement.classList.toggle('light',payload.appearance==='light');document.querySelector('meta[name="color-scheme"]')?.setAttribute('content',payload.appearance);}

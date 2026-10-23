@@ -5,7 +5,7 @@ import AppKit
     @StateObject private var model = AppModel()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     var body: some Scene {
-        WindowGroup("acdian") {
+        WindowGroup("ACdian") {
             ContentView().environmentObject(model).onAppear { delegate.model = model; DispatchQueue.main.async { delegate.configureWindow() } }
         }.defaultSize(width:1260,height:840).windowStyle(.hiddenTitleBar).commands {
             CommandGroup(replacing:.newItem) {
@@ -21,7 +21,7 @@ import AppKit
                 Button(model.localized("刷新页面")) { model.refresh() }.keyboardShortcut("r")
                 Button(model.localized("所有页面")) { model.goHome() }.keyboardShortcut("h",modifiers:[.command,.shift])
             }
-            CommandGroup(replacing:.appInfo) { Button(model.localized("关于 acdian")) { NSApp.orderFrontStandardAboutPanel(options:[.applicationName:"acdian",.applicationVersion:(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "1.2.7"),.credits:NSAttributedString(string:model.localized("本地 Markdown 阅读器"))]) } }
+            CommandGroup(replacing:.appInfo) { Button(model.localized("关于 ACdian")) { NSApp.orderFrontStandardAboutPanel(options:[.applicationName:"ACdian",.applicationVersion:(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "1.2.7"),.credits:NSAttributedString(string:model.localized("本地 Markdown 阅读器"))]) } }
         }
     }
 }
@@ -38,7 +38,7 @@ import AppKit
             if let model = self?.model, model.sidebarDrop != nil || model.draggingPath != nil { DispatchQueue.main.async { model.setSidebarDrop(nil); model.draggingPath = nil } }
             return event
         }
-        NSApp.appearance = model?.appearance.nsAppearance ?? AppAppearance(rawValue:UserDefaults.standard.string(forKey:"appAppearance") ?? "")?.nsAppearance; AppDelegate.syncSystemLanguage(AppLanguage.stored()); NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps:true) }
+        NSApp.appearance = model?.appearance.nsAppearance ?? AppAppearance(rawValue:UserDefaults.standard.string(forKey:"appAppearance") ?? "")?.nsAppearance; AppIconStyle.stored().apply(); AppDelegate.syncSystemLanguage(AppLanguage.stored()); NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps:true) }
     // AppKit reads its menus and bundle strings once at launch, so a language
     // change saves the choice and relaunches to load every resource in it.
     static func syncSystemLanguage(_ language: AppLanguage) { UserDefaults.standard.set([language.rawValue],forKey:"AppleLanguages") }
@@ -57,7 +57,7 @@ import AppKit
         NSApp.terminate(nil)
     }
     func applicationDidBecomeActive(_ notification: Notification) { model?.refreshTrash() }
-    func configureWindow() { for window in NSApp.windows where window.canBecomeMain { window.delegate = self; window.title = "acdian"; window.backgroundColor = NSColor(name:nil) { $0.bestMatch(from:[.darkAqua,.aqua]) == .aqua ? .white : NSColor(red:0.065,green:0.065,blue:0.078,alpha:1) }; window.isMovableByWindowBackground = true; window.tabbingMode = .disallowed } }
+    func configureWindow() { for window in NSApp.windows where window.canBecomeMain { window.delegate = self; window.title = "ACdian"; window.backgroundColor = NSColor(name:nil) { $0.bestMatch(from:[.darkAqua,.aqua]) == .aqua ? .white : NSColor(red:0.065,green:0.065,blue:0.078,alpha:1) }; window.isMovableByWindowBackground = true; window.tabbingMode = .disallowed } }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if closeApproved { return true }
         guard let model else { return true }

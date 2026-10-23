@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$PWD"
-APP="${ACDIAN_BUILD_DIR:-/private/tmp/acdian-build-$UID}/acdian.app"
+APP="${ACDIAN_BUILD_DIR:-/private/tmp/acdian-build-$UID}/ACdian.app"
 MODULE_CACHE="${ACDIAN_MODULE_CACHE:-/private/tmp/acdian-swift-cache-$UID}"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$MODULE_CACHE"
 xcrun swiftc -swift-version 5 -O -module-cache-path "$MODULE_CACHE" -target arm64-apple-macos14.0 -framework SwiftUI -framework AppKit -framework WebKit -framework PDFKit -framework UniformTypeIdentifiers Sources/*.swift -o "$APP/Contents/MacOS/acdian"
@@ -13,8 +13,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>acdian</string>
 <key>CFBundleIdentifier</key><string>com.acdian.reader</string>
-<key>CFBundleName</key><string>acdian</string>
-<key>CFBundleDisplayName</key><string>acdian</string>
+<key>CFBundleName</key><string>ACdian</string>
+<key>CFBundleDisplayName</key><string>ACdian</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>1.2.7</string>
 <key>CFBundleVersion</key><string>1</string>
@@ -24,8 +24,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
-<key>NSDesktopFolderUsageDescription</key><string>acdian accesses your existing local pages and saves your edits.</string>
-<key>NSDocumentsFolderUsageDescription</key><string>acdian accesses your existing local pages and saves your edits.</string>
+<key>NSDesktopFolderUsageDescription</key><string>ACdian accesses your existing local pages and saves your edits.</string>
+<key>NSDocumentsFolderUsageDescription</key><string>ACdian accesses your existing local pages and saves your edits.</string>
 </dict></plist>
 PLIST
 if [[ -n "${ACDIAN_BUNDLE_ID:-}" ]]; then
