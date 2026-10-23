@@ -452,7 +452,13 @@ window.acdianRedo=()=>redo(view);
 window.acdianScrollTo=raw=>{
   const anchor=decode(String(raw||'').replace(/^#/,''));let pos=0,found=!anchor;
   for(let n=1;n<=view.state.doc.lines&&!found;n++){const line=view.state.doc.line(n),heading=/^#{1,6}\s+(.+?)(?:\s+#+)?$/.exec(line.text);if(heading&&(heading[1].toLowerCase()===anchor.toLowerCase()||heading[1].toLowerCase().replace(/\s+/g,'-')===anchor.toLowerCase())||line.text.endsWith(' ^'+anchor.replace(/^\^/,''))){pos=line.from;found=true;}}
-  if(found)view.dispatch({selection:EditorSelection.cursor(pos),effects:EditorView.scrollIntoView(pos,{y:'start'})});return found;
+  if(!found)return false;
+  view.dispatch({selection:EditorSelection.cursor(pos)});
+  // The scroll effect is lost when moving the caret re-lays out the live
+  // decorations, so the heading is brought to the top of the scroller directly.
+  const scroller=view.scrollDOM,offset=view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop;
+  scroller.scrollTop=Math.max(0,offset+view.lineBlockAt(pos).top-24);
+  return true;
 };
 window.acdianLiveEditorTest={simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString()};
 post({type:'ready'});
