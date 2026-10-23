@@ -30,9 +30,9 @@ struct ContentView: View {
             if model.showSidebar { SidebarView().frame(minWidth:220,idealWidth:256,maxWidth:300); Rectangle().fill(Color.faint).frame(width:1) }
             VStack(spacing:0) {
                 // No top bar: a transparent strip keeps clear of the window
-                // controls and still drags the window. With the sidebar hidden
-                // it holds the button that brings the sidebar back.
-                HStack { if !model.showSidebar { SidebarToggle().padding(.leading,78) }; Spacer() }.frame(height:30).contentShape(Rectangle())
+                // controls and still drags the window. A hidden sidebar comes
+                // back with Control-Command-S or View > Show or hide sidebar.
+                Color.clear.frame(height:30).contentShape(Rectangle())
                 if model.showingTrash { TrashView(model:model) }
                 else if model.selected != nil { documentBody }
                 else { Color.canvas.frame(maxWidth:.infinity,maxHeight:.infinity) }
