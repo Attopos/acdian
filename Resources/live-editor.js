@@ -297,6 +297,13 @@ function decorations(state) {
   return Decoration.set(list,true);
 }
 const liveField=StateField.define({create:decorations,update(value,tr){return tr.docChanged||tr.selection||tr.startState.field(inputBlankField)!==tr.state.field(inputBlankField)||tr.startState.facet(editorLanguage)!==tr.state.facet(editorLanguage)||syntaxTree(tr.startState)!==syntaxTree(tr.state)?decorations(tr.state):value;},provide:field=>[EditorView.decorations.from(field),EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>value.spec.block===true}))]});
+// The caret is hidden while the selection rests on a divider, which shows as selected instead.
+const dividerCaret=EditorView.editorAttributes.compute(['selection',liveField],state=>{
+  if(!state.selection.ranges.every(range=>range.empty))return {};
+  const line=state.doc.lineAt(state.selection.main.head);let divider=false;
+  state.field(liveField).between(line.from,line.from,(_from,_to,decoration)=>{if(/(?:^| )cm-divider-line(?: |$)/.test(decoration.spec.class||''))divider=true;});
+  return divider?{class:'cm-caret-hidden'}:{};
+});
 
 function boldDelimiters(state) {
   const ranges=[],tree=ensureSyntaxTree(state,state.doc.length,40)||syntaxTree(state),code=[],inline=[];
@@ -441,7 +448,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,
+  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,
   slashCommands(),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
   pageTitle.of(pageTitleExtension()),

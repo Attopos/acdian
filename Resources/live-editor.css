@@ -102,3 +102,4 @@ html,body { height:100%; margin:0; }
 .cm-format-option:hover { background:#ffffff0d; }
 .cm-format-option[aria-checked="true"] { color:#f3a6c9; }
 .cm-format-option .cm-slash-icon { flex-basis:24px; font-size:15px; }
+.cm-editor.cm-caret-hidden .cm-cursor { display:none!important; }

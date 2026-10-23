@@ -323,6 +323,7 @@ struct EditorSnapshot {
                     switch result {
                     case .success(let (newPath,newIndex)):
                         if self.loadID == request { self.loading = false }
+                        if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath) }
                         self.index = newIndex; self.rebuildSearch()
                         if affectsSelection, let openPath, newPath != relativePath {
                             let moved = openPath == relativePath ? newPath : newPath + openPath.dropFirst(relativePath.count)
@@ -334,6 +335,18 @@ struct EditorSnapshot {
             }
         }
         if affectsSelection { withEditorSnapshot(action) } else { action() }
+    }
+    // Sidebar folders remember being opened or closed, per pages folder.
+    private var folderStateKey: String { "expandedFolders:" + (index?.root.path ?? "") }
+    func folderExpanded(_ path: String) -> Bool? { (preferences.dictionary(forKey:folderStateKey) as? [String:Bool])?[path] }
+    func setFolderExpanded(_ path: String, _ expanded: Bool) {
+        var states = preferences.dictionary(forKey:folderStateKey) as? [String:Bool] ?? [:]
+        states[path] = expanded; preferences.set(states,forKey:folderStateKey)
+    }
+    private func moveFolderStates(from old: String, to new: String) {
+        guard old != new, var states = preferences.dictionary(forKey:folderStateKey) as? [String:Bool] else { return }
+        for key in states.keys where key == old || key.hasPrefix(old + "/") { states[new + key.dropFirst(old.count)] = states.removeValue(forKey:key) }
+        preferences.set(states,forKey:folderStateKey)
     }
     static func entry(_ path: String, in entries: [VaultEntry]) -> VaultEntry? {
         for entry in entries {

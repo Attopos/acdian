@@ -24,6 +24,7 @@ struct BrandMark: View {
 }
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    @State private var outlineFloating = false
     var body: some View {
         HStack(spacing:0) {
             if model.showSidebar { SidebarView().frame(minWidth:220,idealWidth:256,maxWidth:300); Rectangle().fill(Color.faint).frame(width:1) }
@@ -75,12 +76,21 @@ struct ContentView: View {
         if let file = model.selected {
             VStack(spacing:0) {
                 if file.ext == "md" {
-                    HStack(alignment:.top,spacing:0) {
-                        if model.showOutline { outline(title:model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent) }
-                        else { Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = true } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,24).padding(.top,43) }
-                        VStack(spacing:0) {
-                            if model.isDraft { DraftTitleView(model:model) }
-                            LiveMarkdownEditor(model:model).id(model.editorDocumentID).frame(minWidth:360,maxWidth:.infinity,maxHeight:.infinity)
+                    // The text column stays centred in the whole article area; the
+                    // outline floats in the left margin when it fits there, and
+                    // otherwise opens over the text from a » button.
+                    GeometryReader { geometry in
+                        let fits = geometry.size.width >= Self.outlineFitWidth
+                        ZStack(alignment:.topLeading) {
+                            VStack(spacing:0) {
+                                if model.isDraft { DraftTitleView(model:model) }
+                                LiveMarkdownEditor(model:model).id(model.editorDocumentID).frame(minWidth:360,maxWidth:.infinity,maxHeight:.infinity)
+                            }
+                            if model.showOutline && (fits || outlineFloating) {
+                                outline(title:model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent,floating:!fits)
+                            } else {
+                                Button { withAnimation(.easeInOut(duration:0.18)) { if fits { model.showOutline = true } else { model.showOutline = true; outlineFloating = true } } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)).frame(width:22,height:22).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,20).padding(.top,39)
+                            }
                         }
                     }
                 } else if file.ext == "pdf" { PDFPane(url:file.url,model:model).id(file.id) }
@@ -92,9 +102,11 @@ struct ContentView: View {
     }
     // A Feishu-style outline in the page's left margin: the page title first,
     // then its headings, with no panel chrome of its own.
-    private func outline(title: String) -> some View {
+    // Editor column max width (860) plus the outline (220) and a gap on each side.
+    static let outlineFitWidth: CGFloat = 860 + 2 * (220 + 12)
+    private func outline(title: String, floating: Bool) -> some View {
         VStack(alignment:.leading,spacing:0) {
-            Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = false } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
+            Button { withAnimation(.easeInOut(duration:0.18)) { if floating { outlineFloating = false } else { model.showOutline = false } } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
             ScrollView {
                 VStack(alignment:.leading,spacing:4) {
                     Button { model.anchor = "#"; model.activeHeading = -1 } label: { Text(title.isEmpty ? "New Page" : title).font(.system(size:13,weight:.medium)).foregroundStyle(model.activeHeading < 0 ? Color.acPink : Color.primary.opacity(0.85)).lineLimit(2).multilineTextAlignment(.leading).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
@@ -103,7 +115,9 @@ struct ContentView: View {
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)
             }
-        }.padding(.leading,24).padding(.trailing,8).padding(.top,43).frame(width:220,alignment:.topLeading).frame(maxHeight:.infinity,alignment:.top)
+        }.padding(.leading,24).padding(.trailing,8).padding(.top,43).padding(.bottom,floating ? 16 : 0).frame(width:220,alignment:.topLeading)
+        .background { if floating { RoundedRectangle(cornerRadius:10).fill(Color.canvas).shadow(color:.black.opacity(0.25),radius:16,y:6).padding(.top,30).padding(.leading,10) } }
+        .frame(maxHeight:.infinity,alignment:.top)
     }
     private func unsupported(_ file: VaultEntry) -> some View { VStack(spacing:18) { Image(systemName:"doc").font(.system(size:48,weight:.ultraLight)).foregroundStyle(Color.acPink); Text(file.name).font(.title2); Text(model.localized("此类文件可在系统默认应用中打开。")).foregroundStyle(.secondary); Button(model.localized("打开文件")) { NSWorkspace.shared.open(file.url) }.buttonStyle(.bordered) }.frame(maxWidth:.infinity,maxHeight:.infinity) }
     private var statusBar: some View {
@@ -180,17 +194,17 @@ struct TreeRow: View {
     var body: some View {
         VStack(spacing:2) {
             if entry.isDirectory {
-                Button { withAnimation(.easeInOut(duration:0.12)) { expanded.toggle() } } label: {
+                Button { withAnimation(.easeInOut(duration:0.12)) { expanded.toggle() }; model.setFolderExpanded(entry.relativePath,expanded) } label: {
                     HStack(spacing:6) { Image(systemName:expanded ? "chevron.down" : "chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8); Image(systemName:expanded ? "folder.fill" : "folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72)); Text(entry.name).font(.system(size:12)).lineLimit(1); Spacer() }.foregroundStyle(.secondary).padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29).contentShape(Rectangle())
                 }.buttonStyle(.plain).contextMenu {
                     Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
                 }
                 .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
                 .onDrag { model.draggingPath = entry.relativePath; return NSItemProvider(object:entry.relativePath as NSString) }
-                .onDrop(of:[.text],delegate:SidebarDropDelegate(model:model,entry:entry,height:29) { expanded = true })
+                .onDrop(of:[.text],delegate:SidebarDropDelegate(model:model,entry:entry,height:29) { expanded = true; model.setFolderExpanded(entry.relativePath,true) })
                 if expanded { ForEach(entry.children ?? []) { child in TreeRow(entry:child,depth:depth+1) } }
             } else { FileRow(entry:entry,indent:depth) }
-        }.onAppear { if depth == 0 && !["attachment","attachments","assets"].contains(entry.name.lowercased()) { expanded = true } }
+        }.onAppear { expanded = model.folderExpanded(entry.relativePath) ?? (depth == 0 && !["attachment","attachments","assets"].contains(entry.name.lowercased())) }
     }
 }
 struct FileRow: View {
