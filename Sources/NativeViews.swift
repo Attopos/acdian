@@ -151,6 +151,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
                 if let anchor = value["selectionAnchor"] as? Int, let head = value["selectionHead"] as? Int { model.editorSelection = (anchor,head) }
                 model.save()
             }
+            if type == "heading", let index = value["index"] as? Int, model.activeHeading != index { model.activeHeading = index }
             if type == "navigate", let target = value["target"] as? String { model.navigate(target) }
             if type == "external", let target = value["target"] as? String { model.external(target) }
         }

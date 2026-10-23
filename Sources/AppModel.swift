@@ -77,6 +77,8 @@ struct EditorSnapshot {
     // Every request counts, so asking for the same heading again still scrolls.
     @Published var anchor = "" { didSet { anchorRequest &+= 1 } }
     @Published private(set) var anchorRequest = 0
+    /// The outline entry for the part of the page being read: -1 is the page title.
+    @Published var activeHeading = -1
     @Published var pdfPage = 1
     @Published var pdfZoomAction = 0
     @Published var pdfPageCount = 0

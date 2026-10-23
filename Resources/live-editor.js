@@ -444,6 +444,7 @@ window.acdianSetDocument=payload=>{
   if(hasText&&(payload.text!==rawSource||previousPath!==metadata.currentPath||previousToken!==metadata.resetToken)){
     rawSource=payload.text;lastSource=rawSource;revision=0;lineBreak=rawSource.includes('\r\n')?'\r\n':rawSource.includes('\r')?'\r':'\n';rawSnapshots=new Map([[canonical(rawSource),rawSource]]);
     applyingExternal=true;view.setState(EditorState.create({doc:canonical(rawSource),extensions:extensions()}));view.dispatch({selection:EditorSelection.cursor(0)});applyingExternal=false;
+    reportedHeading=null;requestAnimationFrame(followHeading);
   }else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions())]});
 };
 window.acdianGetDocument=()=>({text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head});
@@ -459,7 +460,29 @@ window.acdianScrollTo=raw=>{
   // decorations, so the heading is brought to the top of the scroller directly.
   const scroller=view.scrollDOM,offset=view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop;
   scroller.scrollTop=Math.max(0,offset+view.lineBlockAt(pos).top-24);
+  // The jumped-to heading stays current even when the page cannot scroll it to the top.
+  headingFollowPausedUntil=performance.now()+400;reportHeading(headingStarts(view.state).indexOf(pos));
   return true;
 };
+// The outline follows the reader: the heading nearest the top of the view is
+// reported to the native outline whenever it changes (-1 before the first one).
+// Headings are found with the same rules as the native outline list.
+let headingCache=null,reportedHeading=null,headingFrame=0,headingFollowPausedUntil=0;
+function headingStarts(state){
+  if(headingCache?.doc===state.doc)return headingCache.list;
+  const list=[];let fence=false;
+  for(let n=1;n<=state.doc.lines;n++){const line=state.doc.line(n);if(/^(?:```|~~~)/.test(line.text)){fence=!fence;continue;}if(!fence&&/^#{1,6} /.test(line.text))list.push(line.from);}
+  headingCache={doc:state.doc,list};return list;
+}
+function reportHeading(index){if(index!==reportedHeading){reportedHeading=index;post({type:'heading',index,currentPath:metadata.currentPath});}}
+function followHeading(){
+  headingFrame=0;
+  if(performance.now()<headingFollowPausedUntil)return;
+  const scroller=view.scrollDOM,top=scroller.scrollTop-(view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop)+60;
+  const list=headingStarts(view.state);let index=-1;
+  for(let i=0;i<list.length&&view.lineBlockAt(list[i]).top<=top;i++)index=i;
+  reportHeading(index);
+}
+view.scrollDOM.addEventListener('scroll',()=>{if(!headingFrame)headingFrame=requestAnimationFrame(followHeading);},{passive:true});
 window.acdianLiveEditorTest={simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString()};
 post({type:'ready'});
