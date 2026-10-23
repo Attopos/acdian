@@ -128,6 +128,12 @@ class CalloutKindWidget extends WidgetType {
   eq(other) {return this.kind===other.kind&&this.title===other.title;}
   toDOM() {const label=document.createElement('span');label.className='cm-callout-kind';label.textContent=this.title?'✦ ':'✦ '+this.kind.toUpperCase();label.setAttribute('aria-hidden','true');return label;}
 }
+class HeadingHintWidget extends WidgetType {
+  constructor(level) { super(); this.level = level; }
+  eq(other) { return this.level === other.level; }
+  toDOM() { const span = document.createElement('span'); span.className = 'cm-heading-hint'; span.textContent = 'H' + this.level; span.setAttribute('aria-hidden','true'); return span; }
+  ignoreEvent() { return false; }
+}
 class DividerWidget extends WidgetType {
   constructor(from,to,language) { super(); Object.assign(this,{from,to,language}); }
   eq(other) { return this.from===other.from&&this.to===other.to&&this.language===other.language; }
@@ -216,11 +222,15 @@ function decorations(state) {
     const name=node.name;
     if(name==='Blockquote') {
       const first=state.doc.lineAt(node.from).number,last=state.doc.lineAt(node.to).number;
-      for(let n=first;n<=last;n++)quoteLines.add(n);
+      // Block markers need a following space, so ">" alone stays plain text.
+      if(/^ {0,3}>[ \t]/.test(state.doc.line(first).text))for(let n=first;n<=last;n++)quoteLines.add(n);
+      else list.push(Decoration.mark({class:'cm-plain-syntax'}).range(state.doc.line(first).from,state.doc.line(first).to));
     }
     if(name==='HorizontalRule'||name==='ThematicBreak') {
       const line=state.doc.lineAt(node.from);
-      list.push(Decoration.line({class:'cm-divider-line'}).range(line.from));
+      // A selected divider fills its whole line, as selected text would.
+      const selected=state.selection.ranges.some(range=>range.from<=line.to&&range.to>=line.from);
+      list.push(Decoration.line({class:'cm-divider-line'+(selected?' cm-divider-selected':'')}).range(line.from));
       list.push(Decoration.mark({class:'cm-divider-syntax'}).range(line.from,line.to));
       list.push(Decoration.widget({widget:new DividerWidget(line.from,line.to,state.facet(editorLanguage)),side:-1}).range(line.from));
       covered.push([line.from,line.to]);return false;
@@ -228,7 +238,11 @@ function decorations(state) {
     if(name==='Table') list.push(...tableDecorations(state,node.node));
     if(/^ATXHeading[1-6]$/.test(name)) {
       const level=name.slice(-1),line=state.doc.lineAt(node.from);
-      list.push(Decoration.line({class:'cm-heading cm-heading-'+level}).range(line.from));
+      // "#" without a space stays plain text; an empty "# " shows a grey H1 hint.
+      if(/^ {0,3}#{1,6}[ \t]/.test(line.text)) {
+        list.push(Decoration.line({class:'cm-heading cm-heading-'+level}).range(line.from));
+        if(/^ {0,3}#{1,6}[ \t]+$/.test(line.text))list.push(Decoration.widget({widget:new HeadingHintWidget(level),side:1}).range(line.to));
+      } else list.push(Decoration.mark({class:'cm-plain-syntax'}).range(line.from,line.to));
     }
     if(/^SetextHeading[12]$/.test(name)) {
       const first=state.doc.lineAt(node.from),last=state.doc.lineAt(node.to),level=name.slice(-1);
@@ -288,10 +302,12 @@ function boldDelimiters(state) {
       return false;
     }
     if(/^ATXHeading[1-6]$/.test(node.name)) {
-      const line=state.doc.lineAt(node.from),prefix=/^ {0,3}#{1,6}(?:[ \t]+|$)/.exec(line.text);
-      if(prefix)add(line.from,line.from+prefix[0].length,{kind:'prefix'});
-      const last=node.node.lastChild;
-      if(last?.name==='HeaderMark'&&last.from>line.from+(prefix?.[0].length||0))add(last.from,last.to);
+      const line=state.doc.lineAt(node.from),prefix=/^ {0,3}#{1,6}[ \t]+/.exec(line.text);
+      if(prefix){
+        add(line.from,line.from+prefix[0].length,{kind:'prefix'});
+        const last=node.node.lastChild;
+        if(last?.name==='HeaderMark'&&last.from>line.from+prefix[0].length)add(last.from,last.to);
+      }
     }
     if(/^SetextHeading[12]$/.test(node.name)){const line=state.doc.lineAt(node.to);add(line.from,line.to,{kind:'fence'});}
     if(!['StrongEmphasis','Emphasis','Strikethrough','InlineCode'].includes(node.name))return;
@@ -304,7 +320,7 @@ function boldDelimiters(state) {
   for(let n=1;n<=state.doc.lines;n++) {
     const line=state.doc.line(n);
     if(code.some(([a,b])=>line.from>=a&&line.from<b))continue;
-    const callout=/^>\s*\[![\w-]+\][+-]?[ \t]*/.exec(line.text),quote=/^ {0,3}(?:> ?)+/.exec(line.text);
+    const callout=/^>\s*\[![\w-]+\][+-]?[ \t]*/.exec(line.text),quote=/^ {0,3}(?:>[ \t]+)+/.exec(line.text);
     const prefix=callout||quote;if(prefix)add(line.from,line.from+prefix[0].length,{kind:'prefix'});
     const links=/(!?)\[\[([^\]\n]+)\]\]|\[([^\]\n]+)\]\(([^)\n]+)\)/g;let match;
     while((match=links.exec(line.text))) {
@@ -325,13 +341,13 @@ function boldDelimiters(state) {
 function removeBlockPrefix(view) {
   const {state}=view,range=state.selection.main;
   if(state.readOnly||!range.empty||state.selection.ranges.length!==1||inCode(state,range.head))return false;
-  const line=state.doc.lineAt(range.head),prefix=/^(?: {0,3}#{1,6}(?:[ \t]+|$)| {0,3}(?:> ?)+(?:\[![\w-]+\][+-]?[ \t]*)?)/.exec(line.text);
+  const line=state.doc.lineAt(range.head),prefix=/^(?: {0,3}#{1,6}[ \t]+| {0,3}(?:>[ \t]+)+(?:\[![\w-]+\][+-]?[ \t]*)?)/.exec(line.text);
   if(prefix&&range.head<=line.from+prefix[0].length){view.dispatch({changes:{from:line.from,to:line.from+prefix[0].length},selection:{anchor:line.from},userEvent:'delete.backward'});return true;}
   return false;
 }
 function visiblePrefixEnd(state,pos) {
   if(inCode(state,pos))return null;
-  const line=state.doc.lineAt(pos),prefix=/^(?: {0,3}#{1,6}(?:[ \t]+|$)| {0,3}(?:> ?)+(?:\[![\w-]+\][+-]?[ \t]*)?)/.exec(line.text);
+  const line=state.doc.lineAt(pos),prefix=/^(?: {0,3}#{1,6}[ \t]+| {0,3}(?:>[ \t]+)+(?:\[![\w-]+\][+-]?[ \t]*)?)/.exec(line.text);
   return prefix?line.from+prefix[0].length:null;
 }
 const formatSelectionFilter=EditorState.transactionFilter.of(tr=>{

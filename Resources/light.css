@@ -19,7 +19,8 @@ html.light .cm-editor .cm-cursor, html.light .cm-editor .cm-dropCursor { border-
 html.light .cm-editor .cm-selectionBackground, html.light .cm-editor.cm-focused .cm-selectionBackground, html.light .cm-editor ::selection { background: #d93b862e !important; }
 html.light .cm-editor .cm-placeholder { color: #a8a3ae; }
 html.light .cm-editor .cm-heading { color: #17161b; }
-html.light .cm-editor .cm-heading-2 { border-bottom-color: #0000001a; }
+html.light .cm-editor .cm-heading-hint { color: #b4afba; }
+html.light { --divider-selected: #d93b8640; }
 html.light .cm-editor .cm-live-strong { color: #17161b; }
 html.light .cm-editor .cm-live-em { color: #4a3d45; }
 html.light .cm-editor .cm-live-strike { color: #8d8893; }

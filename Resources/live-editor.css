@@ -15,11 +15,17 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-selectionBackground,.cm-editor.cm-focused .cm-selectionBackground { background:#d93b8635!important; }
 .cm-editor ::selection { background:#d93b8635; }
 .cm-editor .cm-placeholder { color:#68616e; }
-.cm-editor .cm-heading { color:#f5f3f7; font-weight:650; letter-spacing:-.025em; line-height:1.35; min-height:0; padding-top:7px; padding-bottom:4px; }
-.cm-editor .cm-heading-1 { font-size:2.125em; font-weight:720; letter-spacing:-.04em; padding-top:2px; padding-bottom:8px; }
-.cm-editor .cm-heading-2 { font-size:1.5em; border-bottom:1px solid #ffffff10; padding-top:9px; padding-bottom:6px; }
-.cm-editor .cm-heading-3 { font-size:1.1875em; }
-.cm-editor .cm-heading-4 { font-size:1.06em; }
+/* Heading sizes and the space above them step down evenly from H1 to H4;
+   the space below stays small. Spacing follows the body font size. */
+.cm-editor .cm-heading { color:#f5f3f7; font-weight:650; letter-spacing:-.025em; line-height:1.35; min-height:0; padding-top:calc(var(--editor-font-size) * .5); padding-bottom:calc(var(--editor-font-size) * .25); }
+.cm-editor .cm-heading-1 { font-size:2em; font-weight:720; letter-spacing:-.04em; padding-top:calc(var(--editor-font-size) * 1.6); }
+.cm-editor .cm-heading-2 { font-size:1.7em; padding-top:calc(var(--editor-font-size) * 1.3); }
+.cm-editor .cm-heading-3 { font-size:1.4em; padding-top:calc(var(--editor-font-size) * 1); }
+.cm-editor .cm-heading-4 { font-size:1.1em; padding-top:calc(var(--editor-font-size) * .7); }
+.cm-editor .cm-heading-5, .cm-editor .cm-heading-6 { font-size:1em; }
+.cm-editor .cm-heading-hint { color:#68616e; pointer-events:none; }
+.cm-editor .cm-plain-syntax, .cm-editor .cm-plain-syntax * { color:inherit!important; font-weight:inherit!important; text-decoration:none!important; }
+.cm-editor .cm-divider-line.cm-divider-selected { background:var(--divider-selected,#d93b8650); }
 .cm-editor .cm-live-strong { font-weight:700; color:#f4f1f6; }
 .cm-editor .cm-format-delimiter,.cm-editor .cm-live-bold-delimiter { font-size:0; line-height:0; }
 .cm-editor .cm-live-em { font-style:italic; color:#e6d3da; }
