@@ -95,4 +95,11 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/Vau
 .build/trash-model-tests
 ```
 
+侧栏拖动排序与移动验证（顺序保存在页面根目录的隐藏文件 `.acdian-order.json`）：
+
+```sh
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Tests/PageOrderTests.swift -o .build/page-order-tests
+.build/page-order-tests
+```
+
 测试通过独立的 `Fixtures/Vault` 或临时页面目录运行，不修改个人页面或保存偏好。

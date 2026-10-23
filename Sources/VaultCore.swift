@@ -18,6 +18,7 @@ enum VaultCoreError: LocalizedError {
     case invalidUTF8(URL)
     case conflict(URL)
     case unsafeLocation(URL)
+    case invalidMove(URL)
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +30,8 @@ enum VaultCoreError: LocalizedError {
             return "“\(url.lastPathComponent)”已被其他应用修改。请重新载入后再保存，避免覆盖外部修改。"
         case .unsafeLocation(let url):
             return "“\(url.lastPathComponent)”指向页面存储位置以外，已停止读取或保存。"
+        case .invalidMove(let url):
+            return "无法把“\(url.lastPathComponent)”移动到它自己里面。"
         }
     }
 }
@@ -55,6 +58,7 @@ struct VaultIndex {
         self.root = canonicalRoot
 
         var collected: [VaultEntry] = []
+        let order = PageOrganizer.loadOrder(root: canonicalRoot)
         let keys: Set<URLResourceKey> = [
             .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey,
             .contentModificationDateKey, .fileSizeKey
@@ -95,10 +99,7 @@ struct VaultIndex {
                     collected.append(entry)
                 }
             }
-            return result.sorted {
-                if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
-                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            }
+            return PageOrganizer.arrange(result.sorted(by: PageOrganizer.defaultOrder), names: order[prefix], name: \.name)
         }
 
         entries = try scan(canonicalRoot, prefix: "")
@@ -201,7 +202,7 @@ struct VaultIndex {
         return entry.url
     }
 
-    private static func contains(_ url: URL, in root: URL) -> Bool {
+    static func contains(_ url: URL, in root: URL) -> Bool {
         let rootParts = root.pathComponents.map(key)
         let fileParts = url.pathComponents.map(key)
         return fileParts.count > rootParts.count && Array(fileParts.prefix(rootParts.count)) == rootParts
@@ -305,5 +306,116 @@ enum VaultFileIO {
             throw VaultCoreError.invalidUTF8(url)
         }
         return text
+    }
+}
+
+/// Where a dragged page lands: inside `folder` ("" is the vault root), before
+/// or after the sibling named `anchor`, or at the end when there is none.
+struct PageDropTarget: Equatable {
+    let folder: String
+    var anchor: String? = nil
+    var after = false
+}
+
+/// Sidebar order and moves. A custom order per folder is kept in a hidden
+/// `.acdian-order.json` at the vault root; names it does not list keep the
+/// default order after the listed ones. Moves never overwrite: an occupied
+/// name gets a number suffix, as restoring from the trash does.
+struct PageOrganizer {
+    static let orderFileName = ".acdian-order.json"
+    let root: URL
+
+    static func defaultOrder(_ a: VaultEntry, _ b: VaultEntry) -> Bool {
+        if a.isDirectory != b.isDirectory { return a.isDirectory }
+        return a.name.localizedStandardCompare(b.name) == .orderedAscending
+    }
+    static func arrange<T>(_ items: [T], names: [String]?, name: (T) -> String) -> [T] {
+        guard let names, !names.isEmpty else { return items }
+        let rank = Dictionary(names.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        let listed = items.filter { rank[name($0)] != nil }.sorted { rank[name($0)]! < rank[name($1)]! }
+        return listed + items.filter { rank[name($0)] == nil }
+    }
+    static func loadOrder(root: URL) -> [String: [String]] {
+        guard let data = try? Data(contentsOf: root.appendingPathComponent(orderFileName)),
+              let order = try? JSONDecoder().decode([String: [String]].self, from: data) else { return [:] }
+        return order
+    }
+    func saveOrder(_ order: [String: [String]]) throws {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(order).write(to: root.appendingPathComponent(Self.orderFileName), options: .atomic)
+    }
+
+    /// Moves `path` to `target` and records its place. Returns the new relative path.
+    @discardableResult func move(_ path: String, to target: PageDropTarget) throws -> String {
+        let components = try Self.components(path)
+        let folderComponents = target.folder.isEmpty ? [] : try Self.components(target.folder)
+        let source = root.appendingPathComponent(path)
+        let destination = folderComponents.isEmpty ? root : root.appendingPathComponent(target.folder, isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: source.path, isDirectory: &isDirectory) else { throw VaultCoreError.unsafeLocation(source) }
+        var destinationIsDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: destination.path, isDirectory: &destinationIsDirectory), destinationIsDirectory.boolValue,
+              inside(destination), inside(source.deletingLastPathComponent()) else {
+            throw VaultCoreError.unsafeLocation(destination)
+        }
+        // A folder cannot be moved into itself or anything inside it.
+        if isDirectory.boolValue, folderComponents.count >= components.count, Array(folderComponents.prefix(components.count)) == components {
+            throw VaultCoreError.invalidMove(source)
+        }
+        let sourceFolder = components.dropLast().joined(separator: "/")
+        var name = components.last!
+        if sourceFolder != target.folder {
+            var number = 1
+            while true {
+                name = Self.numberedName(components.last!, isDirectory: isDirectory.boolValue, number: number)
+                let candidate = destination.appendingPathComponent(name)
+                if !FileManager.default.fileExists(atPath: candidate.path) {
+                    do { try FileManager.default.moveItem(at: source, to: candidate); break }
+                    catch let error as CocoaError where error.code == .fileWriteFileExists { }
+                }
+                number += 1
+            }
+        }
+        let newPath = target.folder.isEmpty ? name : target.folder + "/" + name
+        var order = Self.loadOrder(root: root)
+        if sourceFolder != target.folder {
+            order[sourceFolder]?.removeAll { $0 == components.last! }
+            // Folder orders inside a moved folder follow it to its new path.
+            for key in order.keys where key == path || key.hasPrefix(path + "/") {
+                order[newPath + key.dropFirst(path.count)] = order.removeValue(forKey: key)
+            }
+        }
+        var names = currentOrder(of: target.folder, order: order).filter { $0 != name }
+        if let anchor = target.anchor, let index = names.firstIndex(of: anchor) { names.insert(name, at: target.after ? index + 1 : index) }
+        else { names.append(name) }
+        order[target.folder] = names
+        try saveOrder(order)
+        return newPath
+    }
+    /// The vault root itself, or a real (non-alias) location inside it.
+    private func inside(_ url: URL) -> Bool {
+        let physical = url.standardizedFileURL.resolvingSymlinksInPath()
+        return physical.pathComponents == root.pathComponents || VaultIndex.contains(physical, in: root)
+    }
+    /// The names in a folder as the sidebar shows them.
+    func currentOrder(of folder: String, order: [String: [String]]) -> [String] {
+        let url = folder.isEmpty ? root : root.appendingPathComponent(folder, isDirectory: true)
+        let children = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
+        let entries = children.filter { !$0.lastPathComponent.hasPrefix(".") }.map {
+            VaultEntry(relativePath: $0.lastPathComponent, url: $0, name: $0.lastPathComponent,
+                       isDirectory: (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true, children: nil, modified: nil, size: 0)
+        }
+        return Self.arrange(entries.sorted(by: Self.defaultOrder), names: order[folder], name: \.name).map(\.name)
+    }
+    private static func components(_ path: String) throws -> [String] {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !parts.isEmpty, !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) else { throw VaultCoreError.unsafeLocation(URL(fileURLWithPath: path)) }
+        return parts
+    }
+    static func numberedName(_ name: String, isDirectory: Bool, number: Int) -> String {
+        guard number > 1 else { return name }
+        let ext = isDirectory ? "" : (name as NSString).pathExtension
+        let stem = ext.isEmpty ? name : (name as NSString).deletingPathExtension
+        return stem + " \(number)" + (ext.isEmpty ? "" : "." + ext)
     }
 }

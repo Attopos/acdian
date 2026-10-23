@@ -107,6 +107,7 @@ struct EditorSnapshot {
             case .invalidUTF8(let url): return localized("“%@”不是 UTF-8 文本，无法安全编辑。",url.lastPathComponent)
             case .conflict(let url): return localized("“%@”已被其他应用修改。请重新载入后再保存，避免覆盖外部修改。",url.lastPathComponent)
             case .unsafeLocation(let url): return localized("“%@”指向页面存储位置以外，已停止读取或保存。",url.lastPathComponent)
+            case .invalidMove(let url): return localized("无法把“%@”移动到它自己里面。",url.lastPathComponent)
             }
         }
         return localized(error.localizedDescription)
@@ -288,6 +289,34 @@ struct EditorSnapshot {
         let target = entry.url.standardizedFileURL.resolvingSymlinksInPath().pathComponents.map { $0.precomposedStringWithCanonicalMapping }
         let current = selected.url.standardizedFileURL.resolvingSymlinksInPath().pathComponents.map { $0.precomposedStringWithCanonicalMapping }
         return current == target || (entry.isDirectory && current.count > target.count && Array(current.prefix(target.count)) == target)
+    }
+    /// Moves a sidebar item, or reorders it within its folder. Unsaved edits are
+    /// saved first when the open page moves, and it stays open at its new path.
+    func movePage(_ relativePath: String, to target: PageDropTarget) {
+        guard let root = index?.root, let entry = index.flatMap({ Self.entry(relativePath, in: $0.entries) }) else { return }
+        let affectsSelection = deletionAffectsSelection(entry)
+        let openPath = persistedPage?.relativePath
+        let action = {
+            guard self.index?.root == root else { return }
+            if affectsSelection, !self.saveBeforeLeaving() { return }
+            do {
+                let newPath = try PageOrganizer(root:root).move(relativePath,to:target)
+                self.loadID = UUID(); self.loading = false
+                self.reindexAfterTrashMutation(root)
+                if affectsSelection, let openPath, newPath != relativePath {
+                    let moved = openPath == relativePath ? newPath : newPath + openPath.dropFirst(relativePath.count)
+                    if let file = self.index?.files.first(where: { $0.relativePath == moved }) { self.open(file,skipConfirmation:true) }
+                }
+            } catch { self.error = self.localizedError(error) }
+        }
+        if affectsSelection { withEditorSnapshot(action) } else { action() }
+    }
+    static func entry(_ path: String, in entries: [VaultEntry]) -> VaultEntry? {
+        for entry in entries {
+            if entry.relativePath == path { return entry }
+            if entry.isDirectory, path.hasPrefix(entry.relativePath + "/"), let found = Self.entry(path, in: entry.children ?? []) { return found }
+        }
+        return nil
     }
     func trashDaysRemaining(_ entry: PageTrash.Entry) -> Int {
         max(0,Int(ceil(entry.expiresAt.timeIntervalSince(trashNow()) / 86400)))

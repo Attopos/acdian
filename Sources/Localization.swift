@@ -99,6 +99,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "保存笔记": ("Save note", "Guardar nota"),
         "插入附件…": ("Insert attachment…", "Insertar archivo adjunto…"),
         "视图": ("View", "Visualización"),
+        "无法把“%@”移动到它自己里面。": ("“%@” can’t be moved into itself.", "No se puede mover “%@” dentro de sí mismo."),
         "外观": ("Appearance", "Apariencia"),
         "跟随系统": ("Follow System", "Según el sistema"),
         "浅色": ("Light", "Claro"),

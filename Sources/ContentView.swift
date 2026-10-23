@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 extension Color {
     // Reference screenshot accent converted from Display P3 to sRGB: #D93B86.
@@ -154,11 +155,17 @@ struct PageTitleView: View {
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @FocusState private var searchFocused: Bool
+    @State private var rootDropTargeted = false
     var body: some View {
         VStack(spacing:0) {
             HStack(spacing:10) { BrandMark(size:30); Text("acdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer() }.padding(.horizontal,20).frame(height:68)
             HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused); if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) } else { Text("⌘F").font(.system(size:10)).foregroundStyle(.tertiary) } }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
-            HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(.tertiary); Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
+            HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:[.text],isTargeted:$rootDropTargeted) { providers in
+                // Dropping on the Pages header moves an item to the top level.
+                guard let provider = providers.first else { return false }
+                _ = provider.loadObject(ofClass:NSString.self) { object,_ in if let path = object as? String { DispatchQueue.main.async { model.movePage(path,to:PageDropTarget(folder:"")) } } }
+                return true
+            }; Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             ScrollView {
                 VStack(spacing:2) {
                     if model.query.isEmpty { ForEach(model.index?.entries ?? []) { entry in TreeRow(entry:entry,depth:0) } }
@@ -184,6 +191,7 @@ struct TreeRow: View {
     let entry: VaultEntry
     let depth: Int
     @State private var expanded = false
+    @State private var drop: SidebarDrop?
     var body: some View {
         VStack(spacing:2) {
             if entry.isDirectory {
@@ -192,6 +200,9 @@ struct TreeRow: View {
                 }.buttonStyle(.plain).contextMenu {
                     Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
                 }
+                .sidebarDropIndicator(drop)
+                .onDrag { NSItemProvider(object:entry.relativePath as NSString) }
+                .onDrop(of:[.text],delegate:SidebarDropDelegate(model:model,entry:entry,height:29,drop:$drop) { expanded = true })
                 if expanded { ForEach(entry.children ?? []) { child in TreeRow(entry:child,depth:depth+1) } }
             } else { FileRow(entry:entry,indent:depth) }
         }.onAppear { if depth == 0 && !["attachment","attachments","assets"].contains(entry.name.lowercased()) { expanded = true } }
@@ -204,12 +215,53 @@ struct FileRow: View {
     var showPath = false
     var symbol: String { if entry.ext == "md" { return "doc.text" }; if entry.ext == "pdf" { return "doc.richtext" }; if AppModel.images.contains(entry.ext) { return "photo" }; return "doc" }
     private var isCurrentPage: Bool { model.currentPagePath == entry.relativePath }
+    @State private var drop: SidebarDrop?
     var body: some View {
         Button { model.open(entry) } label: {
             HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(entry.ext == "md" ? String(entry.name.dropLast(3)) : entry.name).font(.system(size:12)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:9)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,7).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
         }.buttonStyle(.plain).help(entry.relativePath).contextMenu {
             Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
         }
+        .sidebarDropIndicator(drop)
+        .onDrag { NSItemProvider(object:entry.relativePath as NSString) }
+        .onDrop(of:[.text],delegate:SidebarDropDelegate(model:model,entry:entry,height:nil,drop:$drop))
+    }
+}
+// Dragging a sidebar row: the top or bottom edge of a row places the item
+// before or after it, and the middle of a folder row moves the item inside.
+enum SidebarDrop { case before, after, into }
+struct SidebarDropDelegate: DropDelegate {
+    let model: AppModel
+    let entry: VaultEntry
+    let height: CGFloat?
+    @Binding var drop: SidebarDrop?
+    var onInto: () -> Void = {}
+    private func placement(_ info: DropInfo) -> SidebarDrop {
+        let y = info.location.y, rowHeight = height ?? 34
+        if entry.isDirectory { return y < rowHeight * 0.25 ? .before : y > rowHeight * 0.75 ? .after : .into }
+        return y < rowHeight / 2 ? .before : .after
+    }
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to:[.text]) }
+    func dropUpdated(info: DropInfo) -> DropProposal? { drop = placement(info); return DropProposal(operation:.move) }
+    func dropExited(info: DropInfo) { drop = nil }
+    func performDrop(info: DropInfo) -> Bool {
+        let place = placement(info); drop = nil
+        guard let provider = info.itemProviders(for:[.text]).first else { return false }
+        let parent = entry.relativePath.split(separator:"/").dropLast().joined(separator:"/")
+        let target = place == .into ? PageDropTarget(folder:entry.relativePath) : PageDropTarget(folder:parent,anchor:entry.name,after:place == .after)
+        _ = provider.loadObject(ofClass:NSString.self) { object,_ in
+            guard let path = object as? String, path != entry.relativePath else { return }
+            DispatchQueue.main.async { model.movePage(path,to:target); if place == .into { onInto() } }
+        }
+        return true
+    }
+}
+extension View {
+    func sidebarDropIndicator(_ drop: SidebarDrop?) -> some View {
+        overlay(alignment:drop == .after ? .bottom : .top) {
+            if drop == .before || drop == .after { Rectangle().fill(Color.acPink).frame(height:2).padding(.horizontal,8) }
+        }
+        .background(drop == .into ? Color.acPink.opacity(0.15) : .clear,in:RoundedRectangle(cornerRadius:6))
     }
 }
 struct TrashView: View {
