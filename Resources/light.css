@@ -1,0 +1,70 @@
+/* Light appearance. The dark palette in reader.css and live-editor.css is the
+   default; html.light swaps surfaces and text while keeping the pink accent. */
+html.light {
+  color-scheme: light;
+  --background: #ffffff;
+  --surface: #f6f5f8;
+  --raised: #eeedf1;
+  --border: #0000001a;
+  --text: #2a2830;
+  --muted: #77727e;
+}
+html.light ::selection { background: #d93b8630; color: inherit; }
+html.light ::-webkit-scrollbar-thumb { background: #00000026; }
+
+/* Editor surface and text */
+html.light .cm-editor { background: #ffffff; color: #2a2830; }
+html.light .cm-editor .cm-content { caret-color: #d93b86; }
+html.light .cm-editor .cm-cursor, html.light .cm-editor .cm-dropCursor { border-left-color: #d93b86; }
+html.light .cm-editor .cm-selectionBackground, html.light .cm-editor.cm-focused .cm-selectionBackground, html.light .cm-editor ::selection { background: #d93b862e !important; }
+html.light .cm-editor .cm-placeholder { color: #a8a3ae; }
+html.light .cm-editor .cm-heading { color: #17161b; }
+html.light .cm-editor .cm-heading-2 { border-bottom-color: #0000001a; }
+html.light .cm-editor .cm-live-strong { color: #17161b; }
+html.light .cm-editor .cm-live-em { color: #4a3d45; }
+html.light .cm-editor .cm-live-strike { color: #8d8893; }
+html.light .cm-editor .cm-live-code { color: #b8236c; background: #d93b8612; }
+html.light .cm-editor .cm-live-highlight { background: #d93b8624; color: #5c1036; }
+html.light .cm-editor .cm-list-bullet { color: #d93b86; }
+html.light .cm-editor .cm-live-link { color: #c4206f; background: #d93b860d; text-decoration-color: #d93b8660; }
+html.light .cm-editor .cm-code-line { background: #f5f4f7; color: #2a2830; }
+html.light .cm-editor .cm-quote-line { color: #5f5966; }
+html.light .cm-editor .cm-callout-line { background: #d93b860a; color: #45404b; }
+html.light .cm-editor .cm-callout-kind { color: #c4206f; }
+html.light .cm-editor .cm-table-row { border-color: #0000001f; background-image: linear-gradient(to right,transparent calc(100% - 1px),#0000001f calc(100% - 1px)); }
+html.light .cm-editor .cm-table-header { border-top-color: #0000001f; background-color: #00000005; }
+html.light .cm-editor .cm-live-divider hr { border-top-color: #00000024; }
+html.light .cm-editor .cm-tooltip { background: #ffffff; border-color: #0000001a; color: #2a2830; }
+
+/* Slash menu and format toolbar */
+html.light .cm-editor .cm-tooltip.cm-slash-menu,
+html.light .cm-editor .cm-tooltip.cm-format-toolbar,
+html.light .cm-format-menu { background: #ffffff; border-color: #0000001f; box-shadow: 0 10px 32px #0000002a; color: #2a2830; }
+html.light .cm-slash-title, html.light .cm-slash-empty { color: #77727e; }
+html.light .cm-slash-option, html.light .cm-format-option { color: #2a2830; }
+html.light .cm-slash-option[aria-selected="true"], html.light .cm-format-option:hover { background: #0000000a; }
+html.light .cm-slash-description, html.light .cm-slash-footer { color: #8d8893; }
+html.light .cm-slash-footer { border-top-color: #0000000f; }
+html.light .cm-format-button { color: #3c3842; }
+html.light .cm-format-button:hover { background: #0000000d; }
+html.light .cm-format-button[aria-pressed="true"], html.light .cm-format-block[aria-expanded="true"], html.light .cm-format-option[aria-checked="true"] { background: #d93b861f; color: #c4206f; }
+html.light .cm-format-separator { background: #0000001a; }
+html.light .cm-format-link input { background: #f6f5f8; border-color: #0000001f; color: #2a2830; }
+
+/* Rendered blocks (images, callouts, tables, math) */
+html.light h1, html.light h2, html.light h3, html.light h4, html.light h5 { color: #17161b; }
+html.light strong { color: #17161b; }
+html.light em { color: #4a3d45; }
+html.light a, html.light .note-link, html.light .pdf-action, html.light .pdf-badge { color: #c4206f; }
+html.light blockquote { color: #5f5966; }
+html.light mark { color: #5c1036; }
+html.light :not(pre) > code { color: #b8236c; background: #d93b8612; border-color: #d93b8614; }
+html.light pre, html.light .pdf-embed { background: #f5f4f7; }
+html.light pre code { color: #2a2830; }
+html.light th { color: #2a2830; background: #00000005; }
+html.light tr:nth-child(even) td { background: #00000003; }
+html.light .callout { color: #45404b; }
+html.light .pdf-name { color: #2a2830; }
+html.light .pdf-frame { background: #eeedf1; }
+html.light .math-placeholder, html.light .katex { color: #2a2830; }
+html.light .properties, html.light .properties dt, html.light .properties dd { color: #5f5966; }

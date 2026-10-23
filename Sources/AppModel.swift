@@ -2,6 +2,12 @@ import SwiftUI
 import AppKit
 import Combine
 
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var title: String { switch self { case .system: return "跟随系统"; case .light: return "浅色"; case .dark: return "深色" } }
+    var nsAppearance: NSAppearance? { switch self { case .system: return nil; case .light: return NSAppearance(named:.aqua); case .dark: return NSAppearance(named:.darkAqua) } }
+}
 struct EditorInsertion: Equatable { let id = UUID(); let text: String }
 struct EditorSnapshot {
     let text: String
@@ -53,6 +59,9 @@ struct EditorSnapshot {
     @Published private(set) var trashEntries: [PageTrash.Entry] = []
     @Published var error: String?
     private let preferences: UserDefaults
+    @Published var appearance: AppAppearance = AppAppearance(rawValue:UserDefaults.standard.string(forKey:"appAppearance") ?? "") ?? .system {
+        didSet { UserDefaults.standard.set(appearance.rawValue,forKey:"appAppearance"); NSApp?.appearance = appearance.nsAppearance }
+    }
     @Published var language: AppLanguage = .english {
         didSet { preferences.set(language.rawValue,forKey:"appLanguage") }
     }

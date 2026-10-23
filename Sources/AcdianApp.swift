@@ -14,6 +14,8 @@ import AppKit
             CommandGroup(replacing:.saveItem) { Button(model.localized("保存页面")) { model.saveFromEditor() }.keyboardShortcut("s").disabled(model.selected?.ext != "md"); Button(model.localized("重新载入文件")) { model.reload() }.disabled(model.persistedPage == nil) }
             CommandGroup(after:.textEditing) { Button(model.localized("搜索页面")) { NotificationCenter.default.post(name:Notification.Name("acdianSearch"),object:nil) }.keyboardShortcut("f"); Button(model.localized("插入附件…")) { model.importAttachment() }.keyboardShortcut("i",modifiers:[.command,.shift]).disabled(model.selected?.ext != "md") }
             CommandMenu(model.localized("视图")) {
+                Picker(model.localized("外观"),selection:$model.appearance) { ForEach(AppAppearance.allCases) { Text(model.localized($0.title)).tag($0) } }
+                Divider()
                 Button(model.localized("显示或隐藏目录")) { model.showOutline.toggle() }.keyboardShortcut("l",modifiers:[.command,.shift])
                 Button(model.localized("刷新页面")) { model.refresh() }.keyboardShortcut("r")
                 Button(model.localized("所有页面")) { model.goHome() }.keyboardShortcut("h",modifiers:[.command,.shift])
@@ -28,7 +30,7 @@ import AppKit
     private var closeApproved = false
     private var terminationPending = false
     private var lastWindowCloseApproved = false
-    func applicationDidFinishLaunching(_ notification: Notification) { AppDelegate.syncSystemLanguage(AppLanguage.stored()); NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps:true) }
+    func applicationDidFinishLaunching(_ notification: Notification) { NSApp.appearance = model?.appearance.nsAppearance ?? AppAppearance(rawValue:UserDefaults.standard.string(forKey:"appAppearance") ?? "")?.nsAppearance; AppDelegate.syncSystemLanguage(AppLanguage.stored()); NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps:true) }
     // AppKit reads its menus and bundle strings once at launch, so a language
     // change saves the choice and relaunches to load every resource in it.
     static func syncSystemLanguage(_ language: AppLanguage) { UserDefaults.standard.set([language.rawValue],forKey:"AppleLanguages") }
@@ -47,7 +49,7 @@ import AppKit
         NSApp.terminate(nil)
     }
     func applicationDidBecomeActive(_ notification: Notification) { model?.refreshTrash() }
-    func configureWindow() { for window in NSApp.windows where window.canBecomeMain { window.delegate = self; window.title = "acdian"; window.backgroundColor = NSColor(red:0.065,green:0.065,blue:0.078,alpha:1); window.isMovableByWindowBackground = true; window.tabbingMode = .disallowed } }
+    func configureWindow() { for window in NSApp.windows where window.canBecomeMain { window.delegate = self; window.title = "acdian"; window.backgroundColor = NSColor(name:nil) { $0.bestMatch(from:[.darkAqua,.aqua]) == .aqua ? .white : NSColor(red:0.065,green:0.065,blue:0.078,alpha:1) }; window.isMovableByWindowBackground = true; window.tabbingMode = .disallowed } }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if closeApproved { return true }
         guard let model else { return true }

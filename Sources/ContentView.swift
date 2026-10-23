@@ -4,9 +4,13 @@ import AppKit
 extension Color {
     // Reference screenshot accent converted from Display P3 to sRGB: #D93B86.
     static let acPink = Color(.sRGB,red:217.0/255,green:59.0/255,blue:134.0/255,opacity:1)
-    static let canvas = Color(red:0.065,green:0.065,blue:0.078)
-    static let rail = Color(red:0.088,green:0.088,blue:0.104)
-    static let faint = Color.white.opacity(0.07)
+    // Each surface has a dark and a light value that follows the window's appearance.
+    static func adaptive(dark: NSColor, light: NSColor) -> Color { Color(nsColor:NSColor(name:nil) { $0.bestMatch(from:[.darkAqua,.aqua]) == .aqua ? light : dark }) }
+    static let canvas = adaptive(dark:NSColor(red:0.065,green:0.065,blue:0.078,alpha:1),light:.white)
+    static let rail = adaptive(dark:NSColor(red:0.088,green:0.088,blue:0.104,alpha:1),light:NSColor(red:0.965,green:0.961,blue:0.973,alpha:1))
+    static let faint = adaptive(dark:NSColor.white.withAlphaComponent(0.07),light:NSColor.black.withAlphaComponent(0.08))
+    static let ink = adaptive(dark:NSColor(red:0.96,green:0.95,blue:0.97,alpha:1),light:NSColor(red:0.09,green:0.086,blue:0.106,alpha:1))
+    static let wash = adaptive(dark:NSColor.white.withAlphaComponent(0.045),light:NSColor.black.withAlphaComponent(0.04))
 }
 struct BrandMark: View {
     var size: CGFloat = 36
@@ -32,7 +36,7 @@ struct ContentView: View {
                 statusBar
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
         }
-        .background(Color.canvas).tint(.acPink).preferredColorScheme(.dark)
+        .background(Color.canvas).tint(.acPink)
         .environment(\.locale,model.language.locale)
         .frame(minWidth:920,minHeight:620)
         .alert("acdian",isPresented:Binding(get:{model.error != nil},set:{if !$0 { model.error = nil }})) { Button(model.localized("好"),role:.cancel) { model.error = nil } } message: { Text(model.error ?? "") }
@@ -116,10 +120,10 @@ struct DraftTitleView: View {
     @ObservedObject var model: AppModel
     @FocusState private var titleFocused: Bool
     var body: some View {
-        TextField("",text:$model.draftTitle,prompt:Text("New Page").foregroundColor(.white.opacity(0.25)))
+        TextField("",text:$model.draftTitle,prompt:Text("New Page").foregroundColor(Color.primary.opacity(0.25)))
             .textFieldStyle(.plain)
             .font(.system(size:model.fontSize * 2.125,weight:.bold))
-            .foregroundStyle(Color(red:0.96,green:0.95,blue:0.97))
+            .foregroundStyle(Color.ink)
             .focused($titleFocused)
             .accessibilityLabel("New Page")
             .accessibilityIdentifier("draftTitle")
@@ -137,7 +141,7 @@ struct PageTitleView: View {
     var body: some View {
         Text(title)
             .font(.system(size:fontSize * 2.125,weight:.bold))
-            .foregroundStyle(Color(red:0.96,green:0.95,blue:0.97))
+            .foregroundStyle(Color.ink)
             .multilineTextAlignment(.leading)
             .textSelection(.enabled)
             .accessibilityAddTraits(.isHeader)
@@ -153,7 +157,7 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing:0) {
             HStack(spacing:10) { BrandMark(size:30); Text("acdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer() }.padding(.horizontal,20).frame(height:68)
-            HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused); if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) } else { Text("⌘F").font(.system(size:10)).foregroundStyle(.tertiary) } }.foregroundStyle(.secondary).padding(10).background(Color.white.opacity(0.045),in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
+            HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused); if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) } else { Text("⌘F").font(.system(size:10)).foregroundStyle(.tertiary) } }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
             HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(.tertiary); Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             ScrollView {
                 VStack(spacing:2) {
@@ -237,7 +241,7 @@ struct TrashView: View {
                                 Spacer(minLength:12)
                                 Button(model.localized("恢复")) { model.restoreFromTrash(entry) }.buttonStyle(.bordered)
                                     .accessibilityIdentifier("restore-\(entry.id.uuidString)")
-                            }.padding(15).background(Color.white.opacity(0.035),in:RoundedRectangle(cornerRadius:9))
+                            }.padding(15).background(Color.wash,in:RoundedRectangle(cornerRadius:9))
                         }
                     }.padding(.top,7)
                 }

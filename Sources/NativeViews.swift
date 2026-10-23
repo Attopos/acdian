@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct LiveMarkdownEditor: NSViewRepresentable {
     @ObservedObject var model: AppModel
+    @Environment(\.colorScheme) private var colorScheme
     func makeCoordinator() -> Coordinator { Coordinator(model) }
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -21,7 +22,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         if let url = Bundle.main.url(forResource:"live-editor",withExtension:"html") { view.loadFileURL(url,allowingReadAccessTo:url.deletingLastPathComponent()) }
         return view
     }
-    func updateNSView(_ view: WKWebView,context: Context) { context.coordinator.model = model; context.coordinator.render() }
+    func updateNSView(_ view: WKWebView,context: Context) { context.coordinator.model = model; context.coordinator.appearance = colorScheme == .light ? "light" : "dark"; context.coordinator.render() }
     static func dismantleNSView(_ view: WKWebView,coordinator: Coordinator) {
         coordinator.disposed = true
         view.configuration.userContentController.removeScriptMessageHandler(forName:"acdian")
@@ -43,6 +44,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         var syncBlocked = false
         var lastConfig = ""
         var lastAnchorRequest = 0
+        var appearance = "dark"
         var pendingInsertion: UUID?
         var activeTasks = Set<ObjectIdentifier>()
         init(_ model: AppModel) {
@@ -92,7 +94,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
             guard ready, isCurrent, !syncBlocked, let view else { return }
             // Every Markdown page shows its title natively above the editor, so the
             // editor always uses the compact spacing below a title.
-            var payload: [String:Any] = ["currentPath":representedPath,"title":model.isDraft ? model.draftTitle : model.selected?.name ?? "","draft":true,"fontSize":model.fontSize,"editable":!model.loading,"language":model.language.rawValue]
+            var payload: [String:Any] = ["currentPath":representedPath,"title":model.isDraft ? model.draftTitle : model.selected?.name ?? "","draft":true,"fontSize":model.fontSize,"editable":!model.loading,"language":model.language.rawValue,"appearance":appearance]
             let sendText = !documentInstalled || model.text != lastJSText
             if sendText { payload["text"] = model.text }
             if let data = try? JSONSerialization.data(withJSONObject:payload,options:[.sortedKeys]), let json = String(data:data,encoding:.utf8), sendText || json != lastConfig {
@@ -228,6 +230,6 @@ struct ImagePane: View {
                     }
                 }
             } else { ContentUnavailableView(model.localized("无法预览图片"),systemImage:"photo",description:Text(model.localized("文件格式可能不受当前 macOS 支持。"))) }
-        }.background(Color(red:0.065,green:0.065,blue:0.08))
+        }.background(Color.canvas)
     }
 }
