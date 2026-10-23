@@ -412,9 +412,19 @@ function simpleListBackspace(view) {
   if(!match||range.head!==line.from+match[0].length)return false;
   view.dispatch({changes:{from:line.from,to:range.head,insert:match[1]},selection:{anchor:line.from+match[1].length},userEvent:'delete.backward'});return true;
 }
+// Chinese input methods type full-width punctuation, so "1。 " or "＊ " at the
+// start of a line becomes the Markdown list marker the writer meant.
+const fullWidthListFilter=EditorState.transactionFilter.of(tr=>{
+  if(!tr.docChanged||!tr.isUserEvent('input')||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
+  const state=tr.state,head=tr.newSelection.main.head,line=state.doc.lineAt(head);
+  const match=/^(\s*)(?:(\d+)[。．]|([＊×・·－—]))[ 　]$/.exec(line.text.slice(0,head-line.from));
+  if(!match||inCode(state,head))return tr;
+  const insert=match[1]+(match[2]!==undefined?match[2]+'. ':match[3]==='－'||match[3]==='—'?'- ':'* ');
+  return [tr,{changes:{from:line.from,to:head,insert},selection:{anchor:line.from+insert.length},sequential:true}];
+});
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,
+  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,fullWidthListFilter,
   slashCommands(),formatToolbar(),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
