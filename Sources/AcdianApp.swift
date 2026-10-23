@@ -28,7 +28,24 @@ import AppKit
     private var closeApproved = false
     private var terminationPending = false
     private var lastWindowCloseApproved = false
-    func applicationDidFinishLaunching(_ notification: Notification) { NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps:true) }
+    func applicationDidFinishLaunching(_ notification: Notification) { AppDelegate.syncSystemLanguage(AppLanguage.stored()); NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps:true) }
+    // AppKit reads its menus and bundle strings once at launch, so a language
+    // change saves the choice and relaunches to load every resource in it.
+    static func syncSystemLanguage(_ language: AppLanguage) { UserDefaults.standard.set([language.rawValue],forKey:"AppleLanguages") }
+    static func switchLanguage(to language: AppLanguage, model: AppModel) {
+        guard language != model.language else { return }
+        model.language = language
+        syncSystemLanguage(language)
+        UserDefaults.standard.synchronize()
+        // A helper waits for this process to exit, then reopens the app. If the
+        // quit is cancelled (unsaved edits), it gives up instead of relaunching later.
+        let script = "for i in $(seq 1 150); do kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null || { /usr/bin/open \"$0\"; exit 0; }; sleep 0.2; done"
+        let helper = Process()
+        helper.executableURL = URL(fileURLWithPath:"/bin/sh")
+        helper.arguments = ["-c",script,Bundle.main.bundlePath]
+        guard (try? helper.run()) != nil else { return }
+        NSApp.terminate(nil)
+    }
     func applicationDidBecomeActive(_ notification: Notification) { model?.refreshTrash() }
     func configureWindow() { for window in NSApp.windows where window.canBecomeMain { window.delegate = self; window.title = "acdian"; window.backgroundColor = NSColor(red:0.065,green:0.065,blue:0.078,alpha:1); window.isMovableByWindowBackground = true; window.tabbingMode = .disallowed } }
     func windowShouldClose(_ sender: NSWindow) -> Bool {

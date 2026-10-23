@@ -258,7 +258,7 @@ struct LanguageMenu: View {
     var body: some View {
         Menu {
             ForEach(AppLanguage.allCases) { language in
-                Button { model.language = language } label: {
+                Button { AppDelegate.switchLanguage(to:language,model:model) } label: {
                     if model.language == language { Label(language.name,systemImage:"checkmark") }
                     else { Text(language.name) }
                 }
