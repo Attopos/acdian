@@ -101,6 +101,8 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "视图": ("View", "Visualización"),
         "无法把“%@”移动到它自己里面。": ("“%@” can’t be moved into itself.", "No se puede mover “%@” dentro de sí mismo."),
         "外观": ("Appearance", "Apariencia"),
+        "切换到浅色": ("Switch to light", "Cambiar a claro"),
+        "切换到深色": ("Switch to dark", "Cambiar a oscuro"),
         "跟随系统": ("Follow System", "Según el sistema"),
         "浅色": ("Light", "Claro"),
         "深色": ("Dark", "Oscuro"),

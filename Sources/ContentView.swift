@@ -182,7 +182,7 @@ struct SidebarView: View {
             }.buttonStyle(.plain).padding(.horizontal,10).padding(.bottom,12)
                 .accessibilityIdentifier("trashButton")
             Rectangle().fill(Color.faint).frame(height:1).padding(.horizontal,16)
-            HStack { LanguageMenu(); Spacer() }.padding(.horizontal,20).padding(.vertical,14)
+            HStack(spacing:14) { LanguageMenu(); AppearanceToggle(); Spacer() }.padding(.horizontal,20).padding(.vertical,14)
         }.background(Color.rail)
         .onReceive(NotificationCenter.default.publisher(for:Notification.Name("acdianSearch"))) { _ in searchFocused = true; model.showSidebar = true }
     }
@@ -307,6 +307,19 @@ struct TrashView: View {
 }
 
 /// Kept outside the document identity so a language change never reloads edits.
+// Switches between light and dark; from Follow System it picks the opposite of
+// what is showing now. The icon shows the current look.
+struct AppearanceToggle: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.colorScheme) private var colorScheme
+    var body: some View {
+        Button { model.appearance = colorScheme == .dark ? .light : .dark } label: {
+            Image(systemName:colorScheme == .dark ? "moon" : "sun.max").font(.system(size:14,weight:.medium)).frame(width:22,height:20)
+        }.buttonStyle(.plain).foregroundStyle(.secondary)
+        .help(model.localized(colorScheme == .dark ? "切换到浅色" : "切换到深色"))
+        .accessibilityLabel(model.localized(colorScheme == .dark ? "切换到浅色" : "切换到深色"))
+    }
+}
 struct LanguageMenu: View {
     @EnvironmentObject var model: AppModel
     private var languageSymbol: String {
