@@ -15,7 +15,7 @@ const spaceRules=[
   [/^([ \t]*)(?:[-+*][ \t]?)?(?:\[[xX]\]|【[xX]】)$/,match=>match[1]+'- [x] '],
   [/^([ \t]*)[＊－＋×·・•]$/,match=>match[1]+'- '],
   [/^([ \t]*)(\d+)[。．]$/,match=>match[1]+match[2]+'. '],
-  [/^([ \t]*)[》>]$/,match=>match[1]+'> '],
+  [/^([ \t]*)[》＞]$/,match=>match[1]+'> '],
   [/^(＃{1,6})$/,match=>'#'.repeat(match[1].length)+' '],
   // A full-width space after an ASCII marker still starts the block.
   [/^([ \t]*(?:[-+*]|\d+[.)]|#{1,6}|>))$/,(match,typed)=>typed==='　'?match[1]+' ':null]
