@@ -136,3 +136,42 @@ test('active heading, emphasis, quote and callout Unicode edits preserve raw syn
   r.w.acdianUndo();assert.equal(r.get().text,source);r.w.acdianRedo();assert.equal(r.get().text,source.slice(0,rawPosition)+'新🌸'+source.slice(rawPosition));r.close();
  }
 });
+test('tab switches keep each tab’s text, selection, undo history and CRLF source',()=>{
+ const r=setup();const tab=(id,documentID,text,currentPath)=>r.w.acdianSetDocument({tabID:id,documentID,text,currentPath,openTabs:['A','B']});
+ tab('A','a1','第一页\r\n正文\r\n','甲.md');
+ r.view.dispatch({selection:{anchor:3}});r.w.acdianInsertText('🌸');r.view.dispatch({selection:{anchor:1,head:4}});
+ const edited=r.get().text;assert.equal(edited,'第一页🌸\r\n正文\r\n');
+ tab('B','b1','乙','乙.md');assert.equal(r.get().text,'乙');assert.equal(r.w.acdianUndo(),false,'a new tab has its own empty history');
+ r.w.acdianInsertText('改');
+ tab('A','a2',edited,'甲.md');
+ assert.equal(r.get().text,edited);assert.equal(r.get().documentID,'a2');assert.equal(r.get().revision,0);
+ assert.deepEqual([r.get().selectionAnchor,r.get().selectionHead],[1,4],'selection comes back');
+ assert.equal(r.w.acdianUndo(),true,'edits made before the switch can still be undone');assert.equal(r.get().text,'第一页\r\n正文\r\n');
+ assert.equal(r.w.acdianRedo(),true);assert.equal(r.get().text,edited);
+ tab('B','b2','改乙','乙.md');assert.equal(r.w.acdianUndo(),true);assert.equal(r.get().text,'乙');
+ const changes=r.messages.filter(m=>m.type==='change');assert.ok(changes.every(m=>typeof m.documentID==='string'&&m.documentID));
+ assert.equal(changes.at(-1).documentID,'b2','messages name the document they came from');r.close();
+});
+test('a tab starts fresh when its file changed, moved or became a new page, and closed tabs are forgotten',()=>{
+ const r=setup();const tab=(id,documentID,text,currentPath,extra={})=>r.w.acdianSetDocument({tabID:id,documentID,text,currentPath,...extra});
+ tab('A','a1','Alpha beta gamma','A.md');r.view.dispatch({selection:{anchor:6,head:10}});r.w.acdianInsertText('X');
+ tab('B','b1','Other','B.md');
+ tab('A','a2','Changed elsewhere and longer','A.md');
+ assert.equal(r.get().text,'Changed elsewhere and longer');assert.equal(r.w.acdianUndo(),false,'disk text replaces the kept history');
+ assert.deepEqual([r.get().selectionAnchor,r.get().selectionHead],[7,7],'the caret stays near where it was');
+ tab('B','b2','Other','Moved/B.md');assert.equal(r.w.acdianUndo(),false,'a moved page starts a fresh editor state');
+ tab('D','d1','','.acdian-draft-1.md');r.w.acdianInsertText('x');r.view.dispatch({changes:{from:0,to:1,insert:''}});
+ tab('D','d2','','.acdian-draft-2.md');assert.equal(r.w.acdianUndo(),false,'a new page in a reused tab never inherits the old history');
+ tab('C','c1','Gamma','C.md',{view:{anchor:2,head:4,scroll:{pos:3,offset:-2}}});
+ assert.deepEqual([r.get().selectionAnchor,r.get().selectionHead],[2,4],'a remembered place is used when no editor state was kept');
+ assert.deepEqual([r.get().scrollPosition,r.get().scrollOffset],[3,-2],'a place not yet laid out is still reported, e.g. while the window is covered');
+ assert.deepEqual(Array.from(r.w.acdianLiveEditorTest.keptTabs()).sort(),['A','B','D']);
+ r.w.acdianSetDocument({openTabs:['C','B']});assert.deepEqual(Array.from(r.w.acdianLiveEditorTest.keptTabs()),['B']);
+ for(let n=0;n<20;n++)tab('T'+n,'t'+n,'Page '+n,`T${n}.md`);
+ assert.ok(r.w.acdianLiveEditorTest.keptTabs().length<=12,'kept editor states are capped');r.close();
+});
+test('documents without a tab keep the earlier single-document behaviour',()=>{
+ const r=setup('一');r.w.acdianInsertText('二');
+ r.w.acdianSetDocument({text:'一',currentPath:'笔记.md'});assert.equal(r.get().text,'一');assert.equal(r.w.acdianUndo(),false);
+ assert.deepEqual(Array.from(r.w.acdianLiveEditorTest.keptTabs()),[]);r.close();
+});

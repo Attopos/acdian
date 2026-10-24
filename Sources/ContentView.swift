@@ -100,8 +100,8 @@ struct ContentView: View {
                         let fits = geometry.size.width >= Self.outlineFitWidth
                         ZStack(alignment:.topLeading) {
                             VStack(spacing:0) {
-                                if model.isDraft { DraftTitleView(model:model) }
-                                LiveMarkdownEditor(model:model).id(model.editorDocumentID).frame(minWidth:360,maxWidth:.infinity,maxHeight:.infinity)
+                                if model.isDraft { DraftTitleView(model:model).id(model.editorDocumentID) }
+                                LiveMarkdownEditor(model:model).frame(minWidth:360,maxWidth:.infinity,maxHeight:.infinity)
                             }
                             if model.showOutline && (fits || outlineFloating) {
                                 outline(title:model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent,floating:!fits)
@@ -114,7 +114,8 @@ struct ContentView: View {
                 else if AppModel.images.contains(file.ext) { ImagePane(url:file.url).id(file.id) }
                 else if !model.text.isEmpty { ScrollView { Text(model.text).font(.system(size:13,design:.monospaced)).textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading).padding(28) } }
                 else { unsupported(file) }
-            }.id(file.id)
+            // Markdown pages share one editor, which swaps documents in place.
+            }.id(file.ext == "md" ? "markdown" : file.id)
         }
     }
     // A Feishu-style outline in the page's left margin: the page title first,

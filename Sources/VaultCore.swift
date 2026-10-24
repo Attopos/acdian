@@ -55,8 +55,6 @@ struct VaultIndex {
               isDirectory.boolValue else {
             throw VaultCoreError.notDirectory(root)
         }
-        self.root = canonicalRoot
-
         var collected: [VaultEntry] = []
         let order = PageOrganizer.loadOrder(root: canonicalRoot)
         let keys: Set<URLResourceKey> = [
@@ -102,7 +100,13 @@ struct VaultIndex {
             return PageOrganizer.arrange(result.sorted(by: PageOrganizer.defaultOrder), names: order[prefix], name: \.name)
         }
 
-        entries = try scan(canonicalRoot, prefix: "")
+        let scanned = try scan(canonicalRoot, prefix: "")
+        self.init(canonicalRoot: canonicalRoot, entries: scanned, files: collected)
+    }
+
+    private init(canonicalRoot: URL, entries: [VaultEntry], files collected: [VaultEntry]) {
+        root = canonicalRoot
+        self.entries = entries
         files = collected.sorted {
             $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
         }
@@ -111,6 +115,27 @@ struct VaultIndex {
         byPath = Dictionary(files.map { (Self.key($0.relativePath), $0) }, uniquingKeysWith: { first, _ in first })
         byFoldedPath = Dictionary(grouping: files, by: { Self.foldedKey($0.relativePath) })
         byBasename = Dictionary(grouping: files, by: { Self.foldedKey($0.name) })
+    }
+
+    /// The same index with one more top-level file, placed where a rescan would
+    /// list it, so a page just created shows without walking the whole folder.
+    func addingTopLevelFile(_ file: VaultEntry) -> VaultIndex {
+        let siblings = entries.filter { $0.relativePath != file.relativePath } + [file]
+        let arranged = PageOrganizer.arrange(siblings.sorted(by: PageOrganizer.defaultOrder), names: PageOrganizer.loadOrder(root: root)[""], name: \.name)
+        return VaultIndex(canonicalRoot: root, entries: arranged, files: files.filter { $0.relativePath != file.relativePath } + [file])
+    }
+
+    /// The same index without an item and, for a folder, everything inside it.
+    func removing(_ relativePath: String) -> VaultIndex {
+        func gone(_ path: String) -> Bool { path == relativePath || path.hasPrefix(relativePath + "/") }
+        func prune(_ list: [VaultEntry]) -> [VaultEntry] {
+            list.filter { !gone($0.relativePath) }.map { entry in
+                guard entry.isDirectory else { return entry }
+                return VaultEntry(relativePath: entry.relativePath, url: entry.url, name: entry.name, isDirectory: true,
+                                  children: prune(entry.children ?? []), modified: entry.modified, size: entry.size)
+            }
+        }
+        return VaultIndex(canonicalRoot: root, entries: prune(entries), files: files.filter { !gone($0.relativePath) })
     }
 
     /// Resolves Obsidian wiki targets and ordinary local Markdown links.
@@ -228,6 +253,30 @@ struct VaultIndex {
             }
         }
         return parts.joined(separator: "/")
+    }
+}
+
+/// A file's modification date and size, read without opening it: a cheap way
+/// to tell whether text read earlier may no longer be what is on disk.
+struct FileStamp: Equatable {
+    let modified: Date?
+    let size: Int
+
+    init(modified: Date?, size: Int) {
+        self.modified = modified
+        self.size = size
+    }
+
+    /// The stamp a directory scan recorded for a file.
+    init(_ entry: VaultEntry) {
+        self.init(modified: entry.modified, size: entry.size)
+    }
+
+    /// The file's current stamp. URL resource values are cached per URL
+    /// object, so the file system is asked directly.
+    init?(of url: URL) {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.standardizedFileURL.resolvingSymlinksInPath().path) else { return nil }
+        self.init(modified: attributes[.modificationDate] as? Date, size: (attributes[.size] as? NSNumber)?.intValue ?? 0)
     }
 }
 

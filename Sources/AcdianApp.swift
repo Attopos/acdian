@@ -6,7 +6,7 @@ import AppKit
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     var body: some Scene {
         WindowGroup("ACdian") {
-            ContentView().environmentObject(model).onAppear { delegate.model = model; DispatchQueue.main.async { delegate.configureWindow() } }
+            ContentView().environmentObject(model).onAppear { delegate.model = model; LiveEditorHost.shared.model = model; DispatchQueue.main.async { delegate.configureWindow() } }
         }.defaultSize(width:1260,height:840).windowStyle(.hiddenTitleBar).commands {
             CommandGroup(replacing:.newItem) {
                 Button(model.localized("新建页面")) { model.newPageFromEditor() }.keyboardShortcut("n")
@@ -21,7 +21,7 @@ import AppKit
                 Button(model.localized("刷新页面")) { model.refresh() }.keyboardShortcut("r")
                 Button(model.localized("所有页面")) { model.goHome() }.keyboardShortcut("h",modifiers:[.command,.shift])
             }
-            CommandGroup(replacing:.appInfo) { Button(model.localized("关于 ACdian")) { NSApp.orderFrontStandardAboutPanel(options:[.applicationName:"ACdian",.applicationVersion:(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "1.2.8"),.credits:NSAttributedString(string:model.localized("本地 Markdown 阅读器"))]) } }
+            CommandGroup(replacing:.appInfo) { Button(model.localized("关于 ACdian")) { NSApp.orderFrontStandardAboutPanel(options:[.applicationName:"ACdian",.applicationVersion:(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "1.2.9"),.credits:NSAttributedString(string:model.localized("本地 Markdown 阅读器"))]) } }
         }
     }
 }
@@ -32,6 +32,8 @@ import AppKit
     private var terminationPending = false
     private var lastWindowCloseApproved = false
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // The editor page loads while the window comes up, so the first page opens at once.
+        _ = LiveEditorHost.shared
         // A drag released outside any drop target, or cancelled with Esc, gets
         // no drop callback; the next mouse-up or key press clears its highlight.
         NSEvent.addLocalMonitorForEvents(matching:[.leftMouseUp,.leftMouseDown,.keyDown]) { [weak self] event in

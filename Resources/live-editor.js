@@ -10,8 +10,10 @@ import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
 
-const post = message => window.webkit?.messageHandlers?.acdian?.postMessage(message);
-const metadata = { currentPath: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
+const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
+// Every message names the document it came from, so the native side can drop
+// a late message from a page that has since been swapped out of the editor.
+const post = message => window.webkit?.messageHandlers?.acdian?.postMessage({...message,documentID:metadata.documentID});
 let rawSource = '', lastSource = '', lineBreak = '\n', applyingExternal = false, revision = 0;
 const insertions = new Set();
 let rawSnapshots = new Map();
@@ -463,9 +465,58 @@ function extensions() {return [
 ];}
 const view=new EditorView({state:EditorState.create({doc:'',extensions:extensions()}),parent:document.getElementById('editor')});
 window.acdianEditor=view;
+// One editor serves every tab. A tab put in the back keeps its whole editor
+// state (text, selection, undo history) and scroll place here; it comes back
+// as it was when the native side sends the same text again, or else starts
+// fresh from the text it sends, which is what is on disk.
+const sessions=new Map(),sessionLimit=12,sessionTextLimit=40_000_000;
+// A restored place is applied at the editor's next layout, which WebKit holds
+// back while the window is covered; until then it is still the place to report.
+let pendingPlace=null;
+function scrollPlace(){if(pendingPlace)return pendingPlace;const target=view.scrollSnapshot().value;return{pos:target.range.head,offset:target.yMargin};}
+function scrollTo(place){
+  pendingPlace=null;
+  if(!place||!Number.isFinite(place.pos)||!Number.isFinite(place.offset))return [];
+  pendingPlace={pos:place.pos,offset:place.offset};view.requestMeasure({read(){pendingPlace=null;}});
+  const snapshot=view.scrollSnapshot();
+  return snapshot.type.of(new snapshot.value.constructor(EditorSelection.cursor(Math.max(0,Math.min(place.pos,view.state.doc.length))),'start','start',place.offset,0,true));
+}
+// What the editor's compartments were last configured from.
+const editorSettings=()=>JSON.stringify([metadata.editable,metadata.language,metadata.pageTitle]);
+function stashSession(tabID,path){
+  if(!tabID)return;
+  sessions.delete(tabID);
+  sessions.set(tabID,{state:view.state,path,rawSource,lineBreak,rawSnapshots,scroll:scrollPlace(),settings:editorSettings()});
+  let total=0;for(const session of sessions.values())total+=session.rawSource.length;
+  for(const [id,session] of sessions){if(sessions.size<=sessionLimit&&total<=sessionTextLimit)break;if(id===tabID)continue;sessions.delete(id);total-=session.rawSource.length;}
+}
+function installDocument(text,remembered) {
+  const session=sessions.get(metadata.tabID);
+  sessions.delete(metadata.tabID);
+  applyingExternal=true;
+  if(session&&session.path===metadata.currentPath&&session.rawSource===text) {
+    ({rawSource,lineBreak,rawSnapshots}=session);
+    view.setState(session.state);
+    // Reconfiguring costs a few milliseconds on a long page, so it is skipped when nothing changed.
+    const reconfigure=session.settings===editorSettings()?[]:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions()),pageTitle.reconfigure(pageTitleExtension())];
+    view.dispatch({effects:[...reconfigure,scrollTo(session.scroll)].flat()});
+  } else {
+    rawSource=text;lineBreak=rawSource.includes('\r\n')?'\r\n':rawSource.includes('\r')?'\r':'\n';rawSnapshots=new Map([[canonical(rawSource),rawSource]]);
+    view.setState(EditorState.create({doc:canonical(rawSource),extensions:extensions()}));
+    // A tab whose editor state was not kept still returns to its last place.
+    const place=session&&session.path===metadata.currentPath?{anchor:session.state.selection.main.anchor,head:session.state.selection.main.head,scroll:session.scroll}:remembered;
+    const length=view.state.doc.length,clamp=value=>Number.isFinite(value)?Math.max(0,Math.min(value,length)):0;
+    view.dispatch({selection:place?EditorSelection.single(clamp(place.anchor),clamp(place.head)):EditorSelection.cursor(0),effects:scrollTo(place?.scroll)});
+  }
+  applyingExternal=false;
+  lastSource=rawSource;revision=0;
+  reportedHeading=null;requestAnimationFrame(followHeading);
+}
 window.acdianSetDocument=payload=>{
-  const previousPath=metadata.currentPath,previousToken=metadata.resetToken;
+  const previousPath=metadata.currentPath,previousToken=metadata.resetToken,previousDocument=metadata.documentID,previousTab=metadata.tabID;
   if(typeof payload.currentPath==='string')metadata.currentPath=payload.currentPath;
+  if(typeof payload.documentID==='string')metadata.documentID=payload.documentID;
+  if(typeof payload.tabID==='string')metadata.tabID=payload.tabID;
   if(typeof payload.title==='string'){metadata.title=payload.title;document.title=payload.title||'ACdian';}
   if(typeof payload.pageTitle==='string')metadata.pageTitle=payload.pageTitle;
   if(typeof payload.draft==='boolean')document.documentElement.classList.toggle('draft-page',payload.draft);
@@ -476,14 +527,15 @@ window.acdianSetDocument=payload=>{
   document.getElementById('editor').setAttribute('aria-label',messagesForLanguage(metadata.language).editorLabel);
   if('resetToken'in payload)metadata.resetToken=payload.resetToken;
   if(Number.isFinite(payload.fontSize))document.documentElement.style.setProperty('--editor-font-size',Math.max(12,Math.min(28,payload.fontSize))+'px');
+  const switched=previousDocument!==metadata.documentID;
+  if(switched&&previousDocument)stashSession(previousTab,previousPath);
+  // Tabs that were closed give up their kept state.
+  if(Array.isArray(payload.openTabs))for(const id of [...sessions.keys()])if(!payload.openTabs.includes(id))sessions.delete(id);
   const hasText=typeof payload.text==='string';
-  if(hasText&&(payload.text!==rawSource||previousPath!==metadata.currentPath||previousToken!==metadata.resetToken)){
-    rawSource=payload.text;lastSource=rawSource;revision=0;lineBreak=rawSource.includes('\r\n')?'\r\n':rawSource.includes('\r')?'\r':'\n';rawSnapshots=new Map([[canonical(rawSource),rawSource]]);
-    applyingExternal=true;view.setState(EditorState.create({doc:canonical(rawSource),extensions:extensions()}));view.dispatch({selection:EditorSelection.cursor(0)});applyingExternal=false;
-    reportedHeading=null;requestAnimationFrame(followHeading);
-  }else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions()),pageTitle.reconfigure(pageTitleExtension())]});
+  if(hasText&&(switched||payload.text!==rawSource||previousPath!==metadata.currentPath||previousToken!==metadata.resetToken))installDocument(payload.text,switched?payload.view:null);
+  else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions()),pageTitle.reconfigure(pageTitleExtension())]});
 };
-window.acdianGetDocument=()=>({text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head});
+window.acdianGetDocument=()=>{const place=scrollPlace();return{text:rawSource,currentPath:metadata.currentPath,documentID:metadata.documentID,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head,scrollPosition:place.pos,scrollOffset:place.offset};};
 window.acdianInsertText=(text,insertionID)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;view.dispatch(view.state.replaceSelection(canonical(String(text))));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
 window.acdianUndo=()=>undo(view);
 window.acdianRedo=()=>redo(view);
@@ -521,5 +573,5 @@ function followHeading(){
   reportHeading(index);
 }
 view.scrollDOM.addEventListener('scroll',()=>{if(!headingFrame)headingFrame=requestAnimationFrame(followHeading);},{passive:true});
-window.acdianLiveEditorTest={simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString()};
+window.acdianLiveEditorTest={simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString(),keptTabs:()=>[...sessions.keys()]};
 post({type:'ready'});

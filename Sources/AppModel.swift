@@ -38,12 +38,34 @@ struct EditorSnapshot {
     let currentPath: String
     var selectionAnchor: Int? = nil
     var selectionHead: Int? = nil
+    var scrollPosition: Int? = nil
+    var scrollOffset: Double? = nil
+}
+/// Where the reader was in a page: the selection, and the scroll place as the
+/// document position of the top line with that line's offset from the view top.
+struct EditorViewState: Equatable {
+    var anchor: Int
+    var head: Int
+    var scrollPosition: Int
+    var scrollOffset: Double
+}
+extension String {
+    /// Byte-for-byte equality. `==` compares canonical equivalence, which for a
+    /// long page with non-ASCII text costs milliseconds on every keystroke.
+    func sameBytes(_ other: String) -> Bool {
+        let fast = utf8.withContiguousStorageIfAvailable { a in
+            other.utf8.withContiguousStorageIfAvailable { b in a.count == b.count && (a.isEmpty || memcmp(a.baseAddress!,b.baseAddress!,a.count) == 0) }
+        }
+        if case let same?? = fast { return same }
+        return utf8.elementsEqual(other.utf8)
+    }
 }
 /// One open page in the tab bar. A new page has no path until its first save.
 struct PageTab: Identifiable { let id = UUID(); var path: String? }
 
 @MainActor final class AppModel: ObservableObject {
-    @Published var index: VaultIndex?
+    @Published var index: VaultIndex? { didSet { indexGeneration &+= 1 } }
+    private var indexGeneration = 0
     @Published var loading = false {
         didSet { if oldValue && !loading { scheduleAutosave() } }
     }
@@ -65,7 +87,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         didSet { if oldValue != editorDocumentID { cancelAutosave() } }
     }
     @Published var text = "" {
-        didSet { if oldValue != text { scheduleAutosave() } }
+        didSet { if !oldValue.sameBytes(text) { textFacts = nil; scheduleAutosave() } }
     }
     @Published var originalText = ""
     @Published private(set) var isDraft = false
@@ -80,8 +102,17 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     var currentPagePath: String? { persistedPage?.relativePath }
     // Open pages, like browser tabs. The active tab holds the page in the editor,
     // and stays active behind the trash view so a relaunch returns to it.
-    @Published private(set) var tabs: [PageTab] = [] { didSet { saveTabs() } }
+    @Published private(set) var tabs: [PageTab] = [] {
+        didSet { tabMemory = tabMemory.filter { id,_ in tabs.contains { $0.id == id } }; saveTabs() }
+    }
     @Published private(set) var activeTabID: UUID? = nil { didSet { saveTabs() } }
+    // What a tab keeps while another one is in front: the page text as last
+    // read from or written to disk, with the file stamp seen before reading it,
+    // so the tab comes back without waiting for the disk; and where the reader was.
+    private struct TabMemory { var text: String?; var stamp: FileStamp?; var view: EditorViewState?; var pdfPage: Int?; var facts: TextFacts? }
+    private var tabMemory: [UUID:TabMemory] = [:]
+    /// Where the reader was in the front tab, for an editor starting that page afresh.
+    var frontTabView: EditorViewState? { activeTabID.flatMap { tabMemory[$0]?.view } }
     @Published var query = ""
     @Published var showOutline = true
     @Published var showSidebar = true
@@ -109,11 +140,17 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     @Published private(set) var anchorRequest = 0
     /// The outline entry for the part of the page being read: -1 is the page title.
     @Published var activeHeading = -1
-    @Published var pdfPage = 1
+    @Published var pdfPage = 1 {
+        didSet { if selected?.ext == "pdf", let tab = activeTabID { tabMemory[tab,default:TabMemory()].pdfPage = pdfPage } }
+    }
     @Published var pdfZoomAction = 0
     @Published var pdfPageCount = 0
     @Published var fontSize: Double = UserDefaults.standard.double(forKey: "readingFontSize") == 0 ? 16 : UserDefaults.standard.double(forKey: "readingFontSize")
     private var searchCache: [String:String] = [:]
+    // The stamp each cached text was read at, so a rebuild reads only files that
+    // changed, and the pages saved while a rebuild is still reading.
+    private var searchStamps: [String:FileStamp] = [:]
+    private var searchSaves: [String:String] = [:]
     // The live WebKit editor supplies an immediate document snapshot before a
     // native action, even when its normal change message is still in flight.
     var editorSnapshot: ((@escaping (Result<EditorSnapshot, Error>) -> Void) -> Void)?
@@ -124,16 +161,28 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     var dirty: Bool {
         guard selected?.ext == "md" else { return false }
         if isDraft {
-            if let savedDraftContent { return draftContent != savedDraftContent }
+            if let savedDraftContent { return !draftContent.sameBytes(savedDraftContent) }
             return !draftTitle.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || !text.isEmpty
         }
-        return text != originalText
+        return !text.sameBytes(originalText)
     }
     var markdownCount: Int { index?.files.filter { $0.ext == "md" }.count ?? 0 }
     var imageCount: Int { index?.files.filter { Self.images.contains($0.ext) }.count ?? 0 }
     var pdfCount: Int { index?.files.filter { $0.ext == "pdf" }.count ?? 0 }
     static let images = Set(["png","jpg","jpeg","gif","webp","svg","heic","tiff","tif","bmp","avif"])
-    var wordCount: Int { text.count }
+    // The outline and character count are worked out once per text, not on every view update.
+    // Each tab keeps them for its text, so returning to a long page skips the work.
+    private struct TextFacts { let text: String; let headings: [(level: Int,title: String)]; let count: Int }
+    private var textFacts: TextFacts?
+    private var facts: TextFacts {
+        if let textFacts { return textFacts }
+        let tab = activeTabID
+        if let tab, let kept = tabMemory[tab]?.facts, kept.text.sameBytes(text) { textFacts = kept; return kept }
+        let facts = TextFacts(text:text,headings:Self.headings(in:text),count:text.count); textFacts = facts
+        if let tab, tabMemory[tab] != nil { tabMemory[tab]?.facts = facts }
+        return facts
+    }
+    var wordCount: Int { facts.count }
     func localized(_ source: String, _ arguments: CVarArg...) -> String { language.localized(source,arguments:arguments) }
     func localizedError(_ error: Error) -> String {
         if let error = error as? VaultCoreError {
@@ -151,7 +200,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard let index, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
         return index.files.filter { $0.relativePath.localizedCaseInsensitiveContains(query) || (searchCache[$0.id]?.localizedCaseInsensitiveContains(query) ?? false) }
     }
-    var headings: [(level: Int,title: String)] {
+    var headings: [(level: Int,title: String)] { facts.headings }
+    private static func headings(in text: String) -> [(level: Int,title: String)] {
         var inFence = false
         return text.components(separatedBy: .newlines).compactMap { line in
             if line.hasPrefix("```") || line.hasPrefix("~~~") { inFence.toggle(); return nil }
@@ -294,7 +344,10 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 self.tabs.removeAll { tab in (affectsSelection && tab.id == self.activeTabID) || tab.path.map { $0 == entry.relativePath || $0.hasPrefix(entry.relativePath + "/") } == true }
                 if !self.tabs.contains(where: { $0.id == self.activeTabID }) { self.activeTabID = nil }
                 if affectsSelection { self.clearOpenDocument() }
-                self.reindexAfterTrashMutation(root)
+                // The sidebar drops the item at once; a rescan off the main
+                // thread then catches aliases that pointed into it.
+                self.index = self.index?.removing(entry.relativePath)
+                self.rescanInBackground(root)
                 if affectsSelection, let activeIndex { self.selectTab(near:activeIndex) }
                 self.refreshTrash(); self.statusValue = .trashed
                 completion?(true)
@@ -317,6 +370,17 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private func reindexAfterTrashMutation(_ root: URL) {
         do { index = try VaultIndex(root:root); rebuildSearch() }
         catch { self.error = localizedError(error) }
+    }
+    /// Rescans the pages folder off the main thread. An index set meanwhile is newer and wins.
+    private func rescanInBackground(_ root: URL) {
+        let generation = indexGeneration
+        DispatchQueue.global(qos:.utility).async {
+            guard let rescanned = try? VaultIndex(root:root) else { return }
+            DispatchQueue.main.async {
+                guard self.indexGeneration == generation, self.index?.root == root else { return }
+                self.index = rescanned; self.rebuildSearch()
+            }
+        }
     }
     private func deletionAffectsSelection(_ entry: VaultEntry) -> Bool {
         guard let selected = persistedPage else { return false }
@@ -393,16 +457,38 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func trashDaysRemaining(_ entry: PageTrash.Entry) -> Int {
         max(0,Int(ceil(entry.expiresAt.timeIntervalSince(trashNow()) / 86400)))
     }
+    /// Reads page text for search. Files whose stamp in the new index matches the
+    /// one their cached text was read at are not read again, and results reach
+    /// the sidebar in batches rather than one update per file.
     func rebuildSearch() {
-        let request = UUID(); searchID = request; searchCache = [:]
-        guard let index else { return }
+        let request = UUID(); searchID = request; searchSaves = [:]
+        guard let index else { searchCache = [:]; searchStamps = [:]; return }
+        let previous = searchCache, previousStamps = searchStamps
         DispatchQueue.global(qos:.utility).async {
-            for file in index.files where file.ext == "md" && file.size < 2_000_000 {
-                if let value = try? VaultFileIO.readMarkdown(at:file.url,allowedRoot:index.root) {
-                    DispatchQueue.main.async { if self.searchID == request { self.searchCache[file.id] = value; self.objectWillChange.send() } }
+            var cache: [String:String] = [:], stamps: [String:FileStamp] = [:], batch: [String:String] = [:]
+            func publish(_ texts: [String:String]) {
+                DispatchQueue.main.async {
+                    guard self.searchID == request else { return }
+                    self.searchCache.merge(texts) { _,new in new }; self.objectWillChange.send()
                 }
             }
+            for file in index.files where file.ext == "md" && file.size < 2_000_000 {
+                let stamp = FileStamp(file)
+                if let text = previous[file.id], previousStamps[file.id] == stamp { cache[file.id] = text; stamps[file.id] = stamp; continue }
+                guard let value = try? VaultFileIO.readMarkdown(at:file.url,allowedRoot:index.root) else { continue }
+                cache[file.id] = value; stamps[file.id] = stamp; batch[file.id] = value
+                if batch.count >= 200 { publish(batch); batch = [:] }
+            }
+            DispatchQueue.main.async {
+                guard self.searchID == request else { return }
+                // Pages saved meanwhile keep their newer text, to be read again next time.
+                for (id,text) in self.searchSaves { cache[id] = text; stamps[id] = nil }
+                self.searchCache = cache; self.searchStamps = stamps; self.searchSaves = [:]; self.objectWillChange.send()
+            }
         }
+    }
+    private func searchSaved(_ id: String, _ text: String) {
+        searchCache[id] = text; searchStamps[id] = nil; searchSaves[id] = text
     }
     func refresh() {
         guard ensurePageStorage(), let root = index?.root else { return }
@@ -434,10 +520,13 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 guard snapshot.currentPath == expectedPath else {
                     self.error = self.localized("编辑器仍在切换笔记，请稍后重试。"); onFailure?(); return
                 }
-                self.text = snapshot.text
+                if !self.text.sameBytes(snapshot.text) { self.text = snapshot.text }
                 if let anchor = snapshot.selectionAnchor, let head = snapshot.selectionHead {
                     let length = Self.editorUTF16Count(snapshot.text)
                     self.editorSelection = (max(0,min(anchor,length)),max(0,min(head,length)))
+                    if let position = snapshot.scrollPosition, let offset = snapshot.scrollOffset, let selection = self.editorSelection {
+                        self.rememberView(EditorViewState(anchor:selection.anchor,head:selection.head,scrollPosition:max(0,min(position,length)),scrollOffset:offset))
+                    }
                 } else { self.editorSelection = nil }
                 action()
             case .failure(let error):
@@ -459,13 +548,15 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         }
     }
     func saveFromEditor() { withEditorSnapshot { self.save() } }
-    func open(_ entry: VaultEntry, fragment: String = "", skipConfirmation: Bool = false) {
+    /// Opens a page in its tab. A page whose tab still holds its text shows at
+    /// once, and the file is checked in the background; `fromDisk` always reads it.
+    func open(_ entry: VaultEntry, fragment: String = "", skipConfirmation: Bool = false, fromDisk: Bool = false) {
         guard !entry.isDirectory, entry.relativePath != currentPagePath || skipConfirmation else { return }
         openID = UUID()
-        if skipConfirmation { openAfterSnapshot(entry,fragment:fragment,skipConfirmation:true) }
-        else { withEditorSnapshot { self.openAfterSnapshot(entry,fragment:fragment,skipConfirmation:false) } }
+        if skipConfirmation { openAfterSnapshot(entry,fragment:fragment,skipConfirmation:true,fromDisk:fromDisk) }
+        else { withEditorSnapshot { self.openAfterSnapshot(entry,fragment:fragment,skipConfirmation:false,fromDisk:fromDisk) } }
     }
-    private func openAfterSnapshot(_ entry: VaultEntry, fragment: String, skipConfirmation: Bool) {
+    private func openAfterSnapshot(_ entry: VaultEntry, fragment: String, skipConfirmation: Bool, fromDisk: Bool) {
         guard skipConfirmation || saveBeforeLeaving() else { return }
         showingTrash = false
         // A page already in a tab is shown there, and a blank new page hands
@@ -474,25 +565,60 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let needsText = entry.ext == "md" || ["txt","json","csv","css","js","yaml","yml","canvas","xml","html","log"].contains(entry.ext)
         let request = UUID(); openID = request
         let root = index?.root
-        func install(_ content: String) {
-            showInTab(tab,path:entry.relativePath)
-            selected = entry; text = content; originalText = content; clearDraftState(); anchor = fragment; pdfPage = fragment.hasPrefix("page=") ? (Int(fragment.dropFirst(5)) ?? 1) : 1; pdfPageCount = 0; insertion = nil; loading = false; editorDocumentID = UUID()
-            status = entry.relativePath
-        }
-        if !needsText { install(""); return }
+        if !needsText { install(entry,content:"",fragment:fragment,tab:tab); return }
         guard entry.size < 20_000_000 else { error = localized("文件较大，无法作为文本打开。"); return }
+        if !fromDisk, let tab, tabs.contains(where: { $0.id == tab && $0.path == entry.relativePath }), let kept = tabMemory[tab]?.text {
+            install(entry,content:kept,fragment:fragment,tab:tab)
+            verifyKeptText(entry,tab:tab,text:kept)
+            return
+        }
         loading = true; statusValue = .opening(entry.name)
         // Cloud storage can take time to download a note. Never block the window.
         DispatchQueue.global(qos:.userInitiated).async {
             do {
+                // The stamp is taken first, so a change made during the read
+                // still differs from it when the tab is next checked.
+                let stamp = FileStamp(of:entry.url)
                 let content = try VaultFileIO.readMarkdown(at:entry.url,allowedRoot:root)
                 DispatchQueue.main.async {
                     guard self.openID == request else { return }
-                    self.showInTab(tab,path:entry.relativePath)
-                    self.selected = entry; self.text = content; self.originalText = content; self.clearDraftState(); self.anchor = fragment; self.pdfPage = fragment.hasPrefix("page=") ? (Int(fragment.dropFirst(5)) ?? 1) : 1; self.pdfPageCount = 0; self.insertion = nil; self.loading = false; self.status = entry.relativePath; self.editorDocumentID = UUID()
+                    self.install(entry,content:content,fragment:fragment,tab:tab)
+                    self.keepFrontText(content,stamp:stamp)
                 }
             } catch { DispatchQueue.main.async { guard self.openID == request else { return }; self.loading = false; self.error = self.localizedError(error) } }
         }
+    }
+    private func install(_ entry: VaultEntry, content: String, fragment: String, tab: UUID?) {
+        showInTab(tab,path:entry.relativePath)
+        selected = entry; text = content; originalText = content; clearDraftState(); anchor = fragment
+        pdfPage = fragment.hasPrefix("page=") ? (Int(fragment.dropFirst(5)) ?? 1) : (activeTabID.flatMap { tabMemory[$0]?.pdfPage } ?? 1)
+        pdfPageCount = 0; insertion = nil; loading = false; status = entry.relativePath; editorDocumentID = UUID()
+    }
+    private func keepFrontText(_ text: String, stamp: FileStamp?) {
+        guard let tab = activeTabID else { return }
+        tabMemory[tab,default:TabMemory()].text = text; tabMemory[tab]?.stamp = stamp
+    }
+    /// Checks a tab shown from kept text against the file. If it changed while
+    /// the tab was in the back, the page shows the file's text instead, unless
+    /// it was already edited here; saving those edits then reports the conflict.
+    private func verifyKeptText(_ entry: VaultEntry, tab: UUID, text kept: String) {
+        let stamp = tabMemory[tab]?.stamp, documentID = editorDocumentID, root = index?.root
+        DispatchQueue.global(qos:.utility).async {
+            let current = FileStamp(of:entry.url)
+            if let stamp, current == stamp { return }
+            guard let disk = try? VaultFileIO.readMarkdown(at:entry.url,allowedRoot:root) else { return }
+            DispatchQueue.main.async {
+                guard self.tabMemory[tab]?.text?.sameBytes(kept) == true else { return }
+                self.tabMemory[tab]?.text = disk; self.tabMemory[tab]?.stamp = current
+                guard !disk.sameBytes(kept), self.editorDocumentID == documentID, self.activeTabID == tab,
+                      self.selected?.relativePath == entry.relativePath, !self.dirty else { return }
+                self.originalText = disk; self.text = disk; self.status = entry.relativePath; self.editorDocumentID = UUID()
+            }
+        }
+    }
+    private func rememberView(_ view: EditorViewState) {
+        guard !isDraft, let tab = activeTabID, tabMemory[tab]?.view != view else { return }
+        tabMemory[tab,default:TabMemory()].view = view; saveTabViews()
     }
     func goHome() {
         openID = UUID()
@@ -504,16 +630,31 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     // Tabs are remembered per pages folder, so a relaunch reopens them.
     private var tabsKey: String { "openTabs:" + (index?.root.path ?? "") }
     private var activeTabKey: String { "activeTab:" + (index?.root.path ?? "") }
+    // Each tab's last selection and scroll place, so a relaunch returns to them.
+    private var tabViewsKey: String { "tabViews:" + (index?.root.path ?? "") }
     private func saveTabs() {
         guard index != nil else { return }
         preferences.set(tabs.compactMap(\.path),forKey:tabsKey)
         preferences.set(tabs.first(where: { $0.id == activeTabID })?.path,forKey:activeTabKey)
+        saveTabViews()
+    }
+    private func saveTabViews() {
+        guard index != nil else { return }
+        var views: [String:[Double]] = [:]
+        for tab in tabs { if let path = tab.path, let view = tabMemory[tab.id]?.view { views[path] = [Double(view.anchor),Double(view.head),Double(view.scrollPosition),view.scrollOffset] } }
+        if views.isEmpty { preferences.removeObject(forKey:tabViewsKey) } else { preferences.set(views,forKey:tabViewsKey) }
     }
     private func restoreTabs(openActive: Bool) {
         guard let index else { return }
         let files = Set(index.files.map(\.relativePath)), active = preferences.string(forKey:activeTabKey)
+        let views = preferences.dictionary(forKey:tabViewsKey) as? [String:[Double]] ?? [:]
         var seen = Set<String>()
         tabs = (preferences.stringArray(forKey:tabsKey) ?? []).filter { files.contains($0) && seen.insert($0).inserted }.map { PageTab(path:$0) }
+        for tab in tabs {
+            guard let path = tab.path, let view = views[path], view.count == 4, view.allSatisfy({ $0.isFinite && abs($0) < 1e12 }) else { continue }
+            tabMemory[tab.id] = TabMemory(view:EditorViewState(anchor:max(0,Int(view[0])),head:max(0,Int(view[1])),scrollPosition:max(0,Int(view[2])),scrollOffset:view[3]))
+        }
+        saveTabViews()
         if openActive, let tab = tabs.first(where: { $0.path == active }) ?? tabs.last { selectTab(tab.id) }
     }
     private func showInTab(_ id: UUID?, path: String?) {
@@ -571,7 +712,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard let selected, selected.ext == "md", dirty else { return true }
         do {
             try VaultFileIO.saveMarkdown(text,at:selected.url,expectedContent:originalText,allowedRoot:index?.root)
-            originalText = text; searchCache[selected.id] = text; statusValue = .saved(Date()); lastAutosaveError = nil; return true
+            originalText = text; searchSaved(selected.id,text); keepFrontText(text,stamp:nil); statusValue = .saved(Date()); lastAutosaveError = nil; return true
         } catch { reportSaveFailure(error,automatically:automatically); return false }
     }
     func reload() {
@@ -586,7 +727,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             alert.addButton(withTitle:localized("重新载入")); alert.addButton(withTitle:localized("取消"))
             guard alert.runModal() == .alertFirstButtonReturn else { scheduleAutosave(); return }
         }
-        open(selected,skipConfirmation:true)
+        open(selected,skipConfirmation:true,fromDisk:true)
     }
     func navigate(_ raw: String) {
         if raw.hasPrefix("#") { anchor = String(raw.dropFirst()); return }
@@ -621,12 +762,20 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             completion?()
         }
     }
+    /// The sidebar entry for a file just created at the top of the pages folder.
+    private static func createdEntry(_ filename: String, at url: URL, root: URL) -> VaultEntry {
+        let stamp = FileStamp(of:url)
+        return VaultEntry(relativePath:filename,url:root.appendingPathComponent(filename),name:filename,isDirectory:false,children:nil,modified:stamp?.modified ?? Date(),size:stamp?.size ?? 0)
+    }
     private func clearDraftState() {
         cancelAutosave(); isDraft = false; draftTitle = ""; draftFile = nil; savedDraftContent = nil
         editorSelection = nil; pendingEditorSelection = nil; lastAutosaveError = nil
     }
     private static func editorUTF16Count(_ text: String) -> Int {
-        text.replacingOccurrences(of:"\r\n",with:"\n").replacingOccurrences(of:"\r",with:"\n").utf16.count
+        // A CRLF pair is one newline in the editor; a lone CR is one too.
+        var pairs = 0, previous: UInt8 = 0
+        for byte in text.utf8 { if byte == 10 && previous == 13 { pairs += 1 }; previous = byte }
+        return text.utf16.count - pairs
     }
     private static func draftFilenameBase(_ title: String) -> String {
         let reserved = CharacterSet(charactersIn:"/\\:?*\"<>|").union(.controlCharacters)
@@ -663,15 +812,14 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                     catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileWriteFileExistsError { number += 1; continue }
                     // Only the backing file changes. The current editor keeps
                     // its body, title, selection, history and bridge identity.
-                    let refreshed = try? VaultIndex(root:root)
-                    file = refreshed?.files.first(where: { $0.relativePath == filename }) ?? VaultEntry(relativePath:filename,url:url,name:filename,isDirectory:false,children:nil,modified:Date(),size:content.utf8.count)
-                    if let refreshed { index = refreshed; rebuildSearch() }
+                    file = Self.createdEntry(filename,at:url,root:root)
+                    if let index, index.root == root { self.index = index.addingTopLevelFile(file) }
                     break
                 }
             }
             draftFile = file; savedDraftContent = content; originalText = text
             if let i = tabs.firstIndex(where: { $0.id == activeTabID }), tabs[i].path != file.relativePath { tabs[i].path = file.relativePath }
-            searchCache[file.id] = content; statusValue = .saved(Date()); lastAutosaveError = nil
+            searchSaved(file.id,content); keepFrontText(content,stamp:nil); statusValue = .saved(Date()); lastAutosaveError = nil
             return true
         } catch { reportSaveFailure(error,automatically:automatically); return false }
     }
@@ -682,9 +830,11 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let filename = clean.lowercased().hasSuffix(".md") ? clean : clean + ".md"
         let url = root.appendingPathComponent(filename)
         do {
-            try VaultFileIO.saveMarkdown("# \(String(filename.dropLast(3)))\n\n",at:url,expectedContent:nil,allowedRoot:root)
-            index = try VaultIndex(root:root); rebuildSearch()
-            if let file = index?.files.first(where: {$0.relativePath.precomposedStringWithCanonicalMapping == filename.precomposedStringWithCanonicalMapping}) { open(file,skipConfirmation:true) }
+            let content = "# \(String(filename.dropLast(3)))\n\n"
+            try VaultFileIO.saveMarkdown(content,at:url,expectedContent:nil,allowedRoot:root)
+            let file = Self.createdEntry(filename,at:url,root:root)
+            index = index?.addingTopLevelFile(file); searchSaved(file.id,content)
+            open(file,skipConfirmation:true)
             return true
         } catch { self.error = self.localizedError(error); return false }
     }

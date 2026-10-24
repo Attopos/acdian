@@ -101,6 +101,93 @@ struct TabTests {
             try check(model.tabs.isEmpty && model.selected == nil, "A page removed while the app was closed is not restored")
         }
 
-        print("Tabs: \(checks) checks passed for opening, reuse, closing, new pages, moves, trash and relaunch restore")
+        // Kept tab text: switching back needs no disk read, and the file is checked after.
+        for (name,body) in [("Keep.md","# Keep\n\nKept body\n"),("Next.md","# Next\n")] { try Data(body.utf8).write(to:root.appendingPathComponent(name)) }
+        do {
+            let model = try await launch()
+            model.refresh()
+            try await eventually("A refresh lists new pages") { model.index?.files.contains { $0.relativePath == "Keep.md" } == true && !model.loading }
+            try await open(model,"Keep.md")
+            let keepTab = model.activeTabID!
+            try await open(model,"Next.md")
+            model.selectTab(keepTab)
+            try check(model.selected?.relativePath == "Keep.md" && model.text == "# Keep\n\nKept body\n" && !model.loading && model.activeTabID == keepTab, "A tab comes back at once from its kept text, without waiting for the disk")
+            let shown = model.editorDocumentID
+            await pause(); await pause()
+            try check(model.editorDocumentID == shown && model.text == "# Keep\n\nKept body\n", "An unchanged file leaves the shown page alone")
+
+            try await open(model,"Next.md")
+            try Data("# Keep\n\nChanged by another app\n".utf8).write(to:root.appendingPathComponent("Keep.md"))
+            model.selectTab(keepTab)
+            try check(model.text == "# Keep\n\nKept body\n", "The kept text shows first")
+            try await eventually("A file changed while its tab was in the back shows what is on disk") { model.text == "# Keep\n\nChanged by another app\n" && model.originalText == model.text && model.editorDocumentID != shown && !model.dirty }
+
+            try await open(model,"Next.md")
+            try Data("# Keep\n\nChanged again, elsewhere\n".utf8).write(to:root.appendingPathComponent("Keep.md"))
+            model.selectTab(keepTab)
+            model.text = "# Keep\n\nTyped here at once"
+            try await eventually("A disk check never replaces edits made in the meantime") { model.text == "# Keep\n\nTyped here at once" && model.dirty }
+            await pause(); await pause()
+            try check(!model.save() && model.error != nil && (try disk("Keep.md")) == "# Keep\n\nChanged again, elsewhere\n", "Saving over the outside change is refused as a conflict")
+            model.error = nil
+            model.text = model.originalText
+            model.reload()
+            try await eventually("Reloading reads the file again") { model.text == "# Keep\n\nChanged again, elsewhere\n" && !model.dirty && !model.loading }
+
+            // The editor's place is remembered per tab and kept for a relaunch.
+            var answer: ((Result<EditorSnapshot,Error>) -> Void)?
+            model.editorSnapshot = { answer = $0 }
+            var leftKeep = false
+            model.withEditorSnapshot { leftKeep = true }
+            answer?(.success(EditorSnapshot(text:model.text,currentPath:"Keep.md",selectionAnchor:9,selectionHead:14,scrollPosition:8,scrollOffset:-12.5)))
+            try check(leftKeep && model.frontTabView == EditorViewState(anchor:9,head:14,scrollPosition:8,scrollOffset:-12.5), "A snapshot records the front tab's selection and scroll place")
+            model.editorSnapshot = nil
+            try await open(model,"Next.md")
+            try check(model.frontTabView == nil, "Each tab has its own place")
+            model.selectTab(keepTab)
+            try check(model.frontTabView == EditorViewState(anchor:9,head:14,scrollPosition:8,scrollOffset:-12.5), "Returning to a tab offers its place to the editor")
+        }
+        do {
+            let model = try await launch()
+            try await eventually("A relaunch restores the front tab") { model.selected?.relativePath == "Keep.md" && !model.loading }
+            try check(model.frontTabView == EditorViewState(anchor:9,head:14,scrollPosition:8,scrollOffset:-12.5), "A relaunch returns each tab to its selection and scroll place")
+            try check(model.tabs.allSatisfy { $0.path != nil }, "Only saved pages are restored")
+            model.closeCurrentTab()
+            try await eventually("Closing a tab shows the next one") { model.selected?.relativePath != "Keep.md" && !model.loading }
+            let views = preferences.dictionary(forKey:"tabViews:" + model.index!.root.path) as? [String:[Double]] ?? [:]
+            try check(views["Keep.md"] == nil, "A closed tab's place is forgotten")
+        }
+
+        // Search reuses the text of files whose stamp did not change.
+        do {
+            let model = try await launch()
+            let find = root.appendingPathComponent("Find.md")
+            let stamp = Date(timeIntervalSince1970:1_700_000_000)
+            try Data("needle-one".utf8).write(to:find)
+            try fm.setAttributes([.modificationDate:stamp],ofItemAtPath:find.path)
+            model.refresh()
+            model.query = "needle-one"
+            try await eventually("Search finds page text") { model.matches.map(\.relativePath) == ["Find.md"] }
+            try Data("needle-two".utf8).write(to:find)
+            try fm.setAttributes([.modificationDate:stamp],ofItemAtPath:find.path)
+            model.refresh()
+            try await eventually("A refresh finishes") { !model.loading }
+            await pause(); await pause(); await pause()
+            model.query = "needle-two"
+            try check(model.matches.isEmpty, "A file with an unchanged stamp is not read again")
+            try fm.setAttributes([.modificationDate:stamp.addingTimeInterval(5)],ofItemAtPath:find.path)
+            model.refresh()
+            try await eventually("A file whose stamp changed is read again") { model.matches.map(\.relativePath) == ["Find.md"] }
+            model.query = "needle-one"
+            try check(model.matches.isEmpty, "Its old text is gone from search")
+            try await open(model,"Next.md")
+            model.text = "# Next\n\nsaved-needle"; try check(model.save(), "Saving a page")
+            model.query = "saved-needle"
+            try check(model.matches.map(\.relativePath) == ["Next.md"], "A saved page is searchable at once")
+            model.refresh()
+            try await eventually("A saved page stays searchable after a rescan") { !model.loading && model.matches.map(\.relativePath) == ["Next.md"] }
+        }
+
+        print("Tabs: \(checks) checks passed for opening, reuse, closing, new pages, moves, trash, relaunch restore, kept tab text, disk checks, remembered places and search reuse")
     }
 }

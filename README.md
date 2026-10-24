@@ -1,4 +1,4 @@
-# ACdian 1.2.8
+# ACdian 1.2.9
 
 黑粉配色的本地 Mac Markdown 阅读器与实时编辑器。
 
@@ -19,6 +19,7 @@ ACdian 自动准备本地页面的保存位置，打开后即可使用，无需�
 - ⌘点击内部或外部链接可打开；普通点击进入编辑。
 - 新建页面：⌘N 直接打开空白页面，不再弹出命名窗口。标题处显示淡色 `New Page` 占位，点击即可填写标题，下方直接输入正文。
 - 打开页面会在新标签页中显示，不关闭已打开的页面；已打开的页面直接切换到它的标签页。⌘W 或标签右侧 × 关闭标签页。重新打开 ACdian 时恢复上次未关闭的标签页并停留在上次的页面。
+- 切换标签页时保留各自的滚动位置、光标和撤销记录，切换即时显示。
 - 输入后自动保存，短暂停止输入约半秒即写入；切换页面、关闭窗口或退出前会补存最新内容，不再询问是否保存。新页面有标题或正文后自动创建文件，空白未编辑页面不产生文件。⌘S 仍可立即保存，全文搜索用 ⌘F。
 - 插入附件：工具栏回形针，或 ⇧⌘I
 - 目录：工具栏列表按钮，或 ⇧⌘L
@@ -102,5 +103,16 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/Vau
 xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Tests/PageOrderTests.swift -o .build/page-order-tests
 .build/page-order-tests
 ```
+
+标签页与真实 WebKit 编辑器验证（离屏窗口，临时页面，独立偏好；需要图形会话）：
+
+```sh
+sed 's/^@main struct AcdianApp/struct AcdianApp/' Sources/AcdianApp.swift > .build/AcdianApp-nomain.swift
+mkdir -p .build/editor-tab-tests && cp -R Resources/. .build/editor-tab-tests/
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm64-apple-macos14.0 $(ls Sources/*.swift | grep -v AcdianApp) .build/AcdianApp-nomain.swift Tests/EditorTabTests.swift -o .build/editor-tab-tests/editor-tab-tests
+.build/editor-tab-tests/editor-tab-tests
+```
+
+打开与切换耗时：同样方式用 `Tests/TabSwitchBenchmark.swift` 构建（加 `-O -D ACDIAN_HOST`）；去掉 `-D ACDIAN_HOST` 可对照 1.2.8 源码测量。
 
 测试通过独立的 `Fixtures/Vault` 或临时页面目录运行，不修改个人页面或保存偏好。
