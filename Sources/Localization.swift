@@ -42,7 +42,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "刷新页面": ("Refresh pages", "Actualizar páginas"),
         "删除": ("Delete", "Eliminar"),
         "新建文件夹": ("New folder", "Nueva carpeta"),
-        "新建": ("Create", "Crear"),
+        "已经有名为“%@”的项目，请换一个名称。": ("An item named “%@” already exists. Choose another name.", "Ya existe un elemento llamado «%@». Elige otro nombre."),
         "请输入有效的文件夹名称，不包含 / 或 :。": ("Enter a valid folder name without / or :.", "Introduce un nombre de carpeta válido que no contenga / ni :."),
         "移到垃圾桶": ("Move to Trash", "Mover a la papelera"),
         "垃圾桶": ("Trash", "Papelera"),

@@ -77,27 +77,43 @@ struct PageOrderTests {
         try check(model.selected?.relativePath == "Box/Open.md","The open page is selected at its new path")
         try check(try String(contentsOf:modelRoot.appendingPathComponent("Box/Open.md"),encoding:.utf8) == "# Edited","Unsaved edits are saved before the move")
 
-        // New folders: inside a folder, or next to a file; taken names get a number.
-        let folders = try vault("folders",["Top.md":"t","Box/Inner.md":"i","Box/新建文件夹/":""])
+        // New folders: inside a folder, or next to a file; then named in place.
+        let folders = try vault("folders",["Top.md":"t","Box/Inner.md":"i","Box/新建文件夹/":"","Box/资料/":""])
         let foldersModel = AppModel(loadInitialVault:false,preferences:preferences,pagesRoot:folders,trashNow:{ Date() })
+        foldersModel.language = .simplifiedChinese
         foldersModel.index = try VaultIndex(root:folders)
         func found(_ path: String) -> VaultEntry? { foldersModel.index.flatMap { AppModel.entry(path,in:$0.entries) } }
-        try check(foldersModel.newFolder("新建文件夹",near:found("Box")!) == "Box/新建文件夹 2","A folder made on a folder goes inside it, numbered when the name is taken")
-        try check(foldersModel.newFolder("  资料 ",near:found("Box/Inner.md")!) == "Box/资料","A folder made on a file goes next to it, with the name trimmed")
-        try check(foldersModel.newFolder("章节",near:found("Top.md")!) == "章节","A folder made on a top-level file goes in the pages root")
-        try check(foldersModel.folderExpanded("Box") == true,"The folder that received a new folder is opened")
-        try check(found("Box/新建文件夹 2")?.isDirectory == true && found("Box/资料")?.isDirectory == true && found("章节")?.isDirectory == true,"New folders show in the sidebar at once")
         func tree(_ entries: [VaultEntry]) -> [String] { entries.flatMap { [$0.relativePath] + tree($0.children ?? []) } }
-        try check(tree(foldersModel.index!.entries) == tree(try VaultIndex(root:folders).entries),"The sidebar lists new folders where a rescan would")
-        try check(try String(contentsOf:folders.appendingPathComponent("Box/Inner.md"),encoding:.utf8) == "i","Existing pages are untouched")
+        foldersModel.query = "Inner"
+        try check(foldersModel.newFolder(near:found("Box")!) == "Box/新建文件夹 2","A folder made on a folder goes inside it, numbered when the name is taken")
+        try check(foldersModel.renamingFolder == "Box/新建文件夹 2" && found("Box/新建文件夹 2")?.isDirectory == true,"The new folder shows at once with its name being edited")
+        try check(foldersModel.folderExpanded("Box") == true && foldersModel.query.isEmpty,"The folder that received it is opened and the tree is shown")
+        try check(foldersModel.finishRenaming("Box/新建文件夹 2",to:"  第一章 ") == "Box/第一章" && foldersModel.renamingFolder == nil,"Typing a name renames it, trimmed")
+        try check(fm.fileExists(atPath:folders.appendingPathComponent("Box/第一章").path) && !fm.fileExists(atPath:folders.appendingPathComponent("Box/新建文件夹 2").path),"The rename happens on disk")
+        try check(found("Box/第一章") != nil && found("Box/新建文件夹 2") == nil,"The sidebar shows the new name")
+        try check(foldersModel.newFolder(near:found("Box/Inner.md")!) == "Box/新建文件夹 2","A folder made on a file goes next to it")
+        try check(foldersModel.finishRenaming("Box/新建文件夹 2",to:nil) == "Box/新建文件夹 2" && foldersModel.renamingFolder == nil && found("Box/新建文件夹 2") != nil,"Escape keeps the name it was made with")
+        try check(foldersModel.newFolder(near:found("Top.md")!) == "新建文件夹","A folder made on a top-level file goes in the pages root")
+        try check(foldersModel.finishRenaming("新建文件夹",to:"新建文件夹") == "新建文件夹" && found("新建文件夹") != nil,"Keeping the same name changes nothing")
+        try check(foldersModel.finishRenaming("新建文件夹",to:"再改") == nil && found("新建文件夹") != nil,"Only the folder being named can be renamed this way")
+        foldersModel.newFolder(near:found("Box")!)
+        foldersModel.error = nil
+        try check(foldersModel.finishRenaming("Box/新建文件夹 3",to:"资料") == "Box/新建文件夹 3" && foldersModel.error?.contains("资料") == true,"A taken name is refused and the folder keeps its name")
+        try check(try String(contentsOf:folders.appendingPathComponent("Box/资料").appendingPathComponent("..").appendingPathComponent("Inner.md"),encoding:.utf8) == "i","Existing items are untouched")
         for bad in ["", "  ", "a/b", "a:b", ".hidden"] {
+            foldersModel.newFolder(near:found("Top.md")!)
+            let made = foldersModel.renamingFolder!
             foldersModel.error = nil
-            try check(foldersModel.newFolder(bad,near:found("Box")!) == nil && foldersModel.error != nil,"An invalid folder name is refused: \(bad)")
+            try check(foldersModel.finishRenaming(made,to:bad) == made && foldersModel.error != nil && found(made) != nil,"An invalid folder name is refused: \(bad)")
+            try fm.removeItem(at:folders.appendingPathComponent(made)); foldersModel.index = try VaultIndex(root:folders)
         }
-        try check(try fm.contentsOfDirectory(atPath:folders.appendingPathComponent("Box").path).sorted() == ["Inner.md","新建文件夹","新建文件夹 2","资料"],"Refused names create nothing")
+        for _ in 0..<100 { try await Task.sleep(nanoseconds:10_000_000) }
+        try check(tree(foldersModel.index!.entries) == tree(try VaultIndex(root:folders).entries),"The sidebar lists new folders where a rescan would")
         refused = false
         do { try PageOrganizer(root:folders).createFolder("X",in:"../Escape") } catch VaultCoreError.unsafeLocation { refused = true }
         try check(refused,"A folder outside the pages folder is refused")
+        let caseRoot = try vault("case",["Notes/":""])
+        try check(try PageOrganizer(root:caseRoot).rename("Notes",to:"notes") == "notes" && (try fm.contentsOfDirectory(atPath:caseRoot.path)).contains("notes"),"A case-only rename works on a case-insensitive disk")
         print("PageOrder: \(checks) checks passed for custom order, new pages, safe moves, name conflicts, folder rules, keeping the open page and new folders")
     }
 }

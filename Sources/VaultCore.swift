@@ -19,6 +19,7 @@ enum VaultCoreError: LocalizedError {
     case conflict(URL)
     case unsafeLocation(URL)
     case invalidMove(URL)
+    case nameTaken(URL)
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +33,8 @@ enum VaultCoreError: LocalizedError {
             return "“\(url.lastPathComponent)”指向页面存储位置以外，已停止读取或保存。"
         case .invalidMove(let url):
             return "无法把“\(url.lastPathComponent)”移动到它自己里面。"
+        case .nameTaken(let url):
+            return "已经有名为“\(url.lastPathComponent)”的项目，请换一个名称。"
         }
     }
 }
@@ -478,6 +481,36 @@ struct PageOrganizer {
                 return folder.isEmpty ? candidate : folder + "/" + candidate
             } catch let error as CocoaError where error.code == .fileWriteFileExists { number += 1 }
         }
+    }
+    /// Renames an item where it is and keeps its place in the sidebar.
+    /// Returns the new relative path.
+    @discardableResult func rename(_ path: String, to name: String) throws -> String {
+        let components = try Self.components(path)
+        let folder = components.dropLast().joined(separator: "/")
+        let source = root.appendingPathComponent(path)
+        guard !name.isEmpty, !name.contains("/"), name != ".", name != "..",
+              FileManager.default.fileExists(atPath: source.path), inside(source.deletingLastPathComponent()) else {
+            throw VaultCoreError.unsafeLocation(source)
+        }
+        let newPath = folder.isEmpty ? name : folder + "/" + name
+        guard newPath != path else { return path }
+        let destination = source.deletingLastPathComponent().appendingPathComponent(name)
+        // A case-only change on a case-insensitive disk names the same item.
+        func inode(_ url: URL) -> Int? { (try? FileManager.default.attributesOfItem(atPath: url.path))?[.systemFileNumber] as? Int }
+        let sameItem = inode(destination) != nil && inode(destination) == inode(source)
+        let result = sameItem ? Darwin.rename(source.path, destination.path) : renamex_np(source.path, destination.path, UInt32(RENAME_EXCL))
+        if result != 0 {
+            if errno == EEXIST { throw VaultCoreError.nameTaken(destination) }
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: source.path])
+        }
+        let saved = Self.loadOrder(root: root)
+        var order = saved
+        if let index = order[folder]?.firstIndex(of: components.last!) { order[folder]![index] = name }
+        for key in order.keys where key == path || key.hasPrefix(path + "/") {
+            order[newPath + key.dropFirst(path.count)] = order.removeValue(forKey: key)
+        }
+        if order != saved { try saveOrder(order) }
+        return newPath
     }
     /// The vault root itself, or a real (non-alias) location inside it.
     private func inside(_ url: URL) -> Bool {

@@ -192,6 +192,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             case .conflict(let url): return localized("“%@”已被其他应用修改。请重新载入后再保存，避免覆盖外部修改。",url.lastPathComponent)
             case .unsafeLocation(let url): return localized("“%@”指向页面存储位置以外，已停止读取或保存。",url.lastPathComponent)
             case .invalidMove(let url): return localized("无法把“%@”移动到它自己里面。",url.lastPathComponent)
+            case .nameTaken(let url): return localized("已经有名为“%@”的项目，请换一个名称。",url.lastPathComponent)
             }
         }
         return localized(error.localizedDescription)
@@ -393,29 +394,41 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let current = selected.url.standardizedFileURL.resolvingSymlinksInPath().pathComponents.map { $0.precomposedStringWithCanonicalMapping }
         return current == target || (entry.isDirectory && current.count > target.count && Array(current.prefix(target.count)) == target)
     }
-    /// Asks for a name, then creates a folder inside `entry` when it is a
-    /// folder, or next to it when it is a file.
-    func promptNewFolder(near entry: VaultEntry, created: (() -> Void)? = nil) {
-        let alert = NSAlert(); alert.messageText = localized("新建文件夹")
-        let field = NSTextField(string:localized("新建文件夹")); field.frame = NSRect(x:0,y:0,width:260,height:24)
-        alert.accessoryView = field; alert.window.initialFirstResponder = field
-        alert.addButton(withTitle:localized("新建")); alert.addButton(withTitle:localized("取消"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        if newFolder(field.stringValue,near:entry) != nil { created?() }
-    }
-    @discardableResult func newFolder(_ name: String, near entry: VaultEntry) -> String? {
+    /// The folder whose name the sidebar is editing, right after it was made.
+    @Published var renamingFolder: String? { didSet { if renamingFolder != nil { renamingSession = UUID() } } }
+    /// A fresh name field for every new folder, even one reusing a path.
+    private(set) var renamingSession = UUID()
+    /// Creates a folder inside `entry` when it is a folder, or next to it when
+    /// it is a file, and starts editing its name in the sidebar.
+    @discardableResult func newFolder(near entry: VaultEntry) -> String? {
         guard let root = index?.root else { return nil }
-        let clean = name.trimmingCharacters(in:.whitespacesAndNewlines)
-        guard !clean.isEmpty, !clean.contains("/"), !clean.contains(":"), !clean.hasPrefix("."), clean.utf8.count <= 255 else {
-            error = localized("请输入有效的文件夹名称，不包含 / 或 :。"); return nil
-        }
         let parent = entry.isDirectory ? entry.relativePath : (entry.relativePath as NSString).deletingLastPathComponent
         do {
-            let path = try PageOrganizer(root:root).createFolder(clean,in:parent)
+            let path = try PageOrganizer(root:root).createFolder(localized("新建文件夹"),in:parent)
             if !parent.isEmpty { setFolderExpanded(parent,true) }
             if index?.root == root { index = index?.addingFolder(path) }
+            query = ""; renamingFolder = path
             return path
         } catch { self.error = localizedError(error); return nil }
+    }
+    /// Ends editing a new folder's name. `nil` keeps the name it was made with.
+    @discardableResult func finishRenaming(_ path: String, to name: String?) -> String? {
+        guard renamingFolder == path else { return nil }
+        renamingFolder = nil
+        guard let name, let root = index?.root else { return path }
+        let clean = name.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard clean != (path as NSString).lastPathComponent else { return path }
+        guard !clean.isEmpty, !clean.contains("/"), !clean.contains(":"), !clean.hasPrefix("."), clean.utf8.count <= 255 else {
+            error = localized("请输入有效的文件夹名称，不包含 / 或 :。"); return path
+        }
+        do {
+            let newPath = try PageOrganizer(root:root).rename(path,to:clean)
+            moveFolderStates(from:path,to:newPath); remapTabs(from:path,to:newPath)
+            if index?.root == root { index = index?.removing(path).addingFolder(newPath) }
+            // Anything dropped into the folder while it was being named.
+            rescanInBackground(root)
+            return newPath
+        } catch { self.error = localizedError(error); return path }
     }
     /// Moves a sidebar item, or reorders it within its folder. Unsaved edits are
     /// saved first when the open page moves, and it stays open at its new path.

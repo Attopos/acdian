@@ -1,0 +1,103 @@
+import AppKit
+import SwiftUI
+
+// The sidebar's new-folder row in an off-screen window, with a temporary
+// pages folder and isolated preferences. Build with every source except
+// AcdianApp.swift; see README.
+@main
+struct NewFolderFieldTests {
+    static func main() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let runner = NewFolderFieldRunner()
+        app.delegate = runner
+        app.run()
+    }
+}
+
+private struct SidebarTree: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        VStack(spacing:0) { ForEach(model.index?.entries ?? []) { TreeRow(entry:$0,depth:0) }; Spacer() }.frame(width:260,height:320)
+    }
+}
+
+@MainActor final class NewFolderFieldRunner: NSObject, NSApplicationDelegate {
+    var checks = 0
+    let fm = FileManager.default
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("acdian-new-folder-tests-\(UUID().uuidString)",isDirectory:true)
+    let suite = "acdian-new-folder-tests-\(UUID().uuidString)"
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in
+            var failed: Error?
+            do { try await run() } catch { failed = error }
+            try? fm.removeItem(at:root); UserDefaults.standard.removePersistentDomain(forName:suite)
+            if let failed { print("NewFolderField FAILED after \(checks) checks: \(failed.localizedDescription)"); exit(1) }
+            print("NewFolderField: \(checks) checks passed for the in-place name field: shown at once, name selected, Return renames, Escape keeps the old name, leaving the field or clicking elsewhere keeps the typed one")
+            exit(0)
+        }
+    }
+    func check(_ condition: Bool, _ message: String) throws {
+        guard condition else { throw NSError(domain:"NewFolderFieldTest",code:1,userInfo:[NSLocalizedDescriptionKey:message]) }
+        checks += 1
+    }
+    func eventually(_ message: String, _ condition: () -> Bool) async throws {
+        for _ in 0..<300 { if condition() { checks += 1; return }; try await Task.sleep(nanoseconds:10_000_000) }
+        throw NSError(domain:"NewFolderFieldTest",code:2,userInfo:[NSLocalizedDescriptionKey:message])
+    }
+    func run() async throws {
+        try fm.createDirectory(at:root.appendingPathComponent("Box"),withIntermediateDirectories:true)
+        try Data("# Page".utf8).write(to:root.appendingPathComponent("Box/Page.md"))
+        guard let preferences = UserDefaults(suiteName:suite) else { fatalError("No isolated preferences") }
+        let model = AppModel(loadInitialVault:false,preferences:preferences,pagesRoot:root,trashNow:{ Date() })
+        model.language = .simplifiedChinese
+        model.index = try VaultIndex(root:root)
+        let window = NSWindow(contentRect:NSRect(x:-6000,y:-6000,width:260,height:320),styleMask:[.titled],backing:.buffered,defer:false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView:SidebarTree().environmentObject(model))
+        window.orderFrontRegardless(); window.makeKey()
+        func box() -> VaultEntry { AppModel.entry("Box",in:model.index!.entries)! }
+        func editor() -> NSTextView? { window.firstResponder as? NSTextView }
+
+        // Made on a folder: the row shows inside it with the whole name selected.
+        model.newFolder(near:box())
+        try await eventually("The name field takes the keyboard") { editor()?.string == "新建文件夹" }
+        try check(editor()!.selectedRange() == NSRange(location:0,length:("新建文件夹" as NSString).length),"The whole default name is selected, ready to type over")
+        if let path = ProcessInfo.processInfo.environment["ACDIAN_SNAPSHOT"], let view = window.contentView,
+           let image = view.bitmapImageRepForCachingDisplay(in:view.bounds) {
+            view.cacheDisplay(in:view.bounds,to:image)
+            try image.representation(using:.png,properties:[:])?.write(to:URL(fileURLWithPath:path))
+        }
+        editor()!.insertText("第一章",replacementRange:editor()!.selectedRange())
+        editor()!.doCommand(by:#selector(NSResponder.insertNewline(_:)))
+        try await eventually("Return renames the folder") { model.renamingFolder == nil && self.fm.fileExists(atPath:self.root.appendingPathComponent("Box/第一章").path) }
+        try check(!fm.fileExists(atPath:root.appendingPathComponent("Box/新建文件夹").path) && AppModel.entry("Box/第一章",in:model.index!.entries) != nil,"Only the typed name remains, on disk and in the sidebar")
+
+        // Made on a file: Escape keeps the default name.
+        model.newFolder(near:AppModel.entry("Box/Page.md",in:model.index!.entries)!)
+        try await eventually("A second name field takes the keyboard") { editor()?.string == "新建文件夹" }
+        editor()!.insertText("不要",replacementRange:editor()!.selectedRange())
+        editor()!.doCommand(by:#selector(NSResponder.cancelOperation(_:)))
+        try await eventually("Escape ends editing") { model.renamingFolder == nil }
+        try check(fm.fileExists(atPath:root.appendingPathComponent("Box/新建文件夹").path) && !fm.fileExists(atPath:root.appendingPathComponent("Box/不要").path),"Escape keeps the name the folder was made with")
+
+        // Clicking elsewhere keeps what was typed.
+        model.newFolder(near:box())
+        try await eventually("A third name field takes the keyboard") { editor()?.string == "新建文件夹 2" }
+        editor()!.insertText("资料",replacementRange:editor()!.selectedRange())
+        window.makeFirstResponder(nil)
+        try await eventually("Leaving the field renames the folder") { model.renamingFolder == nil && self.fm.fileExists(atPath:self.root.appendingPathComponent("Box/资料").path) }
+        try await eventually("No name field is left in the sidebar") { editor() == nil }
+
+        // A mouse click elsewhere in the sidebar ends editing, as in Finder.
+        model.newFolder(near:box())
+        try await eventually("A fourth name field takes the keyboard") { editor()?.string == "新建文件夹 2" }
+        editor()!.insertText("练习",replacementRange:editor()!.selectedRange())
+        for type in [NSEvent.EventType.leftMouseDown,.leftMouseUp] {
+            let event = NSEvent.mouseEvent(with:type,location:NSPoint(x:200,y:20),modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,windowNumber:window.windowNumber,context:nil,eventNumber:0,clickCount:1,pressure:1)!
+            NSApp.sendEvent(event)
+        }
+        try await eventually("Clicking elsewhere renames the folder") { model.renamingFolder == nil && self.fm.fileExists(atPath:self.root.appendingPathComponent("Box/练习").path) }
+        window.close()
+    }
+}

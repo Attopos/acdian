@@ -254,11 +254,13 @@ struct TreeRow: View {
     @State private var expanded = false
     var body: some View {
         VStack(spacing:2) {
-            if entry.isDirectory {
+            if entry.isDirectory, model.renamingFolder == entry.relativePath {
+                FolderNameField(entry:entry,depth:depth).id(model.renamingSession)
+            } else if entry.isDirectory {
                 Button { withAnimation(.easeInOut(duration:0.12)) { expanded.toggle() }; model.setFolderExpanded(entry.relativePath,expanded) } label: {
                     HStack(spacing:6) { Image(systemName:expanded ? "chevron.down" : "chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8); Image(systemName:expanded ? "folder.fill" : "folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72)); Text(entry.name).font(.system(size:12)).lineLimit(1); Spacer() }.foregroundStyle(.secondary).padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29).contentShape(Rectangle())
                 }.buttonStyle(.plain).contextMenu {
-                    Button { model.promptNewFolder(near:entry) { expanded = true } } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
+                    Button { if model.newFolder(near:entry) != nil { expanded = true } } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
                     Divider()
                     Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
                 }
@@ -268,6 +270,81 @@ struct TreeRow: View {
                 if expanded { ForEach(entry.children ?? []) { child in TreeRow(entry:child,depth:depth+1) } }
             } else { FileRow(entry:entry,indent:depth) }
         }.onAppear { expanded = model.folderExpanded(entry.relativePath) ?? (depth == 0 && !["attachment","attachments","assets"].contains(entry.name.lowercased())) }
+    }
+}
+/// A just-made folder's row, with its name selected for typing a new one.
+/// Return or clicking anywhere else keeps the typed name; Escape keeps the old one.
+struct FolderNameField: View {
+    @EnvironmentObject var model: AppModel
+    let entry: VaultEntry
+    let depth: Int
+    var body: some View {
+        HStack(spacing:6) {
+            Image(systemName:"chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8).foregroundStyle(.secondary)
+            Image(systemName:"folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72))
+            FolderNameEditor(initial:entry.name) { name in model.finishRenaming(entry.relativePath,to:name) }
+                .frame(maxWidth:.infinity).padding(.horizontal,4).padding(.vertical,2)
+                .background(Color.wash,in:RoundedRectangle(cornerRadius:4))
+                .overlay(RoundedRectangle(cornerRadius:4).strokeBorder(Color.acPink.opacity(0.6)))
+        }.padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29)
+    }
+}
+private struct FolderNameEditor: NSViewRepresentable {
+    let initial: String
+    let finish: (String?) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(finish) }
+    func makeNSView(context: Context) -> NSTextField {
+        let field = FocusingField(string:initial)
+        field.isBordered = false; field.drawsBackground = false; field.focusRingType = .none
+        field.font = .systemFont(ofSize:12); field.lineBreakMode = .byClipping; field.cell?.isScrollable = true
+        field.setAccessibilityIdentifier("folderNameField")
+        field.delegate = context.coordinator
+        context.coordinator.watch(field)
+        return field
+    }
+    /// Takes the keyboard, with its whole name selected, once it is on screen.
+    final class FocusingField: NSTextField {
+        private var focused = false
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard !focused, window != nil else { return }
+            focused = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window else { return }
+                window.makeFirstResponder(self); self.currentEditor()?.selectAll(nil)
+            }
+        }
+    }
+    func updateNSView(_ field: NSTextField, context: Context) {}
+    static func dismantleNSView(_ field: NSTextField, coordinator: Coordinator) { coordinator.stopWatching() }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        private let finish: (String?) -> Void
+        private weak var field: NSTextField?
+        private var monitor: Any?
+        private var cancelled = false, done = false
+        init(_ finish: @escaping (String?) -> Void) { self.finish = finish }
+        /// Like Finder, a click anywhere else in the window ends editing.
+        func watch(_ field: NSTextField) {
+            self.field = field
+            monitor = NSEvent.addLocalMonitorForEvents(matching:[.leftMouseDown,.rightMouseDown,.otherMouseDown]) { [weak self] event in
+                if let field = self?.field, event.window === field.window,
+                   !field.bounds.contains(field.convert(event.locationInWindow,from:nil)) { field.window?.makeFirstResponder(nil) }
+                return event
+            }
+        }
+        func stopWatching() { if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil }
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            guard selector == #selector(NSResponder.insertNewline(_:)) || selector == #selector(NSResponder.cancelOperation(_:)) else { return false }
+            cancelled = selector == #selector(NSResponder.cancelOperation(_:))
+            control.window?.makeFirstResponder(nil)
+            return true
+        }
+        func controlTextDidEndEditing(_ notification: Notification) {
+            guard !done, let field else { return }
+            done = true; stopWatching()
+            finish(cancelled ? nil : field.stringValue)
+        }
     }
 }
 struct FileRow: View {
@@ -281,7 +358,7 @@ struct FileRow: View {
         Button { model.open(entry) } label: {
             HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(entry.ext == "md" ? String(entry.name.dropLast(3)) : entry.name).font(.system(size:12)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:9)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,7).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
         }.buttonStyle(.plain).help(entry.relativePath).contextMenu {
-            Button { model.promptNewFolder(near:entry) } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
+            Button { model.newFolder(near:entry) } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
             Divider()
             Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
         }
