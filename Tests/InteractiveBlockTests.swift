@@ -124,7 +124,7 @@ struct InteractiveBlockTests {
             model.refresh()
             while model.index?.files.contains(where: { $0.relativePath == "Demo.md" }) != true { await pause(0.05) }
             model.open(model.index!.files.first { $0.relativePath == "Demo.md" }!)
-            await pause(1); _ = await js("document.documentElement.classList.toggle('light',\(ProcessInfo.processInfo.environment["ACDIAN_LIGHT"] != nil))")
+            await pause(1); _ = await js("document.documentElement.classList.toggle('light',\(ProcessInfo.processInfo.environment["ACDIAN_LIGHT"] == "1"))")
             print("  demo errors: \(await js("(()=>{const f=document.querySelector('iframe.cm-interactive-frame');return f?Math.round(f.getBoundingClientRect().height):-1})()") ?? "none")")
             await pause(2.5)
         }
