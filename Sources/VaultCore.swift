@@ -125,6 +125,26 @@ struct VaultIndex {
         return VaultIndex(canonicalRoot: root, entries: arranged, files: files.filter { $0.relativePath != file.relativePath } + [file])
     }
 
+    /// The same index with one more empty folder, placed where a rescan would list it.
+    func addingFolder(_ relativePath: String) -> VaultIndex {
+        let parentPath = (relativePath as NSString).deletingLastPathComponent
+        let order = PageOrganizer.loadOrder(root: root)[parentPath]
+        let folder = VaultEntry(relativePath: relativePath, url: root.appendingPathComponent(relativePath, isDirectory: true),
+                                name: (relativePath as NSString).lastPathComponent, isDirectory: true, children: [], modified: Date(), size: 0)
+        func place(_ list: [VaultEntry]) -> [VaultEntry] {
+            PageOrganizer.arrange((list.filter { $0.relativePath != relativePath } + [folder]).sorted(by: PageOrganizer.defaultOrder), names: order, name: \.name)
+        }
+        func insert(_ list: [VaultEntry]) -> [VaultEntry] {
+            list.map { entry in
+                guard entry.isDirectory, entry.relativePath == parentPath || parentPath.hasPrefix(entry.relativePath + "/") else { return entry }
+                let children = entry.relativePath == parentPath ? place(entry.children ?? []) : insert(entry.children ?? [])
+                return VaultEntry(relativePath: entry.relativePath, url: entry.url, name: entry.name, isDirectory: true,
+                                  children: children, modified: entry.modified, size: entry.size)
+            }
+        }
+        return VaultIndex(canonicalRoot: root, entries: parentPath.isEmpty ? place(entries) : insert(entries), files: files)
+    }
+
     /// The same index without an item and, for a folder, everything inside it.
     func removing(_ relativePath: String) -> VaultIndex {
         func gone(_ path: String) -> Bool { path == relativePath || path.hasPrefix(relativePath + "/") }
@@ -440,6 +460,24 @@ struct PageOrganizer {
         order[target.folder] = names
         try saveOrder(order)
         return newPath
+    }
+    /// Creates a folder inside `folder`, numbering the name if it is taken.
+    /// Returns the new relative path.
+    @discardableResult func createFolder(_ name: String, in folder: String) throws -> String {
+        if !folder.isEmpty { _ = try Self.components(folder) }
+        let parent = folder.isEmpty ? root : root.appendingPathComponent(folder, isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: parent.path, isDirectory: &isDirectory), isDirectory.boolValue, inside(parent) else {
+            throw VaultCoreError.unsafeLocation(parent)
+        }
+        var number = 1
+        while true {
+            let candidate = Self.numberedName(name, isDirectory: true, number: number)
+            do {
+                try FileManager.default.createDirectory(at: parent.appendingPathComponent(candidate), withIntermediateDirectories: false)
+                return folder.isEmpty ? candidate : folder + "/" + candidate
+            } catch let error as CocoaError where error.code == .fileWriteFileExists { number += 1 }
+        }
     }
     /// The vault root itself, or a real (non-alias) location inside it.
     private func inside(_ url: URL) -> Bool {

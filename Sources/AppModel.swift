@@ -393,6 +393,30 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let current = selected.url.standardizedFileURL.resolvingSymlinksInPath().pathComponents.map { $0.precomposedStringWithCanonicalMapping }
         return current == target || (entry.isDirectory && current.count > target.count && Array(current.prefix(target.count)) == target)
     }
+    /// Asks for a name, then creates a folder inside `entry` when it is a
+    /// folder, or next to it when it is a file.
+    func promptNewFolder(near entry: VaultEntry, created: (() -> Void)? = nil) {
+        let alert = NSAlert(); alert.messageText = localized("新建文件夹")
+        let field = NSTextField(string:localized("新建文件夹")); field.frame = NSRect(x:0,y:0,width:260,height:24)
+        alert.accessoryView = field; alert.window.initialFirstResponder = field
+        alert.addButton(withTitle:localized("新建")); alert.addButton(withTitle:localized("取消"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if newFolder(field.stringValue,near:entry) != nil { created?() }
+    }
+    @discardableResult func newFolder(_ name: String, near entry: VaultEntry) -> String? {
+        guard let root = index?.root else { return nil }
+        let clean = name.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !clean.isEmpty, !clean.contains("/"), !clean.contains(":"), !clean.hasPrefix("."), clean.utf8.count <= 255 else {
+            error = localized("请输入有效的文件夹名称，不包含 / 或 :。"); return nil
+        }
+        let parent = entry.isDirectory ? entry.relativePath : (entry.relativePath as NSString).deletingLastPathComponent
+        do {
+            let path = try PageOrganizer(root:root).createFolder(clean,in:parent)
+            if !parent.isEmpty { setFolderExpanded(parent,true) }
+            if index?.root == root { index = index?.addingFolder(path) }
+            return path
+        } catch { self.error = localizedError(error); return nil }
+    }
     /// Moves a sidebar item, or reorders it within its folder. Unsaved edits are
     /// saved first when the open page moves, and it stays open at its new path.
     // One drop highlight for the whole sidebar, so a finished or cancelled drag

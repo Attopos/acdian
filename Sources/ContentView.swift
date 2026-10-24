@@ -258,6 +258,8 @@ struct TreeRow: View {
                 Button { withAnimation(.easeInOut(duration:0.12)) { expanded.toggle() }; model.setFolderExpanded(entry.relativePath,expanded) } label: {
                     HStack(spacing:6) { Image(systemName:expanded ? "chevron.down" : "chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8); Image(systemName:expanded ? "folder.fill" : "folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72)); Text(entry.name).font(.system(size:12)).lineLimit(1); Spacer() }.foregroundStyle(.secondary).padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29).contentShape(Rectangle())
                 }.buttonStyle(.plain).contextMenu {
+                    Button { model.promptNewFolder(near:entry) { expanded = true } } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
+                    Divider()
                     Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
                 }
                 .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
@@ -279,6 +281,8 @@ struct FileRow: View {
         Button { model.open(entry) } label: {
             HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(entry.ext == "md" ? String(entry.name.dropLast(3)) : entry.name).font(.system(size:12)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:9)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,7).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
         }.buttonStyle(.plain).help(entry.relativePath).contextMenu {
+            Button { model.promptNewFolder(near:entry) } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
+            Divider()
             Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
         }
         .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
