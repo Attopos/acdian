@@ -39,6 +39,8 @@ struct EditorSnapshot {
     var selectionAnchor: Int? = nil
     var selectionHead: Int? = nil
 }
+/// One open page in the tab bar. A new page has no path until its first save.
+struct PageTab: Identifiable { let id = UUID(); var path: String? }
 
 @MainActor final class AppModel: ObservableObject {
     @Published var index: VaultIndex?
@@ -76,6 +78,10 @@ struct EditorSnapshot {
     private var savedDraftContent: String?
     var persistedPage: VaultEntry? { isDraft ? draftFile : selected }
     var currentPagePath: String? { persistedPage?.relativePath }
+    // Open pages, like browser tabs. The active tab holds the page in the editor,
+    // and stays active behind the trash view so a relaunch returns to it.
+    @Published private(set) var tabs: [PageTab] = [] { didSet { saveTabs() } }
+    @Published private(set) var activeTabID: UUID? = nil { didSet { saveTabs() } }
     @Published var query = ""
     @Published var showOutline = true
     @Published var showSidebar = true
@@ -184,7 +190,7 @@ struct EditorSnapshot {
         do {
             let newIndex = try VaultIndex(root:resolvePageStorage())
             index = newIndex; rebuildSearch(); statusValue = .openedPages(newIndex.files.count)
-            refreshTrash()
+            refreshTrash(); restoreTabs(openActive:false)
             return true
         } catch { self.error = localizedError(error); return false }
     }
@@ -198,7 +204,7 @@ struct EditorSnapshot {
                     guard self.loadID == request else { return }
                     self.index = newIndex; self.selected = nil; self.text = ""; self.originalText = ""; self.clearDraftState(); self.query = ""; self.insertion = nil; self.loading = false; self.editorDocumentID = UUID()
                     self.showingTrash = false; self.rebuildSearch(); self.statusValue = .openedPages(newIndex.files.count)
-                    self.refreshTrash()
+                    self.refreshTrash(); self.restoreTabs(openActive:true)
                 }
             } catch { DispatchQueue.main.async { guard self.loadID == request else { return }; self.loading = false; self.error = self.localizedError(error) } }
         }
@@ -284,8 +290,12 @@ struct EditorSnapshot {
                 try trash.moveToTrash(relativePath:entry.relativePath)
                 // Cancel directory scans and pending opens of the moved path.
                 self.loadID = UUID(); self.openID = UUID(); self.loading = false
+                let activeIndex = self.tabs.firstIndex(where: { $0.id == self.activeTabID })
+                self.tabs.removeAll { tab in (affectsSelection && tab.id == self.activeTabID) || tab.path.map { $0 == entry.relativePath || $0.hasPrefix(entry.relativePath + "/") } == true }
+                if !self.tabs.contains(where: { $0.id == self.activeTabID }) { self.activeTabID = nil }
                 if affectsSelection { self.clearOpenDocument() }
                 self.reindexAfterTrashMutation(root)
+                if affectsSelection, let activeIndex { self.selectTab(near:activeIndex) }
                 self.refreshTrash(); self.statusValue = .trashed
                 completion?(true)
             } catch { self.error = self.localizedError(error); completion?(false) }
@@ -348,6 +358,7 @@ struct EditorSnapshot {
                     case .success(let (newPath,newIndex)):
                         if self.loadID == request { self.loading = false }
                         if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath) }
+                        self.remapTabs(from:relativePath,to:newPath)
                         self.index = newIndex; self.rebuildSearch()
                         if affectsSelection, let openPath, newPath != relativePath {
                             let moved = openPath == relativePath ? newPath : newPath + openPath.dropFirst(relativePath.count)
@@ -457,10 +468,14 @@ struct EditorSnapshot {
     private func openAfterSnapshot(_ entry: VaultEntry, fragment: String, skipConfirmation: Bool) {
         guard skipConfirmation || saveBeforeLeaving() else { return }
         showingTrash = false
+        // A page already in a tab is shown there, and a blank new page hands
+        // its tab to the page opened from it; anything else gets a new tab.
+        let tab = tabs.first(where: { $0.path == entry.relativePath })?.id ?? (isDraft && draftFile == nil ? activeTabID : nil)
         let needsText = entry.ext == "md" || ["txt","json","csv","css","js","yaml","yml","canvas","xml","html","log"].contains(entry.ext)
         let request = UUID(); openID = request
         let root = index?.root
         func install(_ content: String) {
+            showInTab(tab,path:entry.relativePath)
             selected = entry; text = content; originalText = content; clearDraftState(); anchor = fragment; pdfPage = fragment.hasPrefix("page=") ? (Int(fragment.dropFirst(5)) ?? 1) : 1; pdfPageCount = 0; insertion = nil; loading = false; editorDocumentID = UUID()
             status = entry.relativePath
         }
@@ -473,6 +488,7 @@ struct EditorSnapshot {
                 let content = try VaultFileIO.readMarkdown(at:entry.url,allowedRoot:root)
                 DispatchQueue.main.async {
                     guard self.openID == request else { return }
+                    self.showInTab(tab,path:entry.relativePath)
                     self.selected = entry; self.text = content; self.originalText = content; self.clearDraftState(); self.anchor = fragment; self.pdfPage = fragment.hasPrefix("page=") ? (Int(fragment.dropFirst(5)) ?? 1) : 1; self.pdfPageCount = 0; self.insertion = nil; self.loading = false; self.status = entry.relativePath; self.editorDocumentID = UUID()
                 }
             } catch { DispatchQueue.main.async { guard self.openID == request else { return }; self.loading = false; self.error = self.localizedError(error) } }
@@ -484,6 +500,70 @@ struct EditorSnapshot {
             guard self.saveBeforeLeaving() else { return }
             self.clearOpenDocument(); self.showingTrash = false; self.statusValue = .ready
         }
+    }
+    // Tabs are remembered per pages folder, so a relaunch reopens them.
+    private var tabsKey: String { "openTabs:" + (index?.root.path ?? "") }
+    private var activeTabKey: String { "activeTab:" + (index?.root.path ?? "") }
+    private func saveTabs() {
+        guard index != nil else { return }
+        preferences.set(tabs.compactMap(\.path),forKey:tabsKey)
+        preferences.set(tabs.first(where: { $0.id == activeTabID })?.path,forKey:activeTabKey)
+    }
+    private func restoreTabs(openActive: Bool) {
+        guard let index else { return }
+        let files = Set(index.files.map(\.relativePath)), active = preferences.string(forKey:activeTabKey)
+        var seen = Set<String>()
+        tabs = (preferences.stringArray(forKey:tabsKey) ?? []).filter { files.contains($0) && seen.insert($0).inserted }.map { PageTab(path:$0) }
+        if openActive, let tab = tabs.first(where: { $0.path == active }) ?? tabs.last { selectTab(tab.id) }
+    }
+    private func showInTab(_ id: UUID?, path: String?) {
+        guard let id, let i = tabs.firstIndex(where: { $0.id == id }) else { let tab = PageTab(path:path); tabs.append(tab); activeTabID = tab.id; return }
+        if tabs[i].path != path { tabs[i].path = path }
+        if activeTabID != id { activeTabID = id }
+    }
+    private func remapTabs(from old: String, to new: String) {
+        guard old != new, tabs.contains(where: { $0.path == old || $0.path?.hasPrefix(old + "/") == true }) else { return }
+        tabs = tabs.map { tab in
+            var tab = tab
+            if let path = tab.path, path == old || path.hasPrefix(old + "/") { tab.path = new + path.dropFirst(old.count) }
+            return tab
+        }
+    }
+    func tabTitle(_ tab: PageTab) -> String {
+        if tab.id == activeTabID, isDraft {
+            let title = draftTitle.trimmingCharacters(in:.whitespacesAndNewlines)
+            return title.isEmpty ? "New Page" : title
+        }
+        guard let path = tab.path else { return "New Page" }
+        let name = (path as NSString).lastPathComponent
+        return name.lowercased().hasSuffix(".md") ? String(name.dropLast(3)) : name
+    }
+    func selectTab(_ id: UUID) {
+        guard let tab = tabs.first(where: { $0.id == id }), id != activeTabID || selected == nil else { return }
+        guard let path = tab.path else { newPageFromEditor(inTab:id); return }
+        guard let entry = index?.files.first(where: { $0.relativePath == path }) else { closeTab(id); return }
+        open(entry)
+    }
+    private func selectTab(near i: Int) {
+        guard !tabs.isEmpty else { return }
+        selectTab(tabs[min(i,tabs.count-1)].id)
+    }
+    /// Closing the front tab saves it first, then shows the tab to its right, or else its left.
+    func closeTab(_ id: UUID) {
+        guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
+        guard id == activeTabID, selected != nil else { tabs.remove(at:i); return }
+        openID = UUID()
+        withEditorSnapshot {
+            guard self.saveBeforeLeaving(), let i = self.tabs.firstIndex(where: { $0.id == id }) else { return }
+            self.tabs.remove(at:i); self.activeTabID = nil
+            self.clearOpenDocument(); self.statusValue = .ready
+            self.selectTab(near:i)
+        }
+    }
+    /// Command-W closes the front tab, and the window once no page is open.
+    func closeCurrentTab() {
+        if let activeTabID, selected != nil { closeTab(activeTabID) }
+        else { NSApp?.mainWindow?.performClose(nil) }
     }
     @discardableResult func save(automatically: Bool = false) -> Bool {
         cancelAutosave()
@@ -522,11 +602,12 @@ struct EditorSnapshot {
         guard let url = URL(string:raw), ["https","http","mailto"].contains(url.scheme?.lowercased() ?? "") else { return }
         NSWorkspace.shared.open(url)
     }
-    func newPageFromEditor(completion: (() -> Void)? = nil) {
+    func newPageFromEditor(inTab reused: UUID? = nil, completion: (() -> Void)? = nil) {
         guard ensurePageStorage() else { return }
         openID = UUID()
         withEditorSnapshot {
             guard self.saveBeforeLeaving(), let root = self.index?.root else { return }
+            let tab = reused ?? (self.isDraft && self.draftFile == nil ? self.activeTabID : nil)
             self.clearDraftState()
             let path = ".acdian-draft-\(UUID().uuidString).md"
             self.openID = UUID(); self.loadID = UUID()
@@ -536,6 +617,7 @@ struct EditorSnapshot {
             self.showingTrash = false
             self.anchor = ""; self.insertion = nil; self.pdfPage = 1; self.pdfPageCount = 0; self.loading = false
             self.editorDocumentID = UUID(); self.statusValue = .ready
+            self.showInTab(tab,path:nil)
             completion?()
         }
     }
@@ -588,6 +670,7 @@ struct EditorSnapshot {
                 }
             }
             draftFile = file; savedDraftContent = content; originalText = text
+            if let i = tabs.firstIndex(where: { $0.id == activeTabID }), tabs[i].path != file.relativePath { tabs[i].path = file.relativePath }
             searchCache[file.id] = content; statusValue = .saved(Date()); lastAutosaveError = nil
             return true
         } catch { reportSaveFailure(error,automatically:automatically); return false }

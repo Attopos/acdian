@@ -63,10 +63,10 @@ struct ContentView: View {
         HStack(spacing:0) {
             if model.showSidebar { SidebarView().frame(minWidth:220,idealWidth:256,maxWidth:300); Rectangle().fill(Color.faint).frame(width:1) }
             VStack(spacing:0) {
-                // No top bar: a transparent strip keeps clear of the window
-                // controls and still drags the window. A hidden sidebar comes
-                // back with Control-Command-S or View > Show or hide sidebar.
-                Color.clear.frame(height:30).contentShape(Rectangle())
+                // No top bar: open pages sit as tabs in a transparent strip that
+                // keeps clear of the window controls and still drags the window.
+                // A hidden sidebar comes back with Control-Command-S or View > Show or hide sidebar.
+                TabStrip().frame(height:30)
                 if model.showingTrash { TrashView(model:model) }
                 else if model.selected != nil { documentBody }
                 else { Color.canvas.frame(maxWidth:.infinity,maxHeight:.infinity) }
@@ -148,6 +148,39 @@ struct ContentView: View {
             else if model.selected?.ext == "pdf" { pdfControls.font(.system(size:11)).foregroundStyle(.secondary).buttonStyle(.borderless) }
             else if let file = model.selected, !model.showingTrash { Button { NSWorkspace.shared.activateFileViewerSelecting([file.url]) } label: { Image(systemName:"folder") }.buttonStyle(.borderless).help(model.localized("在 Finder 中显示")) }
         }.font(.system(size:10)).foregroundStyle(.tertiary).padding(.horizontal,20).frame(height:29)
+    }
+}
+
+// Tabs share the strip's width evenly, like browser tabs, up to a comfortable maximum.
+struct TabStrip: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        GeometryReader { geometry in
+            let leading: CGFloat = model.showSidebar ? 10 : 78
+            let width = model.tabs.isEmpty ? 0 : min(200,max(36,(geometry.size.width - leading - 10) / CGFloat(model.tabs.count) - 2))
+            HStack(spacing:2) {
+                ForEach(model.tabs) { tab in TabButton(tab:tab,active:tab.id == model.activeTabID && model.selected != nil && !model.showingTrash).frame(width:width) }
+            }.padding(.leading,leading).padding(.top,4).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
+        }.contentShape(Rectangle()).clipped()
+    }
+}
+struct TabButton: View {
+    @EnvironmentObject var model: AppModel
+    let tab: PageTab
+    let active: Bool
+    @State private var hovering = false
+    var body: some View {
+        HStack(spacing:2) {
+            Text(model.tabTitle(tab)).font(.system(size:12)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)
+            Button { model.closeTab(tab.id) } label: { Image(systemName:"xmark").font(.system(size:8,weight:.bold)).frame(width:16,height:16).contentShape(Rectangle()) }
+                .buttonStyle(.plain).opacity(active || hovering ? 1 : 0).accessibilityLabel(model.localized("关闭标签页"))
+        }
+        .foregroundStyle(active ? Color.primary : Color.secondary)
+        .padding(.leading,10).padding(.trailing,4).frame(height:24)
+        .background(active ? Color.wash : .clear,in:RoundedRectangle(cornerRadius:6))
+        .contentShape(Rectangle())
+        .onTapGesture { model.selectTab(tab.id) }
+        .onHover { hovering = $0 }
     }
 }
 

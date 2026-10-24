@@ -36,6 +36,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "新建页面": ("New page", "Nueva página"),
         "新建页面 ⌘N": ("New page ⌘N", "Nueva página ⌘N"),
         "保存页面": ("Save page", "Guardar página"),
+        "关闭标签页": ("Close tab", "Cerrar pestaña"),
         "搜索页面与内容": ("Search pages and content", "Buscar páginas y contenido"),
         "搜索页面": ("Search pages", "Buscar páginas"),
         "刷新页面": ("Refresh pages", "Actualizar páginas"),
