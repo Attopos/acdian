@@ -55,6 +55,12 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-live-block .callout { margin:0; }
 .cm-editor .cm-live-block a { cursor:pointer; }
 .cm-editor .cm-block-math { padding:8px 0; }
+.cm-editor .cm-block-interactive { cursor:default; overflow:hidden; background:#19191e; border:1px solid #ffffff10; border-radius:10px; }
+.cm-editor .cm-interactive-bar { display:flex; align-items:center; gap:6px; padding:5px 8px 5px 14px; border-bottom:1px solid #ffffff10; font-size:12px; line-height:1.6; color:#929099; user-select:none; }
+.cm-editor .cm-interactive-label { flex:1; color:#e57bad; }
+.cm-editor .cm-interactive-bar button { font:inherit; color:#929099; background:none; border:0; border-radius:5px; padding:1px 8px; cursor:pointer; }
+.cm-editor .cm-interactive-bar button:hover { color:#e5e3e8; background:#ffffff0d; }
+.cm-editor .cm-interactive-frame { display:block; width:100%; height:240px; border:0; background:transparent; color-scheme:normal; }
 .cm-editor .cm-activeLine { background:none; }
 .cm-editor .cm-tooltip { background:#202026; border-color:#ffffff14; color:#e5e3e8; }
 @media(max-width:700px){.cm-editor .cm-content{padding:30px 28px 90px;}.cm-editor .cm-heading-1{font-size:1.875em;}}

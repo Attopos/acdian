@@ -135,6 +135,57 @@ class BlockWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
+// An acdian-interactive block runs its HTML in a sandboxed frame: scripts only,
+// no same origin, and the frame's own policy blocks the network. The frame is
+// rebuilt only when the block's source changes, never as text moves around it.
+const interactiveFrameURL='acdian-resource://interactive/frame.html';
+const currentAppearance=()=>document.documentElement.classList.contains('light')?'light':'dark';
+function interactiveInfo(state,node) {
+  const info=node.node.getChild('CodeInfo');
+  if(!info)return null;
+  const words=state.doc.sliceString(info.from,info.to).trim().split(/\s+/);
+  if(words[0]!=='acdian-interactive')return null;
+  const height=/^height=(\d+)$/.exec(words.find(word=>/^height=/.test(word))||'');
+  return {height:height?Math.max(60,Math.min(1600,Number(height[1]))):0};
+}
+class InteractiveWidget extends WidgetType {
+  constructor(code,height,language) { super(); Object.assign(this,{code,height,language}); }
+  eq(other) { return this.code===other.code&&this.height===other.height&&this.language===other.language; }
+  get estimatedHeight() { return (this.height||240)+36; }
+  toDOM(view) {
+    const holder=document.createElement('div');holder.className='cm-live-block cm-block-interactive';
+    const bar=document.createElement('div');bar.className='cm-interactive-bar';
+    const label=document.createElement('span');label.className='cm-interactive-label';label.textContent='✦ '+uiText(view.state,'interactive');
+    const button=(text,action)=>{const element=document.createElement('button');element.type='button';element.textContent=text;element.addEventListener('mousedown',event=>event.preventDefault());element.addEventListener('click',event=>{event.preventDefault();action();});return element;};
+    const frame=document.createElement('iframe');frame.className='cm-interactive-frame';
+    frame.setAttribute('sandbox','allow-scripts');frame.setAttribute('referrerpolicy','no-referrer');frame.title=uiText(view.state,'interactive');
+    if(this.height){frame.dataset.fixedHeight='true';frame.style.height=this.height+'px';}
+    frame.addEventListener('load',()=>frame.contentWindow?.postMessage({type:'acdian-interactive:run',source:this.code,theme:currentAppearance(),language:metadata.language},'*'));
+    frame.src=interactiveFrameURL;
+    const rerun=button(uiText(view.state,'rerun'),()=>{frame.src='about:blank';requestAnimationFrame(()=>{frame.src=interactiveFrameURL;});});
+    // Editing puts the caret inside the block, which then shows its source.
+    const source=button(uiText(view.state,'editSource'),()=>{
+      if(!metadata.editable)return;
+      const pos=view.posAtDOM(holder),line=view.state.doc.lineAt(pos);
+      const target=line.number<view.state.doc.lines?view.state.doc.line(line.number+1).to:line.to;
+      view.dispatch({selection:EditorSelection.cursor(target),scrollIntoView:true});view.focus();
+    });
+    bar.append(label,rerun,source);holder.append(bar,frame);
+    return holder;
+  }
+  ignoreEvent() { return true; }
+}
+const interactiveFrames=()=>document.querySelectorAll('iframe.cm-interactive-frame');
+window.addEventListener('message',event=>{
+  if(event.data?.type!=='acdian-interactive:size')return;
+  for(const frame of interactiveFrames()) {
+    if(frame.contentWindow!==event.source||frame.dataset.fixedHeight)continue;
+    const height=Math.max(60,Math.min(1600,Math.ceil(Number(event.data.height)||0)));
+    if(Math.abs(height-frame.offsetHeight)>1){frame.style.height=height+'px';window.acdianEditor?.requestMeasure();}
+  }
+});
+new MutationObserver(()=>{const theme=currentAppearance();for(const frame of interactiveFrames())frame.contentWindow?.postMessage({type:'acdian-interactive:theme',theme},'*');}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+
 class CalloutKindWidget extends WidgetType {
   constructor(kind,title) {super();Object.assign(this,{kind,title});}
   eq(other) {return this.kind===other.kind&&this.title===other.title;}
@@ -207,11 +258,22 @@ const blankSelectionFilter=EditorState.transactionFilter.of(tr=>{
 function decorations(state) {
   const list=[], covered=[],quoteLines=new Set(),codeRanges=[],inlineCodeRanges=[];
   const tree=ensureSyntaxTree(state,state.doc.length,40)||syntaxTree(state);
-  tree.iterate({enter(node){if(node.name==='FencedCode'||node.name==='CodeBlock'){codeRanges.push([node.from,node.to]);return false;}if(node.name==='InlineCode')inlineCodeRanges.push([node.from,node.to]);}});
+  const interactive=[];
+  tree.iterate({enter(node){if(node.name==='FencedCode'||node.name==='CodeBlock'){codeRanges.push([node.from,node.to]);if(node.name==='FencedCode')interactive.push(node.node);return false;}if(node.name==='InlineCode')inlineCodeRanges.push([node.from,node.to]);}});
   const addBlock=(from,to,kind)=>{
     if(from===to) return false;
     list.push(Decoration.replace({widget:new BlockWidget(state.doc.sliceString(from,to),from,kind,state.facet(editorLanguage)),block:true}).range(from,to)); covered.push([from,to]); return true;
   };
+  // A closed interactive block runs unless the caret is inside it, where its source shows.
+  for(const node of interactive) {
+    const info=interactiveInfo(state,node);if(!info)continue;
+    const first=state.doc.lineAt(node.from),last=state.doc.lineAt(node.to),close=node.lastChild;
+    if(!(close?.name==='CodeMark'&&state.doc.lineAt(close.from).number===last.number&&last.number>first.number))continue;
+    const from=first.from,to=last.to;
+    if(metadata.editable&&state.selection.ranges.some(range=>range.head>from&&range.head<to||range.anchor>from&&range.anchor<to))continue;
+    const code=first.number+1<last.number?state.doc.sliceString(state.doc.line(first.number+1).from,state.doc.line(last.number-1).to):'';
+    list.push(Decoration.replace({widget:new InteractiveWidget(code,info.height,state.facet(editorLanguage)),block:true}).range(from,to));covered.push([from,to]);
+  }
   // Rendering is independent of selection. Textual blocks stay in the main
   // editor, and non-text widgets remain rendered when selected.
   for(let n=1;n<=state.doc.lines;n++) {

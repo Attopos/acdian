@@ -70,3 +70,8 @@ html.light .pdf-name { color: #2a2830; }
 html.light .pdf-frame { background: #eeedf1; }
 html.light .math-placeholder, html.light .katex { color: #2a2830; }
 html.light .properties, html.light .properties dt, html.light .properties dd { color: #5f5966; }
+html.light .cm-editor .cm-block-interactive { background:#f6f5f8; border-color:#0000001a; }
+html.light .cm-editor .cm-interactive-bar { border-bottom-color:#0000001a; color:#77727e; }
+html.light .cm-editor .cm-interactive-label { color:#b8236c; }
+html.light .cm-editor .cm-interactive-bar button { color:#77727e; }
+html.light .cm-editor .cm-interactive-bar button:hover { color:#2a2830; background:#0000000a; }

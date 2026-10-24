@@ -205,9 +205,10 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { load() }
     func webView(_ webView: WKWebView,start urlSchemeTask: WKURLSchemeTask) {
         guard let request = urlSchemeTask.request.url,
-              let index = model?.index,
               let components = URLComponents(url:request,resolvingAgainstBaseURL:false) else { urlSchemeTask.didFailWithError(URLError(.badURL)); return }
         let path = String(components.percentEncodedPath.dropFirst())
+        if components.host == "interactive" { serveInteractive(urlSchemeTask,request:request,path:path); return }
+        guard let index = model?.index else { urlSchemeTask.didFailWithError(URLError(.badURL)); return }
         let from = components.queryItems?.first(where: {$0.name == "from"})?.value ?? ""
         guard let url = index.resolve(path,from:from) else { urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist)); return }
         let taskID = ObjectIdentifier(urlSchemeTask as AnyObject); activeTasks.insert(taskID)
@@ -229,6 +230,25 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         }
     }
     func webView(_ webView: WKWebView,stop urlSchemeTask: WKURLSchemeTask) { activeTasks.remove(ObjectIdentifier(urlSchemeTask as AnyObject)) }
+    /// The policy of every interactive frame: inline scripts and the bundled
+    /// libraries run, nothing reaches the network, and no other frame opens.
+    static let interactivePolicy = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' acdian-resource://interactive; style-src 'unsafe-inline' acdian-resource://interactive; img-src data: blob: acdian-resource://interactive; font-src data: acdian-resource://interactive; media-src data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'"
+    /// Serves the interactive frame from Resources/interactive and its libraries,
+    /// under lib/, from Resources/vendor. Nothing outside those folders is served.
+    private func serveInteractive(_ task: WKURLSchemeTask,request: URL,path: String) {
+        let parts = (path.removingPercentEncoding ?? "").split(separator:"/").map(String.init)
+        guard let resources = Bundle.main.resourceURL, !parts.isEmpty, !parts.contains(where: { $0.hasPrefix(".") }) else { task.didFailWithError(URLError(.badURL)); return }
+        let library = parts[0] == "lib"
+        let rest = library ? Array(parts.dropFirst()) : parts
+        let url = rest.reduce(resources.appendingPathComponent(library ? "vendor" : "interactive",isDirectory:true)) { $0.appendingPathComponent($1) }
+        guard !rest.isEmpty, let data = try? Data(contentsOf:url) else { task.didFailWithError(URLError(.fileDoesNotExist)); return }
+        var mime = UTType(filenameExtension:url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        if ["html","js","css"].contains(url.pathExtension) { mime += "; charset=utf-8" }
+        // Fonts are fetched with CORS from the frame's opaque origin.
+        let headers = ["Content-Type":mime,"Content-Security-Policy":Self.interactivePolicy,"Access-Control-Allow-Origin":"*","Cache-Control":"no-store"]
+        guard let response = HTTPURLResponse(url:request,statusCode:200,httpVersion:"HTTP/1.1",headerFields:headers) else { task.didFailWithError(URLError(.badServerResponse)); return }
+        task.didReceive(response); task.didReceive(data); task.didFinish()
+    }
     private struct PendingTask: @unchecked Sendable { let task: WKURLSchemeTask }
     // WebKit keeps its message and scheme handlers strongly; these relays keep
     // only a weak reference back, so the configuration never owns the host.

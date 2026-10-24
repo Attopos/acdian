@@ -1,0 +1,49 @@
+/* Colors for interactive blocks. They follow ACdian's light and dark
+   appearance; blocks use the variables instead of fixed colors. */
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --acd-bg: #19191e;
+  --acd-panel: #202026;
+  --acd-text: #e5e3e8;
+  --acd-muted: #929099;
+  --acd-border: #ffffff1a;
+  --acd-grid: #ffffff14;
+  --acd-accent: #d93b86;
+  --acd-accent-strong: #e57bad;
+  --acd-accent-soft: #d93b8626;
+  --acd-blue: #91b7ee;
+  --acd-green: #80c6a2;
+  --acd-amber: #efb66b;
+  --acd-red: #ef7b7b;
+  --acd-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --acd-mono: "SFMono-Regular", "SF Mono", Menlo, monospace;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --acd-bg: #f6f5f8;
+  --acd-panel: #eeedf1;
+  --acd-text: #2a2830;
+  --acd-muted: #77727e;
+  --acd-border: #0000001a;
+  --acd-grid: #00000014;
+  --acd-accent: #d93b86;
+  --acd-accent-strong: #b8236c;
+  --acd-accent-soft: #d93b861f;
+  --acd-blue: #3f74c4;
+  --acd-green: #2f8a5f;
+  --acd-amber: #b8741c;
+  --acd-red: #c73b3b;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; }
+body { padding: 16px; color: var(--acd-text); font: 14px/1.6 var(--acd-font); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+::selection { background: var(--acd-accent-soft); }
+button { font: inherit; color: var(--acd-text); background: var(--acd-panel); border: 1px solid var(--acd-border); border-radius: 7px; padding: 4px 12px; cursor: pointer; }
+button:hover { border-color: var(--acd-accent); }
+button.primary, button[aria-pressed="true"] { background: var(--acd-accent); border-color: var(--acd-accent); color: #fff; }
+input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color: var(--acd-accent); }
+input[type="number"], input[type="text"], select { font: inherit; color: var(--acd-text); background: var(--acd-panel); border: 1px solid var(--acd-border); border-radius: 6px; padding: 3px 8px; }
+label { color: var(--acd-muted); }
+svg text { fill: var(--acd-muted); font-family: var(--acd-font); }
+canvas, svg { display: block; max-width: 100%; }
+#acdian-error { margin: 12px 0 0; padding: 10px 12px; white-space: pre-wrap; font: 12px/1.5 var(--acd-mono); color: var(--acd-red); background: var(--acd-panel); border: 1px solid var(--acd-red); border-radius: 8px; }

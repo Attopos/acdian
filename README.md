@@ -113,6 +113,14 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm
 .build/editor-tab-tests/editor-tab-tests
 ```
 
+交互动画块验证（`acdian-interactive`，离屏窗口，临时页面；`ACDIAN_DEMO=页面.md` 另存该页截图到 `ACDIAN_SNAPSHOT`）：
+
+```sh
+mkdir -p .build/interactive-tests && cp -R Resources/. .build/interactive-tests/
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm64-apple-macos14.0 $(ls Sources/*.swift | grep -v AcdianApp) .build/AcdianApp-nomain.swift Tests/InteractiveBlockTests.swift -o .build/interactive-tests/interactive-tests
+.build/interactive-tests/interactive-tests
+```
+
 打开与切换耗时：同样方式用 `Tests/TabSwitchBenchmark.swift` 构建（加 `-O -D ACDIAN_HOST`）；去掉 `-D ACDIAN_HOST` 可对照 1.2.8 源码测量。
 
 测试通过独立的 `Fixtures/Vault` 或临时页面目录运行，不修改个人页面或保存偏好。
