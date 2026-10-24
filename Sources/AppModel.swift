@@ -394,41 +394,60 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let current = selected.url.standardizedFileURL.resolvingSymlinksInPath().pathComponents.map { $0.precomposedStringWithCanonicalMapping }
         return current == target || (entry.isDirectory && current.count > target.count && Array(current.prefix(target.count)) == target)
     }
-    /// The folder whose name the sidebar is editing, right after it was made.
-    @Published var renamingFolder: String? { didSet { if renamingFolder != nil { renamingSession = UUID() } } }
-    /// A fresh name field for every new folder, even one reusing a path.
+    /// The sidebar item whose name is being edited in place.
+    @Published var renamingPath: String? { didSet { if renamingPath != nil { renamingSession = UUID() } } }
+    /// A fresh name field for every edit, even one reusing a path.
     private(set) var renamingSession = UUID()
     /// Creates a folder inside `entry` when it is a folder, or next to it when
-    /// it is a file, and starts editing its name in the sidebar.
+    /// it is a file, right below it, and starts editing its name.
     @discardableResult func newFolder(near entry: VaultEntry) -> String? {
         guard let root = index?.root else { return nil }
         let parent = entry.isDirectory ? entry.relativePath : (entry.relativePath as NSString).deletingLastPathComponent
         do {
-            let path = try PageOrganizer(root:root).createFolder(localized("新建文件夹"),in:parent)
+            let path = try PageOrganizer(root:root).createFolder(localized("新建文件夹"),in:parent,after:entry.isDirectory ? nil : entry.name)
             if !parent.isEmpty { setFolderExpanded(parent,true) }
             if index?.root == root { index = index?.addingFolder(path) }
-            query = ""; renamingFolder = path
+            query = ""; renamingPath = path
             return path
         } catch { self.error = localizedError(error); return nil }
     }
-    /// Ends editing a new folder's name. `nil` keeps the name it was made with.
-    @discardableResult func finishRenaming(_ path: String, to name: String?) -> String? {
-        guard renamingFolder == path else { return nil }
-        renamingFolder = nil
-        guard let name, let root = index?.root else { return path }
-        let clean = name.trimmingCharacters(in:.whitespacesAndNewlines)
-        guard clean != (path as NSString).lastPathComponent else { return path }
-        guard !clean.isEmpty, !clean.contains("/"), !clean.contains(":"), !clean.hasPrefix("."), clean.utf8.count <= 255 else {
-            error = localized("请输入有效的文件夹名称，不包含 / 或 :。"); return path
+    func startRenaming(_ entry: VaultEntry) { renamingPath = entry.relativePath }
+    /// The part of a name the sidebar edits: pages without their .md ending.
+    static func editableName(_ entry: VaultEntry) -> String {
+        !entry.isDirectory && entry.ext == "md" ? String(entry.name.dropLast(3)) : entry.name
+    }
+    /// Ends editing a name. `nil` keeps the current name. The open page is
+    /// saved first when it moves, and stays open at its new path.
+    func finishRenaming(_ path: String, to typed: String?) {
+        guard renamingPath == path else { return }
+        renamingPath = nil
+        guard let typed, let root = index?.root, let entry = index.flatMap({ Self.entry(path,in:$0.entries) }) else { return }
+        var name = typed.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard name != Self.editableName(entry) else { return }
+        let page = !entry.isDirectory && entry.ext == "md"
+        if page, name.lowercased().hasSuffix(".md") { name = String(name.dropLast(3)).trimmingCharacters(in:.whitespaces) }
+        guard !name.isEmpty, !name.contains("/"), !name.contains(":"), !name.hasPrefix("."), name.utf8.count <= 250 else {
+            error = localized("请输入有效的名称，不包含 / 或 :。"); return
         }
-        do {
-            let newPath = try PageOrganizer(root:root).rename(path,to:clean)
-            moveFolderStates(from:path,to:newPath); remapTabs(from:path,to:newPath)
-            if index?.root == root { index = index?.removing(path).addingFolder(newPath) }
-            // Anything dropped into the folder while it was being named.
-            rescanInBackground(root)
-            return newPath
-        } catch { self.error = localizedError(error); return path }
+        if page { name += ".md" }
+        let affectsSelection = deletionAffectsSelection(entry)
+        let openPath = persistedPage?.relativePath
+        let action = {
+            guard self.index?.root == root else { return }
+            if affectsSelection, !self.saveBeforeLeaving() { return }
+            do {
+                let newPath = try PageOrganizer(root:root).rename(path,to:name)
+                if entry.isDirectory { self.moveFolderStates(from:path,to:newPath) }
+                self.remapTabs(from:path,to:newPath)
+                let newIndex = try VaultIndex(root:root)
+                self.index = newIndex; self.rebuildSearch()
+                if affectsSelection, let openPath, openPath == path || openPath.hasPrefix(path + "/"),
+                   let file = newIndex.files.first(where: { $0.relativePath == newPath + openPath.dropFirst(path.count) }) {
+                    self.open(file,skipConfirmation:true)
+                }
+            } catch { self.error = self.localizedError(error) }
+        }
+        if affectsSelection { withEditorSnapshot(action) } else { action() }
     }
     /// Moves a sidebar item, or reorders it within its folder. Unsaved edits are
     /// saved first when the open page moves, and it stays open at its new path.

@@ -254,13 +254,17 @@ struct TreeRow: View {
     @State private var expanded = false
     var body: some View {
         VStack(spacing:2) {
-            if entry.isDirectory, model.renamingFolder == entry.relativePath {
-                FolderNameField(entry:entry,depth:depth).id(model.renamingSession)
+            if entry.isDirectory, model.renamingPath == entry.relativePath {
+                RenameRow(entry:entry,leading:CGFloat(depth)*13+8,folder:true,symbol:expanded ? "folder.fill" : "folder",tint:Color.acPink.opacity(0.72)).id(model.renamingSession)
+                if expanded { ForEach(entry.children ?? []) { child in TreeRow(entry:child,depth:depth+1) } }
             } else if entry.isDirectory {
                 Button { withAnimation(.easeInOut(duration:0.12)) { expanded.toggle() }; model.setFolderExpanded(entry.relativePath,expanded) } label: {
                     HStack(spacing:6) { Image(systemName:expanded ? "chevron.down" : "chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8); Image(systemName:expanded ? "folder.fill" : "folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72)); Text(entry.name).font(.system(size:12)).lineLimit(1); Spacer() }.foregroundStyle(.secondary).padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29).contentShape(Rectangle())
-                }.buttonStyle(.plain).contextMenu {
+                }.buttonStyle(.plain)
+                .simultaneousGesture(TapGesture(count:2).onEnded { model.startRenaming(entry) })
+                .contextMenu {
                     Button { if model.newFolder(near:entry) != nil { expanded = true } } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
+                    Button { model.startRenaming(entry) } label: { Label(model.localized("重命名"),systemImage:"pencil") }
                     Divider()
                     Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
                 }
@@ -272,38 +276,47 @@ struct TreeRow: View {
         }.onAppear { expanded = model.folderExpanded(entry.relativePath) ?? (depth == 0 && !["attachment","attachments","assets"].contains(entry.name.lowercased())) }
     }
 }
-/// A just-made folder's row, with its name selected for typing a new one.
-/// Return or clicking anywhere else keeps the typed name; Escape keeps the old one.
-struct FolderNameField: View {
+/// A sidebar row whose name is being edited in place. Return or clicking
+/// anywhere else keeps the typed name; Escape keeps the old one.
+struct RenameRow: View {
     @EnvironmentObject var model: AppModel
     let entry: VaultEntry
-    let depth: Int
+    let leading: CGFloat
+    var folder = false
+    let symbol: String
+    let tint: Color
     var body: some View {
-        HStack(spacing:6) {
-            Image(systemName:"chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8).foregroundStyle(.secondary)
-            Image(systemName:"folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72))
-            FolderNameEditor(initial:entry.name) { name in model.finishRenaming(entry.relativePath,to:name) }
+        let name = AppModel.editableName(entry)
+        // Like Finder, a file's extension starts unselected.
+        let stem = folder || name != entry.name ? name : (name as NSString).deletingPathExtension
+        HStack(spacing:folder ? 6 : 8) {
+            if folder { Image(systemName:"chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8).foregroundStyle(.secondary) }
+            Image(systemName:symbol).font(.system(size:12)).frame(width:folder ? nil : 14).foregroundStyle(tint)
+            NameEditor(initial:name,selected:(stem as NSString).length) { typed in model.finishRenaming(entry.relativePath,to:typed) }
                 .frame(maxWidth:.infinity).padding(.horizontal,4).padding(.vertical,2)
                 .background(Color.wash,in:RoundedRectangle(cornerRadius:4))
                 .overlay(RoundedRectangle(cornerRadius:4).strokeBorder(Color.acPink.opacity(0.6)))
-        }.padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29)
+        }.padding(.leading,leading).padding(.trailing,8).frame(height:29)
     }
 }
-private struct FolderNameEditor: NSViewRepresentable {
+private struct NameEditor: NSViewRepresentable {
     let initial: String
+    let selected: Int
     let finish: (String?) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(finish) }
     func makeNSView(context: Context) -> NSTextField {
         let field = FocusingField(string:initial)
+        field.selected = NSRange(location:0,length:selected)
         field.isBordered = false; field.drawsBackground = false; field.focusRingType = .none
         field.font = .systemFont(ofSize:12); field.lineBreakMode = .byClipping; field.cell?.isScrollable = true
-        field.setAccessibilityIdentifier("folderNameField")
+        field.setAccessibilityIdentifier("sidebarNameField")
         field.delegate = context.coordinator
         context.coordinator.watch(field)
         return field
     }
-    /// Takes the keyboard, with its whole name selected, once it is on screen.
+    /// Takes the keyboard, with its name selected, once it is on screen.
     final class FocusingField: NSTextField {
+        var selected = NSRange(location:0,length:0)
         private var focused = false
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -311,7 +324,7 @@ private struct FolderNameEditor: NSViewRepresentable {
             focused = true
             DispatchQueue.main.async { [weak self] in
                 guard let self, let window = self.window else { return }
-                window.makeFirstResponder(self); self.currentEditor()?.selectAll(nil)
+                window.makeFirstResponder(self); self.currentEditor()?.selectedRange = self.selected
             }
         }
     }
@@ -355,10 +368,18 @@ struct FileRow: View {
     var symbol: String { if entry.ext == "md" { return "doc.text" }; if entry.ext == "pdf" { return "doc.richtext" }; if AppModel.images.contains(entry.ext) { return "photo" }; return "doc" }
     private var isCurrentPage: Bool { model.currentPagePath == entry.relativePath }
     var body: some View {
+        if model.renamingPath == entry.relativePath {
+            RenameRow(entry:entry,leading:CGFloat(indent)*13+23,symbol:symbol,tint:Color.acPink).id(model.renamingSession)
+        } else { row }
+    }
+    private var row: some View {
         Button { model.open(entry) } label: {
             HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(entry.ext == "md" ? String(entry.name.dropLast(3)) : entry.name).font(.system(size:12)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:9)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,7).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
-        }.buttonStyle(.plain).help(entry.relativePath).contextMenu {
+        }.buttonStyle(.plain).help(entry.relativePath)
+        .simultaneousGesture(TapGesture(count:2).onEnded { model.startRenaming(entry) })
+        .contextMenu {
             Button { model.newFolder(near:entry) } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
+            Button { model.startRenaming(entry) } label: { Label(model.localized("重命名"),systemImage:"pencil") }
             Divider()
             Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
         }

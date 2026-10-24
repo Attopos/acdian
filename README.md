@@ -104,7 +104,7 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/Vau
 .build/page-order-tests
 ```
 
-侧栏新建文件夹的原地改名框验证（离屏窗口，临时页面，独立偏好；需要图形会话；设置 `ACDIAN_SNAPSHOT=路径.png` 可保存改名状态截图）：
+侧栏新建文件夹与重命名的原地改名框验证（离屏窗口，临时页面，独立偏好；需要图形会话；设置 `ACDIAN_SNAPSHOT=路径.png` 可保存改名状态截图）：
 
 ```sh
 sed 's/^@main struct AcdianApp/struct AcdianApp/' Sources/AcdianApp.swift > .build/AcdianApp-nomain.swift

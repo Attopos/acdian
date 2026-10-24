@@ -464,9 +464,10 @@ struct PageOrganizer {
         try saveOrder(order)
         return newPath
     }
-    /// Creates a folder inside `folder`, numbering the name if it is taken.
+    /// Creates a folder inside `folder`, numbering the name if it is taken, and
+    /// places it right after `anchor`, or first in the folder without one.
     /// Returns the new relative path.
-    @discardableResult func createFolder(_ name: String, in folder: String) throws -> String {
+    @discardableResult func createFolder(_ name: String, in folder: String, after anchor: String? = nil) throws -> String {
         if !folder.isEmpty { _ = try Self.components(folder) }
         let parent = folder.isEmpty ? root : root.appendingPathComponent(folder, isDirectory: true)
         var isDirectory: ObjCBool = false
@@ -478,6 +479,12 @@ struct PageOrganizer {
             let candidate = Self.numberedName(name, isDirectory: true, number: number)
             do {
                 try FileManager.default.createDirectory(at: parent.appendingPathComponent(candidate), withIntermediateDirectories: false)
+                var order = Self.loadOrder(root: root)
+                var names = currentOrder(of: folder, order: order).filter { $0 != candidate }
+                if let anchor, let index = names.firstIndex(of: anchor) { names.insert(candidate, at: index + 1) }
+                else { names.insert(candidate, at: 0) }
+                order[folder] = names
+                try saveOrder(order)
                 return folder.isEmpty ? candidate : folder + "/" + candidate
             } catch let error as CocoaError where error.code == .fileWriteFileExists { number += 1 }
         }

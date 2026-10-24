@@ -77,43 +77,70 @@ struct PageOrderTests {
         try check(model.selected?.relativePath == "Box/Open.md","The open page is selected at its new path")
         try check(try String(contentsOf:modelRoot.appendingPathComponent("Box/Open.md"),encoding:.utf8) == "# Edited","Unsaved edits are saved before the move")
 
-        // New folders: inside a folder, or next to a file; then named in place.
-        let folders = try vault("folders",["Top.md":"t","Box/Inner.md":"i","Box/新建文件夹/":"","Box/资料/":""])
+        // New folders go right below the clicked item, then are named in place.
+        let folders = try vault("folders",["Top.md":"t","Box/A.md":"a","Box/B.md":"b","Box/Z/":"","Box/新建文件夹/":"","Box/资料/":""])
         let foldersModel = AppModel(loadInitialVault:false,preferences:preferences,pagesRoot:folders,trashNow:{ Date() })
         foldersModel.language = .simplifiedChinese
         foldersModel.index = try VaultIndex(root:folders)
         func found(_ path: String) -> VaultEntry? { foldersModel.index.flatMap { AppModel.entry(path,in:$0.entries) } }
         func tree(_ entries: [VaultEntry]) -> [String] { entries.flatMap { [$0.relativePath] + tree($0.children ?? []) } }
-        foldersModel.query = "Inner"
+        func box() -> [String] { names(found("Box")?.children ?? []) }
+        foldersModel.query = "A"
         try check(foldersModel.newFolder(near:found("Box")!) == "Box/新建文件夹 2","A folder made on a folder goes inside it, numbered when the name is taken")
-        try check(foldersModel.renamingFolder == "Box/新建文件夹 2" && found("Box/新建文件夹 2")?.isDirectory == true,"The new folder shows at once with its name being edited")
-        try check(foldersModel.folderExpanded("Box") == true && foldersModel.query.isEmpty,"The folder that received it is opened and the tree is shown")
-        try check(foldersModel.finishRenaming("Box/新建文件夹 2",to:"  第一章 ") == "Box/第一章" && foldersModel.renamingFolder == nil,"Typing a name renames it, trimmed")
-        try check(fm.fileExists(atPath:folders.appendingPathComponent("Box/第一章").path) && !fm.fileExists(atPath:folders.appendingPathComponent("Box/新建文件夹 2").path),"The rename happens on disk")
-        try check(found("Box/第一章") != nil && found("Box/新建文件夹 2") == nil,"The sidebar shows the new name")
-        try check(foldersModel.newFolder(near:found("Box/Inner.md")!) == "Box/新建文件夹 2","A folder made on a file goes next to it")
-        try check(foldersModel.finishRenaming("Box/新建文件夹 2",to:nil) == "Box/新建文件夹 2" && foldersModel.renamingFolder == nil && found("Box/新建文件夹 2") != nil,"Escape keeps the name it was made with")
-        try check(foldersModel.newFolder(near:found("Top.md")!) == "新建文件夹","A folder made on a top-level file goes in the pages root")
-        try check(foldersModel.finishRenaming("新建文件夹",to:"新建文件夹") == "新建文件夹" && found("新建文件夹") != nil,"Keeping the same name changes nothing")
-        try check(foldersModel.finishRenaming("新建文件夹",to:"再改") == nil && found("新建文件夹") != nil,"Only the folder being named can be renamed this way")
-        foldersModel.newFolder(near:found("Box")!)
-        foldersModel.error = nil
-        try check(foldersModel.finishRenaming("Box/新建文件夹 3",to:"资料") == "Box/新建文件夹 3" && foldersModel.error?.contains("资料") == true,"A taken name is refused and the folder keeps its name")
-        try check(try String(contentsOf:folders.appendingPathComponent("Box/资料").appendingPathComponent("..").appendingPathComponent("Inner.md"),encoding:.utf8) == "i","Existing items are untouched")
-        for bad in ["", "  ", "a/b", "a:b", ".hidden"] {
-            foldersModel.newFolder(near:found("Top.md")!)
-            let made = foldersModel.renamingFolder!
-            foldersModel.error = nil
-            try check(foldersModel.finishRenaming(made,to:bad) == made && foldersModel.error != nil && found(made) != nil,"An invalid folder name is refused: \(bad)")
-            try fm.removeItem(at:folders.appendingPathComponent(made)); foldersModel.index = try VaultIndex(root:folders)
-        }
-        for _ in 0..<100 { try await Task.sleep(nanoseconds:10_000_000) }
+        try check(box().first == "新建文件夹 2","A folder made on a folder is first inside it, right below it")
+        try check(foldersModel.renamingPath == "Box/新建文件夹 2" && foldersModel.folderExpanded("Box") == true && foldersModel.query.isEmpty,"Its name is being edited, its parent is open and the tree is shown")
+        foldersModel.finishRenaming("Box/新建文件夹 2",to:"  第一章 ")
+        try check(foldersModel.renamingPath == nil && box().first == "第一章" && fm.fileExists(atPath:folders.appendingPathComponent("Box/第一章").path) && !fm.fileExists(atPath:folders.appendingPathComponent("Box/新建文件夹 2").path),"Typing a name renames it on disk, trimmed, keeping its place")
+        try check(foldersModel.newFolder(near:found("Box/A.md")!) == "Box/新建文件夹 2","A folder made on a file goes next to it")
+        try check(Array(box().drop { $0 != "A.md" }.prefix(2)) == ["A.md","新建文件夹 2"],"A folder made on a file sits right below the file")
+        foldersModel.finishRenaming("Box/新建文件夹 2",to:nil)
+        try check(foldersModel.renamingPath == nil && found("Box/新建文件夹 2") != nil,"Escape keeps the name it was made with")
+        try check(foldersModel.newFolder(near:found("Top.md")!) == "新建文件夹" && names(foldersModel.index!.entries) == ["Box","Top.md","新建文件夹"],"A folder made on a top-level file sits right below it in the pages root")
+        foldersModel.finishRenaming("新建文件夹",to:"新建文件夹")
+        try check(found("新建文件夹") != nil && foldersModel.renamingPath == nil,"Keeping the same name changes nothing")
+        foldersModel.finishRenaming("新建文件夹",to:"再改")
+        try check(found("新建文件夹") != nil,"Only the item being named can be renamed")
         try check(tree(foldersModel.index!.entries) == tree(try VaultIndex(root:folders).entries),"The sidebar lists new folders where a rescan would")
+
+        // Renaming existing files and folders.
+        foldersModel.startRenaming(found("Box/B.md")!)
+        try check(AppModel.editableName(found("Box/B.md")!) == "B","A page is renamed without its .md ending")
+        foldersModel.finishRenaming("Box/B.md",to:"笔记")
+        try check(try String(contentsOf:folders.appendingPathComponent("Box/笔记.md"),encoding:.utf8) == "b" && found("Box/笔记.md") != nil && found("Box/B.md") == nil,"Renaming a page keeps .md and its content")
+        foldersModel.startRenaming(found("Box/笔记.md")!); foldersModel.finishRenaming("Box/笔记.md",to:"笔记.md")
+        try check(found("Box/笔记.md") != nil,"Typing .md does not double the ending")
+        let position = box().firstIndex(of:"笔记.md")
+        foldersModel.startRenaming(found("Box/Z")!); foldersModel.finishRenaming("Box/Z",to:"Zed")
+        try check(found("Box/Zed")?.isDirectory == true && box().firstIndex(of:"笔记.md") == position,"Renaming a folder keeps the order of its siblings")
+        try Data("pdf".utf8).write(to:folders.appendingPathComponent("Box/Scan.pdf")); foldersModel.index = try VaultIndex(root:folders)
+        try check(AppModel.editableName(found("Box/Scan.pdf")!) == "Scan.pdf","Other files are renamed with their extension")
+        foldersModel.startRenaming(found("Box/Scan.pdf")!); foldersModel.finishRenaming("Box/Scan.pdf",to:"扫描.pdf")
+        try check(found("Box/扫描.pdf") != nil,"Other files rename with the typed name")
+        foldersModel.error = nil
+        foldersModel.startRenaming(found("Box/笔记.md")!); foldersModel.finishRenaming("Box/笔记.md",to:"A")
+        try check(foldersModel.error?.contains("A.md") == true && found("Box/笔记.md") != nil && (try String(contentsOf:folders.appendingPathComponent("Box/A.md"),encoding:.utf8)) == "a","A taken name is refused and nothing is overwritten")
+        for bad in ["", "  ", "a/b", "a:b", ".hidden"] {
+            foldersModel.error = nil
+            foldersModel.startRenaming(found("Box/Zed")!); foldersModel.finishRenaming("Box/Zed",to:bad)
+            try check(foldersModel.error != nil && found("Box/Zed") != nil,"An invalid name is refused: \(bad)")
+        }
+
+        // Renaming the open page, or a folder holding it, keeps it open with its edits.
+        foldersModel.open(found("Box/A.md")!,skipConfirmation:true)
+        for _ in 0..<200 where foldersModel.loading || foldersModel.selected?.relativePath != "Box/A.md" { try await Task.sleep(nanoseconds:10_000_000) }
+        foldersModel.text = "a edited"
+        foldersModel.startRenaming(found("Box/A.md")!); foldersModel.finishRenaming("Box/A.md",to:"甲")
+        for _ in 0..<200 where foldersModel.loading || foldersModel.selected?.relativePath != "Box/甲.md" { try await Task.sleep(nanoseconds:10_000_000) }
+        try check(foldersModel.selected?.relativePath == "Box/甲.md" && (try String(contentsOf:folders.appendingPathComponent("Box/甲.md"),encoding:.utf8)) == "a edited","The open page is saved, renamed and stays open")
+        foldersModel.startRenaming(found("Box")!); foldersModel.finishRenaming("Box",to:"盒子")
+        for _ in 0..<200 where foldersModel.loading || foldersModel.selected?.relativePath != "盒子/甲.md" { try await Task.sleep(nanoseconds:10_000_000) }
+        try check(foldersModel.selected?.relativePath == "盒子/甲.md" && foldersModel.folderExpanded("盒子") == true,"Renaming a folder keeps the open page inside it open and the folder open")
+
         refused = false
         do { try PageOrganizer(root:folders).createFolder("X",in:"../Escape") } catch VaultCoreError.unsafeLocation { refused = true }
         try check(refused,"A folder outside the pages folder is refused")
         let caseRoot = try vault("case",["Notes/":""])
         try check(try PageOrganizer(root:caseRoot).rename("Notes",to:"notes") == "notes" && (try fm.contentsOfDirectory(atPath:caseRoot.path)).contains("notes"),"A case-only rename works on a case-insensitive disk")
-        print("PageOrder: \(checks) checks passed for custom order, new pages, safe moves, name conflicts, folder rules, keeping the open page and new folders")
+        print("PageOrder: \(checks) checks passed for custom order, new pages, safe moves, name conflicts, folder rules, keeping the open page, new folders and renaming")
     }
 }
