@@ -37,6 +37,14 @@ struct ModuleSnapshot {
         try await shot("5-attachments-dark",dark:true)
         model.enterModule("Teaching")
         try await shot("6-teaching")
+        // Components: the card index page, a letter picked on its rail, and the market.
+        if let page = model.index?.files.first(where: { $0.ext == ComponentStore.fileExtension }) {
+            model.open(page,skipConfirmation:true)
+            for _ in 0..<500 where model.searchedPageCount < 9000 { try await Task.sleep(nanoseconds:10_000_000) }
+            try await shot("7-card-index",dark:true)
+        }
+        model.showMarket()
+        try await shot("8-market")
         print("snapshots written")
         exit(0)
     }

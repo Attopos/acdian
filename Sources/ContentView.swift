@@ -68,6 +68,7 @@ struct ContentView: View {
                 // A hidden sidebar comes back with Control-Command-S or View > Show or hide sidebar.
                 TabStrip().frame(height:30)
                 if model.showingTrash { TrashView(model:model) }
+                else if model.showingMarket { ComponentMarketView() }
                 else if model.selected != nil { documentBody }
                 else { HomeArea() }
                 Rectangle().fill(Color.faint).frame(height:1)
@@ -110,7 +111,8 @@ struct ContentView: View {
                             }
                         }
                     }
-                } else if file.ext == "pdf" { PDFPane(url:file.url,model:model).id(file.id) }
+                } else if file.ext == ComponentStore.fileExtension { ComponentPage(file:file).id(file.id) }
+                else if file.ext == "pdf" { PDFPane(url:file.url,model:model).id(file.id) }
                 else if AppModel.images.contains(file.ext) { ImagePane(url:file.url).id(file.id) }
                 else if AppModel.videos.contains(file.ext) { VideoPane(url:file.url).id(file.id) }
                 else if !model.text.isEmpty { ScrollView { Text(model.text).font(.system(size:13,design:.monospaced)).textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading).padding(28) } }
@@ -161,7 +163,7 @@ struct TabStrip: View {
             let leading: CGFloat = model.showSidebar ? 10 : 78
             let width = model.tabs.isEmpty ? 0 : min(200,max(36,(geometry.size.width - leading - 10) / CGFloat(model.tabs.count) - 2))
             HStack(spacing:2) {
-                ForEach(model.tabs) { tab in TabButton(tab:tab,active:tab.id == model.activeTabID && model.selected != nil && !model.showingTrash).frame(width:width) }
+                ForEach(model.tabs) { tab in TabButton(tab:tab,active:tab.id == model.activeTabID && model.selected != nil && !model.showingTrash && !model.showingMarket).frame(width:width) }
             }.padding(.leading,leading).padding(.top,4).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
         }.contentShape(Rectangle()).clipped()
     }
@@ -247,6 +249,12 @@ struct SidebarView: View {
                 }
             }
             Spacer(minLength:0)
+            Button { model.showMarket() } label: {
+                HStack(spacing:10) { Image(systemName:"puzzlepiece.extension").frame(width:16); Text(model.localized("组件")); Spacer() }
+                    .font(.system(size:12,weight:.medium)).foregroundStyle(model.showingMarket ? Color.acPink : Color.secondary)
+                    .padding(.horizontal,12).padding(.vertical,9)
+                    .background(model.showingMarket ? Color.acPink.opacity(0.09) : .clear,in:RoundedRectangle(cornerRadius:7))
+            }.buttonStyle(.plain).padding(.horizontal,10).accessibilityIdentifier("componentsButton")
             Button { model.showTrash() } label: {
                 HStack(spacing:10) { Image(systemName:"trash").frame(width:16); Text(model.localized("垃圾桶")); Spacer() }
                     .font(.system(size:12,weight:.medium)).foregroundStyle(model.showingTrash ? Color.acPink : Color.secondary)
@@ -269,8 +277,10 @@ struct SidebarTree: View {
     private struct Row: Identifiable { let entry: VaultEntry; let depth: Int; var id: String { entry.relativePath } }
     private func rows() -> [Row] {
         var list: [Row] = []
+        // A folder shown by a component is left out; the component stands for it.
+        let hidden = model.componentHiddenFolders
         func add(_ entries: [VaultEntry], _ depth: Int) {
-            for entry in entries {
+            for entry in entries where !hidden.contains(entry.relativePath) {
                 list.append(Row(entry:entry,depth:depth))
                 if entry.isDirectory, model.isExpanded(entry,depth:depth) { add(entry.children ?? [],depth + 1) }
             }
@@ -407,7 +417,7 @@ struct FileRow: View {
     let entry: VaultEntry
     var indent: Int
     var showPath = false
-    var symbol: String { if entry.ext == "md" { return "doc.text" }; if entry.ext == "pdf" { return "doc.richtext" }; if AppModel.images.contains(entry.ext) { return "photo" }; if AppModel.videos.contains(entry.ext) { return "film" }; return "doc" }
+    var symbol: String { if entry.ext == "md" { return "doc.text" }; if entry.ext == "pdf" { return "doc.richtext" }; if AppModel.images.contains(entry.ext) { return "photo" }; if AppModel.videos.contains(entry.ext) { return "film" }; if entry.ext == ComponentStore.fileExtension { return "rectangle.grid.2x2" }; return "doc" }
     private var isCurrentPage: Bool { model.currentPagePath == entry.relativePath }
     var body: some View {
         if model.renamingPath == entry.relativePath {
@@ -416,7 +426,7 @@ struct FileRow: View {
     }
     private var row: some View {
         Button { model.open(entry) } label: {
-            HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(entry.ext == "md" ? String(entry.name.dropLast(3)) : entry.name).font(.system(size:12)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:9)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,7).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
+            HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(AppModel.editableName(entry)).font(.system(size:12)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:9)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,7).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
         }.buttonStyle(.plain).help(entry.relativePath)
         .simultaneousGesture(TapGesture(count:2).onEnded { model.startRenaming(entry) })
         .contextMenu {

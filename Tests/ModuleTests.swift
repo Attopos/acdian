@@ -171,6 +171,25 @@ struct ModuleTests {
 
         app = try await model(root,suite:suite)
         try check(app.modules.contains { $0.folder == "Lenguas" },"The renamed module folder is saved")
+
+        // Components: a Card Index placed in a module shows a folder, which leaves the sidebar.
+        try check(ComponentStore.cardNote("UK /x/\n\n## Definitions\n\n- *verb* to become less strong\n") == "to become less strong","A card note is the first definition, without its part of speech")
+        try check(ComponentStore.cardNote("Just a line of text.\n\nMore.") == "Just a line of text.","A page without definitions uses its first line")
+        app.enterModule("Lenguas")
+        try check(app.createComponent(.cardIndex,name:"Words",in:"Lenguas",source:"Lenguas/English/GRE",hideSource:true),"A component can be added to a module")
+        try check(fm.fileExists(atPath:root.appendingPathComponent("Lenguas/Words.acdian").path) && app.currentPagePath == "Lenguas/Words.acdian","The component is saved as a small file and opens")
+        try check(ComponentStore.read(root.appendingPathComponent("Lenguas/Words.acdian")) == ComponentInstance(component:.cardIndex,source:"Lenguas/English/GRE",hideSource:true),"The component file records its kind and folder")
+        try check(app.componentInstances.count == 1 && app.componentHiddenFolders == ["Lenguas/English/GRE"],"The app lists the component and the folder it hides")
+        try check(!app.createComponent(.recentPages,name:"a/b",in:"",source:"Teaching",hideSource:false),"Names with / are refused")
+        app.error = nil
+        try check(app.createComponent(.recentPages,name:"Words",in:"Lenguas",source:"Teaching",hideSource:false) && fm.fileExists(atPath:root.appendingPathComponent("Lenguas/Words 2.acdian").path),"A taken name gets a number")
+        app.renamingPath = "Lenguas/English"
+        app.finishRenaming("Lenguas/English",to:"Inglés")
+        try await eventually("The component follows its renamed folder") { ComponentStore.read(root.appendingPathComponent("Lenguas/Words.acdian"))?.source == "Lenguas/Inglés/GRE" }
+        app.showMarket()
+        try await eventually("The component market opens") { app.showingMarket && !app.showingTrash && app.selected == nil }
+        app.showTrash()
+        try await eventually("The trash replaces the market") { app.showingTrash && !app.showingMarket }
         print("Modules: \(checks) checks passed")
     }
 }

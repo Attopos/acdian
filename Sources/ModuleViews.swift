@@ -333,9 +333,11 @@ struct AttachmentsView: View {
                 Text(module.name).font(.system(size:28,weight:.bold))
                 Text(model.language.fileCount(media.count) + " · " + ByteCountFormatter.string(fromByteCount:Int64(media.reduce(0) { $0 + $1.size }),countStyle:.file)).font(.system(size:12)).foregroundStyle(.secondary)
                 Spacer()
-                Button { model.setModuleHidden(module.id,!module.hidden) } label: {
-                    Label(module.hidden ? model.localized("取消隐藏") : model.localized("隐藏此模块"),systemImage:module.hidden ? "eye" : "eye.slash").font(.system(size:11))
-                }.buttonStyle(.bordered).help(model.localized("隐藏后不在模块和侧栏中显示，附件照常使用。"))
+                if model.modules.contains(where: { $0.id == module.id }) {
+                    Button { model.setModuleHidden(module.id,!module.hidden) } label: {
+                        Label(module.hidden ? model.localized("取消隐藏") : model.localized("隐藏此模块"),systemImage:module.hidden ? "eye" : "eye.slash").font(.system(size:11))
+                    }.buttonStyle(.bordered).help(model.localized("隐藏后不在模块和侧栏中显示，附件照常使用。"))
+                }
             }
             Text(model.localized("在页面中删掉图片或视频后，没有其他页面引用的附件会自动移到垃圾桶，15 天内可恢复。")).font(.system(size:11)).foregroundStyle(.secondary)
             SettingsSegments(options:Filter.allCases,selection:filter,title:{ title($0) }) { filter = $0 }.frame(maxWidth:360)

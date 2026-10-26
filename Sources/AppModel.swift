@@ -129,7 +129,9 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private var draftFolder = ""
     @Published var showOutline = true
     @Published var showSidebar = true
-    @Published var showingTrash = false
+    @Published var showingTrash = false { didSet { if showingTrash { showingMarket = false } } }
+    /// The component market fills the main area, like the trash.
+    @Published var showingMarket = false { didSet { if showingMarket { showingTrash = false } } }
     @Published private(set) var trashEntries: [PageTrash.Entry] = []
     @Published var error: String?
     private let preferences: UserDefaults
@@ -297,7 +299,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 DispatchQueue.main.async {
                     guard self.loadID == request else { return }
                     self.index = newIndex; self.selected = nil; self.text = ""; self.originalText = ""; self.clearDraftState(); self.query = ""; self.insertion = nil; self.loading = false; self.editorDocumentID = UUID()
-                    self.showingTrash = false; self.loadModules(); self.rebuildSearch(); self.statusValue = .openedPages(newIndex.files.count)
+                    self.showingTrash = false; self.showingMarket = false; self.loadModules(); self.rebuildSearch(); self.statusValue = .openedPages(newIndex.files.count)
                     self.refreshTrash(); self.restoreTabs(openActive:true)
                 }
             } catch { DispatchQueue.main.async { guard self.loadID == request else { return }; self.loading = false; self.error = self.localizedError(error) } }
@@ -457,7 +459,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func startRenaming(_ entry: VaultEntry) { renamingPath = entry.relativePath }
     /// The part of a name the sidebar edits: pages without their .md ending.
     static func editableName(_ entry: VaultEntry) -> String {
-        !entry.isDirectory && entry.ext == "md" ? String(entry.name.dropLast(3)) : entry.name
+        !entry.isDirectory && ["md",ComponentStore.fileExtension].contains(entry.ext) ? (entry.name as NSString).deletingPathExtension : entry.name
     }
     /// Ends editing a name. `nil` keeps the current name. The open page is
     /// saved first when it moves, and stays open at its new path.
@@ -467,12 +469,14 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard let typed, let root = index?.root, let entry = index.flatMap({ Self.entry(path,in:$0.entries) }) else { return }
         var name = typed.trimmingCharacters(in:.whitespacesAndNewlines)
         guard name != Self.editableName(entry) else { return }
-        let page = !entry.isDirectory && entry.ext == "md"
-        if page, name.lowercased().hasSuffix(".md") { name = String(name.dropLast(3)).trimmingCharacters(in:.whitespaces) }
+        // Pages and components keep their ending; only the name before it is edited.
+        let ending = !entry.isDirectory && ["md",ComponentStore.fileExtension].contains(entry.ext) ? "." + entry.ext : ""
+        let page = !ending.isEmpty
+        if page, name.lowercased().hasSuffix(ending) { name = String(name.dropLast(ending.count)).trimmingCharacters(in:.whitespaces) }
         guard !name.isEmpty, !name.contains("/"), !name.contains(":"), !name.hasPrefix("."), name.utf8.count <= 250 else {
             error = localized("请输入有效的名称，不包含 / 或 :。"); return
         }
-        if page { name += ".md" }
+        if page { name += ending }
         let affectsSelection = deletionAffectsSelection(entry)
         let openPath = persistedPage?.relativePath
         let action = {
@@ -480,7 +484,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             if affectsSelection, !self.saveBeforeLeaving() { return }
             do {
                 let newPath = try PageOrganizer(root:root).rename(path,to:name)
-                if entry.isDirectory { self.moveFolderStates(from:path,to:newPath); self.moduleFolderMoved(from:path,to:newPath) }
+                if entry.isDirectory { self.moveFolderStates(from:path,to:newPath); self.moduleFolderMoved(from:path,to:newPath); self.componentSourcesMoved(from:path,to:newPath) }
                 self.remapTabs(from:path,to:newPath)
                 // The renamed paths are updated in memory; a rescan off the
                 // main thread then catches anything else that changed.
@@ -522,7 +526,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                     switch result {
                     case .success(let (newPath,newIndex)):
                         if self.loadID == request { self.loading = false }
-                        if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath); self.moduleFolderMoved(from:relativePath,to:newPath) }
+                        if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath); self.moduleFolderMoved(from:relativePath,to:newPath); self.componentSourcesMoved(from:relativePath,to:newPath) }
                         self.remapTabs(from:relativePath,to:newPath)
                         self.index = newIndex; self.rebuildSearch()
                         if affectsSelection, let openPath, newPath != relativePath {
@@ -670,7 +674,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     private func openAfterSnapshot(_ entry: VaultEntry, fragment: String, skipConfirmation: Bool, fromDisk: Bool) {
         guard skipConfirmation || saveBeforeLeaving() else { return }
-        showingTrash = false
+        showingTrash = false; showingMarket = false
         // A page already in a tab is shown there, and a blank new page hands
         // its tab to the page opened from it; anything else gets a new tab.
         let tab = tabs.first(where: { $0.path == entry.relativePath })?.id ?? (isDraft && draftFile == nil ? activeTabID : nil)
@@ -737,7 +741,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         openID = UUID()
         withEditorSnapshot {
             guard self.saveBeforeLeaving() else { return }
-            self.clearOpenDocument(); self.showingTrash = false; self.statusValue = .ready
+            self.clearOpenDocument(); self.showingTrash = false; self.showingMarket = false; self.statusValue = .ready
             self.activeModuleID = nil; self.query = ""
         }
     }
@@ -791,7 +795,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         }
         guard let path = tab.path else { return "New Page" }
         let name = (path as NSString).lastPathComponent
-        return name.lowercased().hasSuffix(".md") ? String(name.dropLast(3)) : name
+        return name.lowercased().hasSuffix(".md") || name.hasSuffix("." + ComponentStore.fileExtension) ? (name as NSString).deletingPathExtension : name
     }
     func selectTab(_ id: UUID) {
         guard let tab = tabs.first(where: { $0.id == id }), id != activeTabID || selected == nil else { return }
@@ -871,7 +875,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             self.selected = VaultEntry(relativePath:path,url:root.appendingPathComponent(path),name:"New Page",isDirectory:false,children:nil,modified:nil,size:0)
             self.editorSelection = nil; self.pendingEditorSelection = nil
             self.isDraft = true; self.draftTitle = ""; self.text = ""; self.originalText = ""
-            self.showingTrash = false
+            self.showingTrash = false; self.showingMarket = false
             self.anchor = ""; self.insertion = nil; self.pdfPage = 1; self.pdfPageCount = 0; self.loading = false
             self.editorDocumentID = UUID(); self.statusValue = .ready
             self.showInTab(tab,path:nil)
@@ -1176,5 +1180,64 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             }
         } catch { self.error = localizedError(error) }
         if !restored.isEmpty { refreshTrash() }
+    }
+
+    // MARK: Components
+    func showMarket() {
+        guard ensurePageStorage() else { return }
+        openID = UUID()
+        withEditorSnapshot {
+            guard self.saveBeforeLeaving() else { return }
+            self.clearOpenDocument(); self.showingMarket = true; self.statusValue = .ready
+        }
+    }
+    private var componentMemo: (generation: Int, list: [(file: VaultEntry, instance: ComponentInstance)]) = (-1,[])
+    /// Every component placed in the pages folder.
+    var componentInstances: [(file: VaultEntry, instance: ComponentInstance)] {
+        guard let index else { return [] }
+        if componentMemo.generation != indexGeneration {
+            componentMemo = (indexGeneration,index.files.filter { $0.ext == ComponentStore.fileExtension }.compactMap { file in ComponentStore.read(file.url).map { (file,$0) } })
+        }
+        return componentMemo.list
+    }
+    /// Folders that a component shows in place of their own sidebar rows.
+    var componentHiddenFolders: Set<String> { Set(componentInstances.filter { $0.instance.hideSource }.map(\.instance.source)) }
+    /// Places a component in `folder` ("" is the top level) and opens it.
+    @discardableResult func createComponent(_ kind: ComponentKind, name typed: String, in folder: String, source: String, hideSource: Bool) -> Bool {
+        guard ensurePageStorage(), let root = index?.root else { return false }
+        let name = typed.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !name.isEmpty, !name.contains("/"), !name.contains(":"), !name.hasPrefix("."), name.utf8.count <= 200 else {
+            error = localized("请输入有效的名称，不包含 / 或 :。"); return false
+        }
+        do {
+            let data = try ComponentStore.encode(ComponentInstance(component:kind,source:source,hideSource:hideSource))
+            let directory = folder.isEmpty ? root : root.appendingPathComponent(folder,isDirectory:true)
+            var number = 1, path = ""
+            while true {
+                let filename = PageOrganizer.numberedName(name + "." + ComponentStore.fileExtension,isDirectory:false,number:number)
+                let url = directory.appendingPathComponent(filename)
+                do { try data.write(to:url,options:.withoutOverwriting); path = folder.isEmpty ? filename : folder + "/" + filename; break }
+                catch let error as CocoaError where error.code == .fileWriteFileExists { number += 1 }
+            }
+            let url = root.appendingPathComponent(path), stamp = FileStamp(of:url)
+            let file = VaultEntry(relativePath:path,url:url,name:url.lastPathComponent,isDirectory:false,children:nil,modified:stamp?.modified,size:stamp?.size ?? 0)
+            index = index?.addingFile(file)
+            if !folder.isEmpty { setFolderExpanded(folder,true) }
+            open(file,skipConfirmation:true)
+            return true
+        } catch { self.error = localizedError(error); return false }
+    }
+    /// Components keep showing their folder after it is renamed or moved.
+    private func componentSourcesMoved(from old: String, to new: String) {
+        guard old != new else { return }
+        for (file,instance) in componentInstances where instance.source == old || instance.source.hasPrefix(old + "/") {
+            var updated = instance
+            updated.source = new + instance.source.dropFirst(old.count)
+            // The component file itself may have moved with the folder.
+            let path = file.relativePath == old || file.relativePath.hasPrefix(old + "/") ? new + file.relativePath.dropFirst(old.count) : file.relativePath
+            guard let root = index?.root, let data = try? ComponentStore.encode(updated) else { continue }
+            try? data.write(to:root.appendingPathComponent(path),options:.atomic)
+        }
+        componentMemo = (-1,[])
     }
 }

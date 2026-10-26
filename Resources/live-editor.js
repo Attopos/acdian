@@ -9,7 +9,6 @@ import { formatToolbar } from './format-toolbar.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
-import { createIndexRail } from './index-rail.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -145,7 +144,6 @@ function interactiveInfo(state,node) {
   const info=node.node.getChild('CodeInfo');
   if(!info)return null;
   const words=state.doc.sliceString(info.from,info.to).trim().split(/\s+/);
-  if(words[0]==='acdian-cards')return {cards:true};
   if(words[0]!=='acdian-interactive')return null;
   const height=/^height=(\d+)$/.exec(words.find(word=>/^height=/.test(word))||'');
   return {height:height?Math.max(60,Math.min(1600,Number(height[1]))):0};
@@ -187,65 +185,6 @@ window.addEventListener('message',event=>{
   }
 });
 new MutationObserver(()=>{const theme=currentAppearance();for(const frame of interactiveFrames())frame.contentWindow?.postMessage({type:'acdian-interactive:theme',theme},'*');}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
-
-// An acdian-cards block shows its lines, `[[target|label]] :: note`, as a grid of
-// cards that open their page with a plain click. Long lists are split by first
-// letter and can be searched, so only a few hundred cards are drawn at a time.
-const cardLine=/^\s*\[\[([^\]|]+)(?:\|([^\]]+))?\]\]\s*(?:::\s*(.*))?$/;
-class CardsWidget extends WidgetType {
-  constructor(code,language) { super(); Object.assign(this,{code,language}); }
-  eq(other) { return this.code===other.code&&this.language===other.language; }
-  get estimatedHeight() { return 640; }
-  toDOM(view) {
-    const cards=[];
-    for(const line of this.code.split('\n')){const match=cardLine.exec(line);if(match)cards.push({target:match[1].trim(),label:(match[2]||match[1].split('/').pop()).trim(),note:(match[3]||'').trim()});}
-    for(const card of cards){card.key=(card.label+' '+card.note).toLowerCase();const first=card.label.charAt(0).toUpperCase();card.group=/[A-Z]/.test(first)?first:'#';}
-    const groups=[...new Set(cards.map(card=>card.group))].sort();
-    const many=cards.length>240;
-    let group=many?groups[0]:null;
-    const holder=document.createElement('div');holder.className='cm-live-block cm-block-cards'+(many?' cm-cards-indexed':'');
-    const main=document.createElement('div');main.className='cm-cards-main';
-    const bar=document.createElement('div');bar.className='cm-cards-bar';
-    const search=document.createElement('input');search.type='search';search.className='cm-cards-search';search.placeholder=uiText(view.state,'searchCards');
-    const count=document.createElement('span');count.className='cm-cards-count';
-    bar.append(search,count);
-    const grid=document.createElement('div');grid.className='cm-cards-grid';
-    // One click handler for the whole grid instead of one per card.
-    grid.addEventListener('mousedown',event=>{if(event.target.closest('.cm-card'))event.preventDefault();});
-    grid.addEventListener('click',event=>{const card=event.target.closest('.cm-card');if(!card)return;event.preventDefault();navigate(card.dataset.target);});
-    const cardElement=card=>{
-      const element=document.createElement('a');element.className='cm-card';element.href='#';element.title=card.target;element.dataset.target=card.target;
-      const title=document.createElement('strong');title.textContent=card.label;element.append(title);
-      if(card.note){const note=document.createElement('span');note.textContent=card.note;element.append(note);}
-      return element;
-    };
-    const rail=many?createIndexRail({groups,active:group,label:uiText(view.state,'searchCards'),onSelect:name=>{group=name;search.value='';render();holder.scrollIntoView?.({block:'nearest'});}}):null;
-    const render=()=>{
-      const query=search.value.trim().toLowerCase();
-      let shown=query?cards.filter(card=>card.key.includes(query)):group?cards.filter(card=>card.group===group):cards;
-      // Words starting with the query come first.
-      if(query)shown=shown.sort((a,b)=>(b.label.toLowerCase().startsWith(query)-a.label.toLowerCase().startsWith(query))||a.label.localeCompare(b.label));
-      const limit=query?300:shown.length;
-      const fragment=document.createDocumentFragment();
-      for(const card of shown.slice(0,limit))fragment.append(cardElement(card));
-      grid.replaceChildren(fragment);
-      count.textContent=(shown.length>limit?limit+' / ':'')+shown.length.toLocaleString();
-      rail?.setActive(query?null:group);
-      window.acdianEditor?.requestMeasure();
-    };
-    let pending=0;
-    search.addEventListener('input',()=>{cancelAnimationFrame(pending);pending=requestAnimationFrame(render);});
-    search.addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Enter'){render();grid.querySelector('.cm-card')?.click();}});
-    main.append(bar,grid);
-    if(rail)holder.append(rail.element);
-    holder.append(main);
-    this.rail=rail;
-    render();
-    return holder;
-  }
-  destroy() { this.rail?.destroy(); }
-  ignoreEvent() { return true; }
-}
 
 class CalloutKindWidget extends WidgetType {
   constructor(kind,title) {super();Object.assign(this,{kind,title});}
@@ -333,8 +272,7 @@ function decorations(state) {
     const from=first.from,to=last.to;
     if(metadata.editable&&state.selection.ranges.some(range=>range.head>from&&range.head<to||range.anchor>from&&range.anchor<to))continue;
     const code=first.number+1<last.number?state.doc.sliceString(state.doc.line(first.number+1).from,state.doc.line(last.number-1).to):'';
-    const widget=info.cards?new CardsWidget(code,state.facet(editorLanguage)):new InteractiveWidget(code,info.height,state.facet(editorLanguage));
-    list.push(Decoration.replace({widget,block:true}).range(from,to));covered.push([from,to]);
+    list.push(Decoration.replace({widget:new InteractiveWidget(code,info.height,state.facet(editorLanguage)),block:true}).range(from,to));covered.push([from,to]);
   }
   // Rendering is independent of selection. Textual blocks stay in the main
   // editor, and non-text widgets remain rendered when selected.
