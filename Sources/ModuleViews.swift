@@ -3,45 +3,51 @@ import AppKit
 import AVKit
 import QuickLookThumbnailing
 
-/// Tile colours for modules: the app's pink and black first, then a few soft extras.
+/// Module colours: the app's pink and black first, then a few extras. The
+/// colour tints the icon on a soft frosted tile; an open module's tile turns dark.
 enum ModuleStyle {
     static func tile(_ name: String) -> Color {
         switch name {
-        case "black": return AppIconStyle.ink
-        case "rose": return Color(.sRGB,red:0.96,green:0.72,blue:0.82,opacity:1)
-        case "plum": return Color(.sRGB,red:0.43,green:0.23,blue:0.55,opacity:1)
-        case "amber": return Color(.sRGB,red:0.91,green:0.66,blue:0.24,opacity:1)
-        case "teal": return Color(.sRGB,red:0.16,green:0.55,blue:0.51,opacity:1)
-        case "sky": return Color(.sRGB,red:0.23,green:0.48,blue:0.84,opacity:1)
-        case "graphite": return Color(.sRGB,red:0.33,green:0.33,blue:0.37,opacity:1)
+        case "black": return Color.ink
+        case "rose": return Color(.sRGB,red:0.88,green:0.42,blue:0.62,opacity:1)
+        case "plum": return Color(.sRGB,red:0.52,green:0.30,blue:0.70,opacity:1)
+        case "amber": return Color(.sRGB,red:0.93,green:0.62,blue:0.16,opacity:1)
+        case "teal": return Color(.sRGB,red:0.12,green:0.62,blue:0.56,opacity:1)
+        case "sky": return Color(.sRGB,red:0.22,green:0.50,blue:0.92,opacity:1)
+        case "graphite": return Color(.sRGB,red:0.45,green:0.45,blue:0.50,opacity:1)
         default: return .acPink
         }
     }
-    static func glyph(_ name: String) -> Color {
-        switch name {
-        case "black": return .acPink
-        case "pink", "rose", "amber": return AppIconStyle.ink
-        default: return .white
-        }
+    /// A two-tone fill for the icon, like a colourful app logo.
+    static func glyph(_ name: String, active: Bool) -> LinearGradient {
+        let base: Color = active && name == "black" ? .acPink : active && name == "graphite" ? .white : tile(name)
+        let second: Color = name == "black" ? (active ? Color(.sRGB,red:0.97,green:0.55,blue:0.75,opacity:1) : .acPink) : base.opacity(0.62)
+        return LinearGradient(colors:[base,second],startPoint:.topLeading,endPoint:.bottomTrailing)
     }
+    static let frost = Color.adaptive(dark:NSColor.white.withAlphaComponent(0.07),light:NSColor(red:0.93,green:0.92,blue:0.95,alpha:1))
+    static let frostEdge = Color.adaptive(dark:NSColor.white.withAlphaComponent(0.10),light:NSColor.black.withAlphaComponent(0.07))
+    static let dark = Color.adaptive(dark:NSColor(red:0.20,green:0.20,blue:0.23,alpha:1),light:NSColor(red:0.16,green:0.16,blue:0.19,alpha:1))
     /// An SF Symbol that exists on this Mac, or a plain folder.
     static func symbol(_ name: String) -> String { NSImage(systemSymbolName:name,accessibilityDescription:nil) != nil ? name : "folder" }
 }
 
+/// A module's tile: a rounded, slightly wide frosted card with its icon in the
+/// middle. `size` is the height; an active tile is dark, like a pressed key.
 struct ModuleTileIcon: View {
     let icon: String
     let color: String
     var size: CGFloat = 76
-    @Environment(\.colorScheme) private var colorScheme
+    var active = false
+    var hovering = false
     var body: some View {
-        let corner = size * 0.23
+        let corner = size * 0.24, width = (size * 1.3).rounded()
         ZStack {
-            RoundedRectangle(cornerRadius:corner,style:.continuous).fill(ModuleStyle.tile(color).gradient)
-            Image(systemName:ModuleStyle.symbol(icon)).font(.system(size:size * 0.42,weight:.medium)).foregroundStyle(ModuleStyle.glyph(color))
+            RoundedRectangle(cornerRadius:corner,style:.continuous).fill(active ? ModuleStyle.dark : ModuleStyle.frost)
+            RoundedRectangle(cornerRadius:corner,style:.continuous).strokeBorder(active ? Color.white.opacity(0.12) : hovering ? Color.acPink.opacity(0.45) : ModuleStyle.frostEdge,lineWidth:size > 40 ? 1.5 : 1)
+            Image(systemName:ModuleStyle.symbol(icon)).font(.system(size:size * 0.38,weight:.medium)).foregroundStyle(ModuleStyle.glyph(color,active:active))
         }
-        .overlay { if color == "black" && colorScheme == .dark { RoundedRectangle(cornerRadius:corner,style:.continuous).strokeBorder(Color.white.opacity(0.10),lineWidth:1) } }
-        .shadow(color:.black.opacity(size > 40 ? 0.18 : 0),radius:size > 40 ? 8 : 0,y:size > 40 ? 4 : 0)
-        .frame(width:size,height:size)
+        .shadow(color:.black.opacity(active ? 0.28 : hovering ? 0.12 : 0),radius:size > 40 ? 10 : 3,y:size > 40 ? 4 : 1)
+        .frame(width:width,height:size)
     }
 }
 
@@ -51,7 +57,7 @@ struct LauncherView: View {
     @State private var editing: ModuleEditorTarget?
     @State private var showHidden = false
     @State private var dragging: String?
-    private let columns = [GridItem(.adaptive(minimum:112,maximum:132),spacing:22,alignment:.top)]
+    private let columns = [GridItem(.adaptive(minimum:118,maximum:140),spacing:18,alignment:.top)]
     var body: some View {
         let present = model.presentModules
         let hidden = present.filter(\.hidden)
@@ -73,9 +79,9 @@ struct LauncherView: View {
                     }
                     Button { editing = .new } label: {
                         VStack(spacing:9) {
-                            RoundedRectangle(cornerRadius:76 * 0.23,style:.continuous).strokeBorder(Color.secondary.opacity(0.35),style:StrokeStyle(lineWidth:1.5,dash:[5,4]))
-                                .overlay { Image(systemName:"plus").font(.system(size:28,weight:.light)).foregroundStyle(.secondary) }
-                                .frame(width:76,height:76)
+                            RoundedRectangle(cornerRadius:76 * 0.24,style:.continuous).strokeBorder(Color.secondary.opacity(0.35),style:StrokeStyle(lineWidth:1.5,dash:[5,4]))
+                                .overlay { Image(systemName:"plus").font(.system(size:26,weight:.light)).foregroundStyle(.secondary) }
+                                .frame(width:99,height:76)
                             Text(model.localized("新建模块")).font(.system(size:12)).foregroundStyle(.secondary)
                         }.frame(maxWidth:.infinity).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityIdentifier("newModule")
@@ -106,7 +112,7 @@ struct ModuleTile: View {
     var body: some View {
         Button { model.enterModule(module.id) } label: {
             VStack(spacing:9) {
-                ModuleTileIcon(icon:module.icon,color:module.color).scaleEffect(hovering ? 1.04 : 1)
+                ModuleTileIcon(icon:module.icon,color:module.color,hovering:hovering).offset(y:hovering ? -2 : 0)
                 VStack(spacing:2) {
                     Text(module.name).font(.system(size:12,weight:.medium)).lineLimit(1).truncationMode(.middle)
                     Text(module.kind == .attachments ? model.language.fileCount(count) : model.language.noteCount(count)).font(.system(size:10)).foregroundStyle(.tertiary)
@@ -144,7 +150,7 @@ struct ModuleEditor: View {
     var body: some View {
         VStack(alignment:.leading,spacing:16) {
             HStack(spacing:14) {
-                ModuleTileIcon(icon:icon,color:color,size:56)
+                ModuleTileIcon(icon:icon,color:color,size:52)
                 VStack(alignment:.leading,spacing:4) {
                     Text(isNew ? model.localized("新建模块") : model.localized("编辑模块")).font(.system(size:17,weight:.semibold))
                     Text(isNew ? model.localized("会在页面文件夹中新建同名文件夹。") : model.localized("只改模块的显示名称，文件夹不变。")).font(.system(size:11)).foregroundStyle(.secondary)
@@ -198,7 +204,7 @@ struct ModuleBar: View {
                 Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(nil) } } label: {
                     Image(systemName:"chevron.left").font(.system(size:11,weight:.semibold)).frame(width:20,height:22).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("所有模块"))
-                ModuleTileIcon(icon:module.icon,color:module.color,size:22)
+                ModuleTileIcon(icon:module.icon,color:module.color,size:22,active:true)
                 Text(module.name).font(.system(size:13,weight:.semibold)).lineLimit(1)
                 Spacer()
                 Button { model.goHome() } label: { Image(systemName:"square.grid.2x2").font(.system(size:12)).frame(width:22,height:22).contentShape(Rectangle()) }
@@ -208,12 +214,12 @@ struct ModuleBar: View {
             ScrollView(.horizontal,showsIndicators:false) {
                 HStack(spacing:8) {
                     ForEach(model.presentModules.filter { !$0.hidden }) { module in
-                        Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(module.id) } } label: { ModuleTileIcon(icon:module.icon,color:module.color,size:26) }
+                        Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(module.id) } } label: { ModuleTileIcon(icon:module.icon,color:module.color,size:28) }
                             .buttonStyle(.plain).help(module.name)
                     }
                     Button { model.goHome() } label: {
-                        Image(systemName:"square.grid.2x2").font(.system(size:12)).frame(width:26,height:26)
-                            .background(Color.wash,in:RoundedRectangle(cornerRadius:6,style:.continuous))
+                        Image(systemName:"square.grid.2x2").font(.system(size:12)).frame(width:36,height:28)
+                            .background(ModuleStyle.frost,in:RoundedRectangle(cornerRadius:7,style:.continuous))
                     }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("所有模块"))
                 }.padding(.horizontal,16)
             }.padding(.bottom,12)
@@ -232,7 +238,7 @@ struct ModuleHomeView: View {
         ScrollView {
             VStack(alignment:.leading,spacing:22) {
                 HStack(spacing:16) {
-                    ModuleTileIcon(icon:module.icon,color:module.color,size:64)
+                    ModuleTileIcon(icon:module.icon,color:module.color,size:64,active:true)
                     VStack(alignment:.leading,spacing:5) {
                         Text(module.name).font(.system(size:26,weight:.bold))
                         Text(model.language.noteCount(pages.count)).font(.system(size:12)).foregroundStyle(.secondary)
