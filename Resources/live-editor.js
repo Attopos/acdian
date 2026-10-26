@@ -144,6 +144,7 @@ function interactiveInfo(state,node) {
   const info=node.node.getChild('CodeInfo');
   if(!info)return null;
   const words=state.doc.sliceString(info.from,info.to).trim().split(/\s+/);
+  if(words[0]==='acdian-cards')return {cards:true};
   if(words[0]!=='acdian-interactive')return null;
   const height=/^height=(\d+)$/.exec(words.find(word=>/^height=/.test(word))||'');
   return {height:height?Math.max(60,Math.min(1600,Number(height[1]))):0};
@@ -185,6 +186,69 @@ window.addEventListener('message',event=>{
   }
 });
 new MutationObserver(()=>{const theme=currentAppearance();for(const frame of interactiveFrames())frame.contentWindow?.postMessage({type:'acdian-interactive:theme',theme},'*');}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+
+// An acdian-cards block shows its lines, `[[target|label]] :: note`, as a grid of
+// cards that open their page with a plain click. Long lists are split by first
+// letter and can be searched, so only a few hundred cards are drawn at a time.
+const cardLine=/^\s*\[\[([^\]|]+)(?:\|([^\]]+))?\]\]\s*(?:::\s*(.*))?$/;
+class CardsWidget extends WidgetType {
+  constructor(code,language) { super(); Object.assign(this,{code,language}); }
+  eq(other) { return this.code===other.code&&this.language===other.language; }
+  get estimatedHeight() { return 640; }
+  toDOM(view) {
+    const cards=[];
+    for(const line of this.code.split('\n')){const match=cardLine.exec(line);if(match)cards.push({target:match[1].trim(),label:(match[2]||match[1].split('/').pop()).trim(),note:(match[3]||'').trim()});}
+    const groupOf=card=>{const first=card.label.charAt(0).toUpperCase();return /[A-Z]/.test(first)?first:'#';};
+    const groups=[...new Set(cards.map(groupOf))].sort();
+    const many=cards.length>240;
+    let group=many?groups[0]:null;
+    const holder=document.createElement('div');holder.className='cm-live-block cm-block-cards';
+    const bar=document.createElement('div');bar.className='cm-cards-bar';
+    const search=document.createElement('input');search.type='search';search.className='cm-cards-search';search.placeholder=uiText(view.state,'searchCards');
+    const count=document.createElement('span');count.className='cm-cards-count';
+    const source=document.createElement('button');source.type='button';source.textContent=uiText(view.state,'editSource');
+    source.addEventListener('mousedown',event=>event.preventDefault());
+    source.addEventListener('click',event=>{
+      event.preventDefault();if(!metadata.editable)return;
+      const pos=view.posAtDOM(holder),line=view.state.doc.lineAt(pos);
+      const target=line.number<view.state.doc.lines?view.state.doc.line(line.number+1).to:line.to;
+      view.dispatch({selection:EditorSelection.cursor(target),scrollIntoView:true});view.focus();
+    });
+    bar.append(search,count,source);
+    const letters=document.createElement('div');letters.className='cm-cards-letters';
+    const grid=document.createElement('div');grid.className='cm-cards-grid';
+    const render=()=>{
+      const query=search.value.trim().toLowerCase();
+      let shown=query?cards.filter(card=>card.label.toLowerCase().includes(query)||card.note.toLowerCase().includes(query)):group?cards.filter(card=>groupOf(card)===group):cards;
+      // Words starting with the query come first.
+      if(query)shown=shown.sort((a,b)=>(b.label.toLowerCase().startsWith(query)-a.label.toLowerCase().startsWith(query))||a.label.localeCompare(b.label));
+      const limit=query?300:shown.length;
+      grid.replaceChildren(...shown.slice(0,limit).map(card=>{
+        const element=document.createElement('a');element.className='cm-card';element.href='#';element.title=card.target;
+        const title=document.createElement('strong');title.textContent=card.label;element.append(title);
+        if(card.note){const note=document.createElement('span');note.textContent=card.note;element.append(note);}
+        element.addEventListener('mousedown',event=>event.preventDefault());
+        element.addEventListener('click',event=>{event.preventDefault();navigate(card.target);});
+        return element;
+      }));
+      count.textContent=(shown.length>limit?limit+' / ':'')+shown.length.toLocaleString();
+      for(const button of letters.children)button.classList.toggle('active',!query&&button.dataset.group===group);
+      window.acdianEditor?.requestMeasure();
+    };
+    if(many)for(const name of groups){
+      const button=document.createElement('button');button.type='button';button.textContent=name;button.dataset.group=name;
+      button.addEventListener('mousedown',event=>event.preventDefault());
+      button.addEventListener('click',event=>{event.preventDefault();group=name;search.value='';render();});
+      letters.append(button);
+    }
+    search.addEventListener('input',render);
+    search.addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Enter'){const first=grid.querySelector('.cm-card');if(first)first.click();}});
+    holder.append(bar);if(many)holder.append(letters);holder.append(grid);
+    render();
+    return holder;
+  }
+  ignoreEvent() { return true; }
+}
 
 class CalloutKindWidget extends WidgetType {
   constructor(kind,title) {super();Object.assign(this,{kind,title});}
@@ -272,7 +336,8 @@ function decorations(state) {
     const from=first.from,to=last.to;
     if(metadata.editable&&state.selection.ranges.some(range=>range.head>from&&range.head<to||range.anchor>from&&range.anchor<to))continue;
     const code=first.number+1<last.number?state.doc.sliceString(state.doc.line(first.number+1).from,state.doc.line(last.number-1).to):'';
-    list.push(Decoration.replace({widget:new InteractiveWidget(code,info.height,state.facet(editorLanguage)),block:true}).range(from,to));covered.push([from,to]);
+    const widget=info.cards?new CardsWidget(code,state.facet(editorLanguage)):new InteractiveWidget(code,info.height,state.facet(editorLanguage));
+    list.push(Decoration.replace({widget,block:true}).range(from,to));covered.push([from,to]);
   }
   // Rendering is independent of selection. Textual blocks stay in the main
   // editor, and non-text widgets remain rendered when selected.
