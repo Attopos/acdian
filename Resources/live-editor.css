@@ -115,18 +115,21 @@ html,body { height:100%; margin:0; }
 .cm-format-option .cm-slash-icon { flex-basis:24px; font-size:15px; }
 .cm-editor.cm-caret-hidden .cm-cursor { display:none!important; }
 .cm-editor .cm-block-cards { cursor:default; padding:2px 0 6px; }
+.cm-editor .cm-cards-indexed { display:grid; grid-template-columns:30px 1fr; gap:14px; align-items:start; }
+.cm-editor .cm-cards-main { min-width:0; }
 .cm-editor .cm-cards-bar { display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:12px; color:#929099; }
 .cm-editor .cm-cards-search { flex:1; font:inherit; font-size:13px; color:#e5e3e8; background:#ffffff0a; border:1px solid #ffffff14; border-radius:8px; padding:7px 11px; outline:none; }
 .cm-editor .cm-cards-search:focus { border-color:#d93b8699; }
 .cm-editor .cm-cards-count { font-variant-numeric:tabular-nums; }
 .cm-editor .cm-cards-bar button { font:inherit; color:#929099; background:none; border:0; border-radius:5px; padding:1px 8px; cursor:pointer; }
 .cm-editor .cm-cards-bar button:hover { color:#e5e3e8; background:#ffffff0d; }
-.cm-editor .cm-cards-letters { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:12px; }
-.cm-editor .cm-cards-letters button { font:600 12px/1 -apple-system,sans-serif; min-width:26px; padding:6px 0; color:#929099; background:#ffffff08; border:1px solid #ffffff10; border-radius:7px; cursor:pointer; }
-.cm-editor .cm-cards-letters button:hover { color:#e5e3e8; }
-.cm-editor .cm-cards-letters button.active { color:#141217; background:#d93b86; border-color:#d93b86; }
 .cm-editor .cm-cards-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
 .cm-editor .cm-card { display:flex; flex-direction:column; gap:4px; min-height:62px; padding:10px 12px; text-decoration:none; color:#e5e3e8; background:#ffffff08; border:1px solid #ffffff12; border-radius:10px; transition:border-color .12s,transform .12s; }
 .cm-editor .cm-card:hover { border-color:#d93b8699; transform:translateY(-1px); }
 .cm-editor .cm-card strong { font-size:14px; font-weight:600; color:#f0a4c7; }
 .cm-editor .cm-card span { font-size:11.5px; line-height:1.4; color:#929099; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+/* Letter rail (index-rail.js): reusable, so not tied to the editor. */
+.ac-index-rail { position:sticky; top:12px; display:flex; flex-direction:column; align-items:stretch; gap:1px; padding:4px 0; }
+.ac-index-rail button { font:600 11px/1 -apple-system,sans-serif; height:20px; padding:0; color:#929099; background:none; border:0; border-radius:6px; cursor:pointer; user-select:none; }
+.ac-index-rail button:hover { color:#e5e3e8; background:#ffffff0d; }
+.ac-index-rail button.active { color:#141217; background:#d93b86; }

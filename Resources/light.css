@@ -78,9 +78,9 @@ html.light .cm-editor .cm-interactive-bar button:hover { color:#2a2830; backgrou
 html.light .cm-editor .cm-cards-search { color:#2a2830; background:#0000000a; border-color:#0000001a; }
 html.light .cm-editor .cm-cards-bar, html.light .cm-editor .cm-cards-bar button { color:#77727e; }
 html.light .cm-editor .cm-cards-bar button:hover { color:#2a2830; background:#0000000a; }
-html.light .cm-editor .cm-cards-letters button { color:#77727e; background:#00000006; border-color:#00000014; }
-html.light .cm-editor .cm-cards-letters button:hover { color:#2a2830; }
-html.light .cm-editor .cm-cards-letters button.active { color:#fff; background:#d93b86; border-color:#d93b86; }
 html.light .cm-editor .cm-card { color:#2a2830; background:#f6f5f8; border-color:#0000001a; }
 html.light .cm-editor .cm-card strong { color:#b8236c; }
 html.light .cm-editor .cm-card span { color:#77727e; }
+html.light .ac-index-rail button { color:#77727e; }
+html.light .ac-index-rail button:hover { color:#2a2830; background:#0000000a; }
+html.light .ac-index-rail button.active { color:#fff; background:#d93b86; }

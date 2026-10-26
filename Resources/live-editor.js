@@ -9,6 +9,7 @@ import { formatToolbar } from './format-toolbar.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
+import { createIndexRail } from './index-rail.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -198,55 +199,51 @@ class CardsWidget extends WidgetType {
   toDOM(view) {
     const cards=[];
     for(const line of this.code.split('\n')){const match=cardLine.exec(line);if(match)cards.push({target:match[1].trim(),label:(match[2]||match[1].split('/').pop()).trim(),note:(match[3]||'').trim()});}
-    const groupOf=card=>{const first=card.label.charAt(0).toUpperCase();return /[A-Z]/.test(first)?first:'#';};
-    const groups=[...new Set(cards.map(groupOf))].sort();
+    for(const card of cards){card.key=(card.label+' '+card.note).toLowerCase();const first=card.label.charAt(0).toUpperCase();card.group=/[A-Z]/.test(first)?first:'#';}
+    const groups=[...new Set(cards.map(card=>card.group))].sort();
     const many=cards.length>240;
     let group=many?groups[0]:null;
-    const holder=document.createElement('div');holder.className='cm-live-block cm-block-cards';
+    const holder=document.createElement('div');holder.className='cm-live-block cm-block-cards'+(many?' cm-cards-indexed':'');
+    const main=document.createElement('div');main.className='cm-cards-main';
     const bar=document.createElement('div');bar.className='cm-cards-bar';
     const search=document.createElement('input');search.type='search';search.className='cm-cards-search';search.placeholder=uiText(view.state,'searchCards');
     const count=document.createElement('span');count.className='cm-cards-count';
-    const source=document.createElement('button');source.type='button';source.textContent=uiText(view.state,'editSource');
-    source.addEventListener('mousedown',event=>event.preventDefault());
-    source.addEventListener('click',event=>{
-      event.preventDefault();if(!metadata.editable)return;
-      const pos=view.posAtDOM(holder),line=view.state.doc.lineAt(pos);
-      const target=line.number<view.state.doc.lines?view.state.doc.line(line.number+1).to:line.to;
-      view.dispatch({selection:EditorSelection.cursor(target),scrollIntoView:true});view.focus();
-    });
-    bar.append(search,count,source);
-    const letters=document.createElement('div');letters.className='cm-cards-letters';
+    bar.append(search,count);
     const grid=document.createElement('div');grid.className='cm-cards-grid';
+    // One click handler for the whole grid instead of one per card.
+    grid.addEventListener('mousedown',event=>{if(event.target.closest('.cm-card'))event.preventDefault();});
+    grid.addEventListener('click',event=>{const card=event.target.closest('.cm-card');if(!card)return;event.preventDefault();navigate(card.dataset.target);});
+    const cardElement=card=>{
+      const element=document.createElement('a');element.className='cm-card';element.href='#';element.title=card.target;element.dataset.target=card.target;
+      const title=document.createElement('strong');title.textContent=card.label;element.append(title);
+      if(card.note){const note=document.createElement('span');note.textContent=card.note;element.append(note);}
+      return element;
+    };
+    const rail=many?createIndexRail({groups,active:group,label:uiText(view.state,'searchCards'),onSelect:name=>{group=name;search.value='';render();holder.scrollIntoView?.({block:'nearest'});}}):null;
     const render=()=>{
       const query=search.value.trim().toLowerCase();
-      let shown=query?cards.filter(card=>card.label.toLowerCase().includes(query)||card.note.toLowerCase().includes(query)):group?cards.filter(card=>groupOf(card)===group):cards;
+      let shown=query?cards.filter(card=>card.key.includes(query)):group?cards.filter(card=>card.group===group):cards;
       // Words starting with the query come first.
       if(query)shown=shown.sort((a,b)=>(b.label.toLowerCase().startsWith(query)-a.label.toLowerCase().startsWith(query))||a.label.localeCompare(b.label));
       const limit=query?300:shown.length;
-      grid.replaceChildren(...shown.slice(0,limit).map(card=>{
-        const element=document.createElement('a');element.className='cm-card';element.href='#';element.title=card.target;
-        const title=document.createElement('strong');title.textContent=card.label;element.append(title);
-        if(card.note){const note=document.createElement('span');note.textContent=card.note;element.append(note);}
-        element.addEventListener('mousedown',event=>event.preventDefault());
-        element.addEventListener('click',event=>{event.preventDefault();navigate(card.target);});
-        return element;
-      }));
+      const fragment=document.createDocumentFragment();
+      for(const card of shown.slice(0,limit))fragment.append(cardElement(card));
+      grid.replaceChildren(fragment);
       count.textContent=(shown.length>limit?limit+' / ':'')+shown.length.toLocaleString();
-      for(const button of letters.children)button.classList.toggle('active',!query&&button.dataset.group===group);
+      rail?.setActive(query?null:group);
       window.acdianEditor?.requestMeasure();
     };
-    if(many)for(const name of groups){
-      const button=document.createElement('button');button.type='button';button.textContent=name;button.dataset.group=name;
-      button.addEventListener('mousedown',event=>event.preventDefault());
-      button.addEventListener('click',event=>{event.preventDefault();group=name;search.value='';render();});
-      letters.append(button);
-    }
-    search.addEventListener('input',render);
-    search.addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Enter'){const first=grid.querySelector('.cm-card');if(first)first.click();}});
-    holder.append(bar);if(many)holder.append(letters);holder.append(grid);
+    let pending=0;
+    search.addEventListener('input',()=>{cancelAnimationFrame(pending);pending=requestAnimationFrame(render);});
+    search.addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Enter'){render();grid.querySelector('.cm-card')?.click();}});
+    main.append(bar,grid);
+    if(rail)holder.append(rail.element);
+    holder.append(main);
+    this.rail=rail;
     render();
     return holder;
   }
+  destroy() { this.rail?.destroy(); }
   ignoreEvent() { return true; }
 }
 

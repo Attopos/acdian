@@ -163,6 +163,33 @@ struct VaultIndex {
         return VaultIndex(canonicalRoot: root, entries: parentPath.isEmpty ? place(entries) : insert(entries), files: files)
     }
 
+    /// The same index after renaming an item in place: it and everything inside
+    /// it get their new paths, and its folder is ordered as a rescan would order it.
+    func renaming(_ old: String, to new: String) -> VaultIndex {
+        guard old != new else { return self }
+        func moved(_ path: String) -> String? { path == old ? new : path.hasPrefix(old + "/") ? new + path.dropFirst(old.count) : nil }
+        func remap(_ entry: VaultEntry) -> VaultEntry {
+            let path = moved(entry.relativePath) ?? entry.relativePath
+            guard path != entry.relativePath || entry.isDirectory else { return entry }
+            let inside = entry.relativePath == old || old.hasPrefix(entry.relativePath + "/") || moved(entry.relativePath) != nil
+            return VaultEntry(relativePath: path, url: path == entry.relativePath ? entry.url : root.appendingPathComponent(path, isDirectory: entry.isDirectory),
+                              name: (path as NSString).lastPathComponent, isDirectory: entry.isDirectory,
+                              children: inside ? arranged(entry.children ?? [], folder: path) : entry.children, modified: entry.modified, size: entry.size)
+        }
+        let order = PageOrganizer.loadOrder(root: root)
+        let parent = (new as NSString).deletingLastPathComponent
+        func arranged(_ list: [VaultEntry], folder: String) -> [VaultEntry] {
+            let mapped = list.map(remap)
+            return folder == parent ? PageOrganizer.arrange(mapped.sorted(by: PageOrganizer.defaultOrder), names: order[folder], name: \.name) : mapped
+        }
+        let renamedFiles = files.map { file -> VaultEntry in
+            guard let path = moved(file.relativePath) else { return file }
+            return VaultEntry(relativePath: path, url: root.appendingPathComponent(path), name: (path as NSString).lastPathComponent,
+                              isDirectory: false, children: nil, modified: file.modified, size: file.size)
+        }
+        return VaultIndex(canonicalRoot: root, entries: arranged(entries, folder: ""), files: renamedFiles)
+    }
+
     /// The same index without an item and, for a folder, everything inside it.
     func removing(_ relativePath: String) -> VaultIndex {
         func gone(_ path: String) -> Bool { path == relativePath || path.hasPrefix(relativePath + "/") }

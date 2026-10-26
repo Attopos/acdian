@@ -159,7 +159,13 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     @Published var pdfZoomAction = 0
     @Published var pdfPageCount = 0
     @Published var fontSize: Double = UserDefaults.standard.double(forKey: "readingFontSize") == 0 ? 16 : UserDefaults.standard.double(forKey: "readingFontSize")
-    private var searchCache: [String:String] = [:]
+    private var searchCache: [String:String] = [:] { didSet { searchRevision &+= 1 } }
+    // The same texts case- and accent-folded once, so each search is a plain
+    // byte search; and the last result, which a longer query only narrows.
+    private var searchFolded: [String:NSString] = [:]
+    private var searchRevision = 0
+    private var matchMemo: (scope: String, query: String, result: [VaultEntry])?
+    private var foldedPaths: (generation: Int, paths: [String:String]) = (-1,[:])
     // The stamp each cached text was read at, so a rebuild reads only files that
     // changed, and the pages saved while a rebuild is still reading.
     private var searchStamps: [String:FileStamp] = [:]
@@ -211,14 +217,31 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         }
         return localized(error.localizedDescription)
     }
+    nonisolated static func searchFold(_ text: String) -> String { text.folding(options:[.caseInsensitive,.diacriticInsensitive],locale:nil) }
     var matches: [VaultEntry] {
         guard let index, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        let folded = Self.searchFold(query)
         let scope = activeModule.map { $0.folder + "/" }, hidden = hiddenFolders
-        return index.files.filter { file in
-            if let scope { guard file.relativePath.hasPrefix(scope) else { return false } }
-            else if hidden.contains(where: { file.relativePath.hasPrefix($0 + "/") }) { return false }
-            return file.relativePath.localizedCaseInsensitiveContains(query) || (searchCache[file.id]?.localizedCaseInsensitiveContains(query) ?? false)
+        let scopeKey = "\(scope ?? "")|\(hidden.joined(separator:"\n"))|\(indexGeneration)|\(searchRevision)"
+        var candidates: [VaultEntry]
+        if let memo = matchMemo, memo.scope == scopeKey, folded.hasPrefix(memo.query) {
+            if memo.query == folded { return memo.result }
+            candidates = memo.result
+        } else {
+            candidates = index.files.filter { file in
+                if let scope { return file.relativePath.hasPrefix(scope) }
+                return !hidden.contains(where: { file.relativePath.hasPrefix($0 + "/") })
+            }
         }
+        if foldedPaths.generation != indexGeneration {
+            foldedPaths = (indexGeneration,Dictionary(index.files.map { ($0.id,Self.searchFold($0.relativePath)) },uniquingKeysWith: { first,_ in first }))
+        }
+        let paths = foldedPaths.paths
+        let result = candidates.filter { file in
+            (paths[file.id] ?? Self.searchFold(file.relativePath)).contains(folded) || (searchFolded[file.id].map { $0.range(of:folded,options:.literal).location != NSNotFound } ?? false)
+        }
+        matchMemo = (scopeKey,folded,result)
+        return result
     }
     var headings: [(level: Int,title: String)] { facts.headings }
     private static func headings(in text: String) -> [(level: Int,title: String)] {
@@ -459,8 +482,10 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 let newPath = try PageOrganizer(root:root).rename(path,to:name)
                 if entry.isDirectory { self.moveFolderStates(from:path,to:newPath); self.moduleFolderMoved(from:path,to:newPath) }
                 self.remapTabs(from:path,to:newPath)
-                let newIndex = try VaultIndex(root:root)
-                self.index = newIndex; self.rebuildSearch()
+                // The renamed paths are updated in memory; a rescan off the
+                // main thread then catches anything else that changed.
+                guard let newIndex = self.index?.renaming(path,to:newPath) else { return }
+                self.index = newIndex; self.rebuildSearch(); self.rescanInBackground(root)
                 if affectsSelection, let openPath, openPath == path || openPath.hasPrefix(path + "/"),
                    let file = newIndex.files.first(where: { $0.relativePath == newPath + openPath.dropFirst(path.count) }) {
                     self.open(file,skipConfirmation:true)
@@ -539,32 +564,42 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// the sidebar in batches rather than one update per file.
     func rebuildSearch() {
         let request = UUID(); searchID = request; searchSaves = [:]
-        guard let index else { searchCache = [:]; searchStamps = [:]; return }
+        guard let index else { searchCache = [:]; searchFolded = [:]; searchStamps = [:]; return }
         let previous = searchCache, previousStamps = searchStamps
+        // Read-only here; NSString is immutable, so sharing it with the reader is safe.
+        nonisolated(unsafe) let previousFolded = searchFolded
         DispatchQueue.global(qos:.utility).async {
-            var cache: [String:String] = [:], stamps: [String:FileStamp] = [:], batch: [String:String] = [:]
-            func publish(_ texts: [String:String]) {
+            var cache: [String:String] = [:], folded: [String:NSString] = [:], stamps: [String:FileStamp] = [:]
+            var batch: [String:String] = [:], foldedBatch: [String:NSString] = [:]
+            func publish(_ texts: [String:String], _ foldedTexts: [String:NSString]) {
                 DispatchQueue.main.async {
                     guard self.searchID == request else { return }
+                    self.searchFolded.merge(foldedTexts) { _,new in new }
                     self.searchCache.merge(texts) { _,new in new }; self.objectWillChange.send()
                 }
             }
             for file in index.files where file.ext == "md" && file.size < 2_000_000 {
                 let stamp = FileStamp(file)
-                if let text = previous[file.id], previousStamps[file.id] == stamp { cache[file.id] = text; stamps[file.id] = stamp; continue }
+                if let text = previous[file.id], previousStamps[file.id] == stamp {
+                    cache[file.id] = text; folded[file.id] = previousFolded[file.id] ?? Self.searchFold(text) as NSString; stamps[file.id] = stamp; continue
+                }
                 guard let value = try? VaultFileIO.readMarkdown(at:file.url,allowedRoot:index.root) else { continue }
-                cache[file.id] = value; stamps[file.id] = stamp; batch[file.id] = value
-                if batch.count >= 200 { publish(batch); batch = [:] }
+                let foldedValue = Self.searchFold(value) as NSString
+                cache[file.id] = value; folded[file.id] = foldedValue; stamps[file.id] = stamp; batch[file.id] = value; foldedBatch[file.id] = foldedValue
+                // Large batches: each one redraws the sidebar.
+                if batch.count >= 1000 { publish(batch,foldedBatch); batch = [:]; foldedBatch = [:] }
             }
             DispatchQueue.main.async {
                 guard self.searchID == request else { return }
                 // Pages saved meanwhile keep their newer text, to be read again next time.
-                for (id,text) in self.searchSaves { cache[id] = text; stamps[id] = nil }
+                for (id,text) in self.searchSaves { cache[id] = text; folded[id] = Self.searchFold(text) as NSString; stamps[id] = nil }
+                self.searchFolded = folded
                 self.searchCache = cache; self.searchStamps = stamps; self.searchSaves = [:]; self.objectWillChange.send()
             }
         }
     }
     private func searchSaved(_ id: String, _ text: String) {
+        searchFolded[id] = Self.searchFold(text) as NSString
         searchCache[id] = text; searchStamps[id] = nil; searchSaves[id] = text
     }
     func refresh() {
