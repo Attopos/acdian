@@ -217,11 +217,17 @@ struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @FocusState private var searchFocused: Bool
     @State private var rootDropTargeted = false
+    @State private var editingModule: ModuleEditorTarget?
     var body: some View {
+        // With no module open and no search, the sidebar lists the modules instead of folders.
+        let home = model.activeModule == nil && model.query.isEmpty
         VStack(spacing:0) {
             HStack(spacing:10) { BrandMark(size:30,style:model.iconStyle); Text("ACdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer(); SidebarToggle() }.padding(.horizontal,20).frame(height:68)
             ModuleBar()
             HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused); if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) } else { Text("⌘F").font(.system(size:10)).foregroundStyle(.tertiary) } }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
+            if home {
+                HStack { Text(model.localized("模块")).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(Color.secondary.opacity(0.6)); Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { editingModule = .new } label: { Image(systemName:"plus") }.help(model.localized("新建模块")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
+            } else {
             HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:[.text],isTargeted:$rootDropTargeted) { providers in
                 // Dropping on the Pages header moves an item to the top level.
                 let folder = model.activeModule?.folder ?? ""
@@ -230,8 +236,10 @@ struct SidebarView: View {
                 _ = provider.loadObject(ofClass:NSString.self) { object,_ in if let path = object as? String { DispatchQueue.main.async { model.movePage(path,to:PageDropTarget(folder:folder)) } } }
                 return true
             }; Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
+            }
             ScrollView {
-                if model.query.isEmpty { SidebarTree(entries:model.sidebarEntries).padding(.horizontal,10).padding(.bottom,20) }
+                if home { SidebarModuleList { editingModule = $0 }.padding(.horizontal,10).padding(.bottom,20) }
+                else if model.query.isEmpty { SidebarTree(entries:model.sidebarEntries).padding(.horizontal,10).padding(.bottom,20) }
                 else {
                     let matches = model.matches
                     LazyVStack(spacing:2) { ForEach(matches.prefix(500)) { entry in FileRow(entry:entry,indent:0,showPath:true) }; if matches.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.caption).foregroundStyle(.tertiary).padding(.top,25) } }
@@ -249,6 +257,7 @@ struct SidebarView: View {
             Rectangle().fill(Color.faint).frame(height:1).padding(.horizontal,16)
             HStack(spacing:14) { SettingsButton(); Spacer() }.padding(.horizontal,20).padding(.vertical,14)
         }.background(Color.rail)
+        .sheet(item:$editingModule) { target in ModuleEditor(target:target).environmentObject(model) }
         .onReceive(NotificationCenter.default.publisher(for:Notification.Name("acdianSearch"))) { _ in searchFocused = true; model.showSidebar = true }
     }
 }

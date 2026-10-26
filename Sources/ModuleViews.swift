@@ -210,20 +210,62 @@ struct ModuleBar: View {
                 Button { model.goHome() } label: { Image(systemName:"square.grid.2x2").font(.system(size:12)).frame(width:22,height:22).contentShape(Rectangle()) }
                     .buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("所有模块"))
             }.padding(.horizontal,14).padding(.bottom,12)
-        } else {
-            ScrollView(.horizontal,showsIndicators:false) {
-                HStack(spacing:8) {
-                    ForEach(model.presentModules.filter { !$0.hidden }) { module in
-                        Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(module.id) } } label: { ModuleTileIcon(icon:module.icon,color:module.color,size:28) }
-                            .buttonStyle(.plain).help(module.name)
-                    }
-                    Button { model.goHome() } label: {
-                        Image(systemName:"square.grid.2x2").font(.system(size:12)).frame(width:36,height:28)
-                            .background(ModuleStyle.frost,in:RoundedRectangle(cornerRadius:7,style:.continuous))
-                    }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("所有模块"))
-                }.padding(.horizontal,16)
-            }.padding(.bottom,12)
         }
+    }
+}
+
+/// The sidebar's home: one row per module, opening it like an app.
+struct SidebarModuleList: View {
+    @EnvironmentObject var model: AppModel
+    let edit: (ModuleEditorTarget) -> Void
+    var body: some View {
+        LazyVStack(spacing:2) {
+            ForEach(model.presentModules.filter { !$0.hidden }) { module in SidebarModuleRow(module:module,edit:edit) }
+            Button { edit(.new) } label: {
+                HStack(spacing:10) {
+                    RoundedRectangle(cornerRadius:7,style:.continuous).strokeBorder(Color.secondary.opacity(0.35),style:StrokeStyle(lineWidth:1,dash:[3,3]))
+                        .overlay { Image(systemName:"plus").font(.system(size:11)) }.frame(width:34,height:26)
+                    Text(model.localized("新建模块")).font(.system(size:12)); Spacer()
+                }.foregroundStyle(.secondary).padding(.horizontal,8).padding(.vertical,6).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+        }
+    }
+}
+struct SidebarModuleRow: View {
+    @EnvironmentObject var model: AppModel
+    let module: PageModule
+    let edit: (ModuleEditorTarget) -> Void
+    @State private var hovering = false
+    @State private var dropTargeted = false
+    var body: some View {
+        let prefix = module.folder + "/"
+        let count = model.index?.files.filter { $0.relativePath.hasPrefix(prefix) && (module.kind == .attachments ? MediaKinds.isMedia($0.ext) : $0.ext == "md") }.count ?? 0
+        Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(module.id) } } label: {
+            HStack(spacing:10) {
+                ModuleTileIcon(icon:module.icon,color:module.color,size:26,hovering:hovering)
+                Text(module.name).font(.system(size:13,weight:.medium)).lineLimit(1).foregroundStyle(.primary)
+                Spacer(minLength:6)
+                Text(model.language.number(count)).font(.system(size:10).monospacedDigit()).foregroundStyle(.tertiary)
+                Image(systemName:"chevron.right").font(.system(size:9,weight:.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal,8).padding(.vertical,6).contentShape(Rectangle())
+            .background(dropTargeted ? Color.acPink.opacity(0.15) : hovering ? Color.wash : .clear,in:RoundedRectangle(cornerRadius:8))
+        }
+        .buttonStyle(.plain).help(module.folder)
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Button { model.enterModule(module.id) } label: { Label(model.localized("打开"),systemImage:"arrow.up.forward.app") }
+            Button { edit(.edit(module)) } label: { Label(model.localized("编辑模块…"),systemImage:"slider.horizontal.3") }
+            Button { model.setModuleHidden(module.id,true) } label: { Label(model.localized("隐藏"),systemImage:"eye.slash") }
+        }
+        // Dropping a page or folder on a module moves it into the module's folder.
+        .onDrop(of:[.text],isTargeted:$dropTargeted) { providers in
+            if let path = model.draggingPath { model.movePage(path,to:PageDropTarget(folder:module.folder)); return true }
+            guard let provider = providers.first else { return false }
+            _ = provider.loadObject(ofClass:NSString.self) { object,_ in if let path = object as? String { DispatchQueue.main.async { model.movePage(path,to:PageDropTarget(folder:module.folder)) } } }
+            return true
+        }
+        .accessibilityIdentifier("sidebar-module-\(module.folder)")
     }
 }
 
