@@ -238,14 +238,11 @@ struct SidebarModuleRow: View {
     @State private var hovering = false
     @State private var dropTargeted = false
     var body: some View {
-        let prefix = module.folder + "/"
-        let count = model.index?.files.filter { $0.relativePath.hasPrefix(prefix) && (module.kind == .attachments ? MediaKinds.isMedia($0.ext) : $0.ext == "md") }.count ?? 0
         Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(module.id) } } label: {
             HStack(spacing:10) {
                 ModuleTileIcon(icon:module.icon,color:module.color,size:26,hovering:hovering)
                 Text(module.name).font(.system(size:13,weight:.medium)).lineLimit(1).foregroundStyle(.primary)
                 Spacer(minLength:6)
-                Text(model.language.number(count)).font(.system(size:10).monospacedDigit()).foregroundStyle(.tertiary)
                 Image(systemName:"chevron.right").font(.system(size:9,weight:.semibold)).foregroundStyle(.tertiary)
             }
             .padding(.horizontal,8).padding(.vertical,6).contentShape(Rectangle())
