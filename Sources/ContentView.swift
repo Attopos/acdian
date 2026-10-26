@@ -299,6 +299,7 @@ struct TreeRow: View {
             .contextMenu {
                 Button { if model.newFolder(near:entry) != nil { model.setFolderExpanded(entry.relativePath,true) } } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
                 Button { model.startRenaming(entry) } label: { Label(model.localized("重命名"),systemImage:"pencil") }
+                MoveToMenu(entry:entry)
                 Divider()
                 Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
             }
@@ -421,12 +422,54 @@ struct FileRow: View {
         .contextMenu {
             Button { model.newFolder(near:entry) } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
             Button { model.startRenaming(entry) } label: { Label(model.localized("重命名"),systemImage:"pencil") }
+            MoveToMenu(entry:entry)
             Divider()
             Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
         }
         .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
         .onDrag { model.draggingPath = entry.relativePath; return NSItemProvider(object:entry.relativePath as NSString) }
         .onDrop(of:[.text],delegate:SidebarDropDelegate(model:model,entry:entry,height:nil))
+    }
+}
+/// "Move to" in a sidebar row's menu: every module and the folders inside it,
+/// plus the top level. A folder with subfolders opens a submenu that starts
+/// with "Move here".
+struct MoveToMenu: View {
+    @EnvironmentObject var model: AppModel
+    let entry: VaultEntry
+    var body: some View {
+        let parent = (entry.relativePath as NSString).deletingLastPathComponent
+        Menu {
+            ForEach(model.presentModules) { module in
+                if let folder = model.index.flatMap({ AppModel.entry(module.folder,in:$0.entries) }) {
+                    MoveFolderMenu(folder:folder,title:module.name,moving:entry)
+                }
+            }
+            Divider()
+            Button(model.localized("顶层")) { model.movePage(entry.relativePath,to:PageDropTarget(folder:"")) }.disabled(parent.isEmpty)
+        } label: { Label(model.localized("移动到"),systemImage:"folder") }
+    }
+}
+struct MoveFolderMenu: View {
+    @EnvironmentObject var model: AppModel
+    let folder: VaultEntry
+    let title: String
+    let moving: VaultEntry
+    var body: some View {
+        let path = folder.relativePath
+        let blocked = path == moving.relativePath || path.hasPrefix(moving.relativePath + "/")
+        let here = path == (moving.relativePath as NSString).deletingLastPathComponent
+        let subfolders = (folder.children ?? []).filter { $0.isDirectory && $0.relativePath != moving.relativePath }
+        if blocked { EmptyView() }
+        else if subfolders.isEmpty {
+            Button(title) { model.movePage(moving.relativePath,to:PageDropTarget(folder:path)) }.disabled(here)
+        } else {
+            Menu(title) {
+                Button(model.localized("移到这里")) { model.movePage(moving.relativePath,to:PageDropTarget(folder:path)) }.disabled(here)
+                Divider()
+                ForEach(subfolders) { child in AnyView(MoveFolderMenu(folder:child,title:child.name,moving:moving)) }
+            }
+        }
     }
 }
 // Dragging a sidebar row: the top or bottom edge of a row places the item

@@ -31,6 +31,9 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     private static let translations: [String:(english:String,spanish:String)] = [
         "好": ("OK", "Aceptar"),
+        "移动到": ("Move to", "Mover a"),
+        "移到这里": ("Move here", "Mover aquí"),
+        "顶层": ("Top level", "Nivel superior"),
         "模块": ("Modules", "Módulos"),
         "每个模块是一个文件夹，打开后侧栏只显示其中的页面。": ("Each module is a folder. Open one and the sidebar shows only its pages.", "Cada módulo es una carpeta. Al abrirlo, la barra lateral muestra solo sus páginas."),
         "新建模块": ("New module", "Nuevo módulo"),
