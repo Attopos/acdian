@@ -1,4 +1,4 @@
-# ACdian 1.2.9
+# ACdian 1.4.0
 
 黑粉配色的本地 Mac Markdown 阅读器与实时编辑器。
 
@@ -38,6 +38,12 @@ ACdian 自动准备本地页面的保存位置，打开后即可使用，无需�
 不需要网络，渲染依赖与字体均已包含，许可证在 `Resources/vendor`。
 产物写入本目录的 `dist`（可用 `ACDIAN_OUTPUT_DIR` 指定），临时签名的构建缓存位于 `/private/tmp/acdian-build-<UID>`。
 
+## 模块
+
+页面文件夹里的每个顶层文件夹是一个模块，像启动台里的应用一样以圆角图标显示。没有打开页面时主区域显示所有模块；点开模块后，侧栏、搜索和 ⌘N 新页面都只在该文件夹内。右键模块可编辑名称、图标和颜色，隐藏或从启动台移除（文件夹保留），点“新建模块”新建。模块列表保存在页面文件夹的 `.acdian-modules.json`。
+
+Attachments 模块集中显示所有图片和视频及其引用页面。在页面中删掉图片或视频后，若没有其他页面引用，10 秒后自动移到垃圾桶（保留 15 天）；重新写入同名链接会自动恢复。
+
 ## 验证
 
 核心测试：
@@ -56,35 +62,35 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/Vau
 原生快照测试：
 
 ```sh
-xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Tests/EditorSnapshotTests.swift -o .build/snapshot-tests
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Tests/EditorSnapshotTests.swift -o .build/snapshot-tests
 .build/snapshot-tests
 ```
 
 新页面与首次自动保存验证：
 
 ```sh
-xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Tests/NewPageTests.swift -o .build/new-page-tests
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Tests/NewPageTests.swift -o .build/new-page-tests
 .build/new-page-tests
 ```
 
 输入后自动保存与退出补存验证：
 
 ```sh
-xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Tests/AutosaveTests.swift -o .build/autosave-tests
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Tests/AutosaveTests.swift -o .build/autosave-tests
 .build/autosave-tests
 ```
 
 自动保存位置与旧页面原位沿用验证：
 
 ```sh
-xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Tests/PagesStorageTests.swift -o .build/pages-storage-tests
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Tests/PagesStorageTests.swift -o .build/pages-storage-tests
 .build/pages-storage-tests
 ```
 
 语言偏好与编辑状态验证：
 
 ```sh
-xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Tests/LocalizationTests.swift -o .build/localization-tests
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Tests/LocalizationTests.swift -o .build/localization-tests
 .build/localization-tests
 ```
 
@@ -93,14 +99,14 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/Vau
 ```sh
 xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/PageTrash.swift Tests/PageTrashTests.swift -o .build/page-trash-tests
 .build/page-trash-tests
-xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Tests/TrashModelTests.swift -o .build/trash-model-tests
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Tests/TrashModelTests.swift -o .build/trash-model-tests
 .build/trash-model-tests
 ```
 
 侧栏拖动排序与移动验证（顺序保存在页面根目录的隐藏文件 `.acdian-order.json`）：
 
 ```sh
-xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Tests/PageOrderTests.swift -o .build/page-order-tests
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Tests/PageOrderTests.swift -o .build/page-order-tests
 .build/page-order-tests
 ```
 
@@ -129,6 +135,15 @@ mkdir -p .build/interactive-tests && cp -R Resources/. .build/interactive-tests/
 xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm64-apple-macos14.0 $(ls Sources/*.swift | grep -v AcdianApp) .build/AcdianApp-nomain.swift Tests/InteractiveBlockTests.swift -o .build/interactive-tests/interactive-tests
 .build/interactive-tests/interactive-tests
 ```
+
+模块与附件清理验证：
+
+```sh
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Tests/ModuleTests.swift -o .build/module-tests
+.build/module-tests
+```
+
+模块界面截图：同样方式用 `Tests/ModuleSnapshot.swift` 构建，运行 `module-snapshot <页面文件夹副本> <输出文件夹> [zh-Hans]`。
 
 打开与切换耗时：同样方式用 `Tests/TabSwitchBenchmark.swift` 构建（加 `-O -D ACDIAN_HOST`）；去掉 `-D ACDIAN_HOST` 可对照 1.2.8 源码测量。
 

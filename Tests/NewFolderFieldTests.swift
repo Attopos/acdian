@@ -15,10 +15,10 @@ struct NewFolderFieldTests {
     }
 }
 
-private struct SidebarTree: View {
+private struct TestSidebar: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
-        VStack(spacing:0) { ForEach(model.index?.entries ?? []) { TreeRow(entry:$0,depth:0) }; Spacer() }.frame(width:260,height:320)
+        VStack(spacing:0) { SidebarTree(entries:model.index?.entries ?? []); Spacer() }.frame(width:260,height:320)
     }
 }
 
@@ -54,7 +54,7 @@ private struct SidebarTree: View {
         model.index = try VaultIndex(root:root)
         let window = NSWindow(contentRect:NSRect(x:-6000,y:-6000,width:260,height:320),styleMask:[.titled],backing:.buffered,defer:false)
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView:SidebarTree().environmentObject(model))
+        window.contentView = NSHostingView(rootView:TestSidebar().environmentObject(model))
         window.orderFrontRegardless(); window.makeKey()
         func box() -> VaultEntry { AppModel.entry("Box",in:model.index!.entries)! }
         func editor() -> NSTextView? { window.firstResponder as? NSTextView }
@@ -108,7 +108,7 @@ private struct SidebarTree: View {
         soloModel.index = try VaultIndex(root:solo)
         let soloWindow = NSWindow(contentRect:NSRect(x:-6000,y:-6000,width:260,height:320),styleMask:[.titled],backing:.buffered,defer:false)
         soloWindow.isReleasedWhenClosed = false
-        soloWindow.contentView = NSHostingView(rootView:SidebarTree().environmentObject(soloModel))
+        soloWindow.contentView = NSHostingView(rootView:TestSidebar().environmentObject(soloModel))
         soloWindow.orderFrontRegardless(); soloWindow.makeKey()
         try await Task.sleep(nanoseconds:300_000_000)
         let height = soloWindow.contentView!.bounds.height

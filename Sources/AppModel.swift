@@ -114,6 +114,19 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// Where the reader was in the front tab, for an editor starting that page afresh.
     var frontTabView: EditorViewState? { activeTabID.flatMap { tabMemory[$0]?.view } }
     @Published var query = ""
+    // Modules: top-level folders shown as tiles in the launcher. The active
+    // module scopes the sidebar, search and new pages to its folder.
+    @Published private(set) var modules: [PageModule] = []
+    @Published var activeModuleID: String? {
+        didSet { if oldValue != activeModuleID, index != nil { preferences.set(activeModuleID,forKey:activeModuleKey) } }
+    }
+    @Published private(set) var folderStateRevision = 0
+    // Attachments dropped from a page wait a little before going to the trash,
+    // so an undo or a paste into another page keeps them.
+    private var pendingCleanup: [String:Date] = [:]
+    private var cleanupTimer: Timer?
+    private let attachmentCleanupDelay: TimeInterval
+    private var draftFolder = ""
     @Published var showOutline = true
     @Published var showSidebar = true
     @Published var showingTrash = false
@@ -169,7 +182,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     var markdownCount: Int { index?.files.filter { $0.ext == "md" }.count ?? 0 }
     var imageCount: Int { index?.files.filter { Self.images.contains($0.ext) }.count ?? 0 }
     var pdfCount: Int { index?.files.filter { $0.ext == "pdf" }.count ?? 0 }
-    static let images = Set(["png","jpg","jpeg","gif","webp","svg","heic","tiff","tif","bmp","avif"])
+    static let images = MediaKinds.images
+    static let videos = MediaKinds.videos
     // The outline and character count are worked out once per text, not on every view update.
     // Each tab keeps them for its text, so returning to a long page skips the work.
     private struct TextFacts { let text: String; let headings: [(level: Int,title: String)]; let count: Int }
@@ -199,7 +213,12 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     var matches: [VaultEntry] {
         guard let index, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        return index.files.filter { $0.relativePath.localizedCaseInsensitiveContains(query) || (searchCache[$0.id]?.localizedCaseInsensitiveContains(query) ?? false) }
+        let scope = activeModule.map { $0.folder + "/" }, hidden = hiddenFolders
+        return index.files.filter { file in
+            if let scope { guard file.relativePath.hasPrefix(scope) else { return false } }
+            else if hidden.contains(where: { file.relativePath.hasPrefix($0 + "/") }) { return false }
+            return file.relativePath.localizedCaseInsensitiveContains(query) || (searchCache[file.id]?.localizedCaseInsensitiveContains(query) ?? false)
+        }
     }
     var headings: [(level: Int,title: String)] { facts.headings }
     private static func headings(in text: String) -> [(level: Int,title: String)] {
@@ -212,8 +231,9 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             return (n, String(line.dropFirst(n+1)).trimmingCharacters(in: .whitespaces))
         }
     }
-    init(loadInitialVault: Bool = true, preferences: UserDefaults = .standard, pagesRoot: URL? = nil, trashNow: @escaping () -> Date = Date.init, autosaveDelay: TimeInterval = 0.5) {
+    init(loadInitialVault: Bool = true, preferences: UserDefaults = .standard, pagesRoot: URL? = nil, trashNow: @escaping () -> Date = Date.init, autosaveDelay: TimeInterval = 0.5, attachmentCleanupDelay: TimeInterval = 10) {
         self.preferences = preferences
+        self.attachmentCleanupDelay = max(0,attachmentCleanupDelay)
         self.trashNow = trashNow
         self.autosaveDelay = max(0.01,autosaveDelay)
         let args = CommandLine.arguments
@@ -240,7 +260,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         if index != nil { return true }
         do {
             let newIndex = try VaultIndex(root:resolvePageStorage())
-            index = newIndex; rebuildSearch(); statusValue = .openedPages(newIndex.files.count)
+            index = newIndex; loadModules(); rebuildSearch(); statusValue = .openedPages(newIndex.files.count)
             refreshTrash(); restoreTabs(openActive:false)
             return true
         } catch { self.error = localizedError(error); return false }
@@ -254,13 +274,13 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 DispatchQueue.main.async {
                     guard self.loadID == request else { return }
                     self.index = newIndex; self.selected = nil; self.text = ""; self.originalText = ""; self.clearDraftState(); self.query = ""; self.insertion = nil; self.loading = false; self.editorDocumentID = UUID()
-                    self.showingTrash = false; self.rebuildSearch(); self.statusValue = .openedPages(newIndex.files.count)
+                    self.showingTrash = false; self.loadModules(); self.rebuildSearch(); self.statusValue = .openedPages(newIndex.files.count)
                     self.refreshTrash(); self.restoreTabs(openActive:true)
                 }
             } catch { DispatchQueue.main.async { guard self.loadID == request else { return }; self.loading = false; self.error = self.localizedError(error) } }
         }
     }
-    deinit { trashTimer?.invalidate(); autosaveTask?.cancel() }
+    deinit { trashTimer?.invalidate(); cleanupTimer?.invalidate(); autosaveTask?.cancel() }
 
     private func cancelAutosave() {
         autosaveTask?.cancel(); autosaveTask = nil
@@ -437,7 +457,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             if affectsSelection, !self.saveBeforeLeaving() { return }
             do {
                 let newPath = try PageOrganizer(root:root).rename(path,to:name)
-                if entry.isDirectory { self.moveFolderStates(from:path,to:newPath) }
+                if entry.isDirectory { self.moveFolderStates(from:path,to:newPath); self.moduleFolderMoved(from:path,to:newPath) }
                 self.remapTabs(from:path,to:newPath)
                 let newIndex = try VaultIndex(root:root)
                 self.index = newIndex; self.rebuildSearch()
@@ -477,7 +497,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                     switch result {
                     case .success(let (newPath,newIndex)):
                         if self.loadID == request { self.loading = false }
-                        if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath) }
+                        if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath); self.moduleFolderMoved(from:relativePath,to:newPath) }
                         self.remapTabs(from:relativePath,to:newPath)
                         self.index = newIndex; self.rebuildSearch()
                         if affectsSelection, let openPath, newPath != relativePath {
@@ -497,6 +517,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func setFolderExpanded(_ path: String, _ expanded: Bool) {
         var states = preferences.dictionary(forKey:folderStateKey) as? [String:Bool] ?? [:]
         states[path] = expanded; preferences.set(states,forKey:folderStateKey)
+        folderStateRevision &+= 1
     }
     private func moveFolderStates(from old: String, to new: String) {
         guard old != new, var states = preferences.dictionary(forKey:folderStateKey) as? [String:Bool] else { return }
@@ -646,6 +667,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     private func install(_ entry: VaultEntry, content: String, fragment: String, tab: UUID?) {
         showInTab(tab,path:entry.relativePath)
+        followModule(to:entry.relativePath)
         selected = entry; text = content; originalText = content; clearDraftState(); anchor = fragment
         pdfPage = fragment.hasPrefix("page=") ? (Int(fragment.dropFirst(5)) ?? 1) : (activeTabID.flatMap { tabMemory[$0]?.pdfPage } ?? 1)
         pdfPageCount = 0; insertion = nil; loading = false; status = entry.relativePath; editorDocumentID = UUID()
@@ -681,6 +703,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         withEditorSnapshot {
             guard self.saveBeforeLeaving() else { return }
             self.clearOpenDocument(); self.showingTrash = false; self.statusValue = .ready
+            self.activeModuleID = nil; self.query = ""
         }
     }
     // Tabs are remembered per pages folder, so a relaunch reopens them.
@@ -768,6 +791,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard let selected, selected.ext == "md", dirty else { return true }
         do {
             try VaultFileIO.saveMarkdown(text,at:selected.url,expectedContent:originalText,allowedRoot:index?.root)
+            attachmentsChanged(from:originalText,to:text,page:selected.relativePath)
             originalText = text; searchSaved(selected.id,text); keepFrontText(text,stamp:nil); statusValue = .saved(Date()); lastAutosaveError = nil; return true
         } catch { reportSaveFailure(error,automatically:automatically); return false }
     }
@@ -806,6 +830,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             guard self.saveBeforeLeaving(), let root = self.index?.root else { return }
             let tab = reused ?? (self.isDraft && self.draftFile == nil ? self.activeTabID : nil)
             self.clearDraftState()
+            self.draftFolder = self.activeModule?.kind == .pages ? self.activeModule!.folder : ""
             let path = ".acdian-draft-\(UUID().uuidString).md"
             self.openID = UUID(); self.loadID = UUID()
             self.selected = VaultEntry(relativePath:path,url:root.appendingPathComponent(path),name:"New Page",isDirectory:false,children:nil,modified:nil,size:0)
@@ -821,7 +846,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// The sidebar entry for a file just created at the top of the pages folder.
     private static func createdEntry(_ filename: String, at url: URL, root: URL) -> VaultEntry {
         let stamp = FileStamp(of:url)
-        return VaultEntry(relativePath:filename,url:root.appendingPathComponent(filename),name:filename,isDirectory:false,children:nil,modified:stamp?.modified ?? Date(),size:stamp?.size ?? 0)
+        return VaultEntry(relativePath:filename,url:root.appendingPathComponent(filename),name:(filename as NSString).lastPathComponent,isDirectory:false,children:nil,modified:stamp?.modified ?? Date(),size:stamp?.size ?? 0)
     }
     private func clearDraftState() {
         cancelAutosave(); isDraft = false; draftTitle = ""; draftFile = nil; savedDraftContent = nil
@@ -858,9 +883,12 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             } else {
                 let cleanTitle = draftTitle.components(separatedBy:.controlCharacters).joined(separator:" ").trimmingCharacters(in:.whitespacesAndNewlines)
                 let base = Self.draftFilenameBase(cleanTitle), fm = FileManager.default
+                // A page started inside a module is saved in its folder, if it still exists.
+                var isFolder: ObjCBool = false
+                let folder = !draftFolder.isEmpty && fm.fileExists(atPath:root.appendingPathComponent(draftFolder).path,isDirectory:&isFolder) && isFolder.boolValue ? draftFolder + "/" : ""
                 var number = 1
                 while true {
-                    let filename = base + (number == 1 ? "" : " \(number)") + ".md"
+                    let filename = folder + base + (number == 1 ? "" : " \(number)") + ".md"
                     let url = root.appendingPathComponent(filename)
                     if fm.fileExists(atPath:url.path) || (try? fm.destinationOfSymbolicLink(atPath:url.path)) != nil { number += 1; continue }
                     do { try VaultFileIO.saveMarkdown(content,at:url,expectedContent:nil,allowedRoot:root) }
@@ -869,10 +897,11 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                     // Only the backing file changes. The current editor keeps
                     // its body, title, selection, history and bridge identity.
                     file = Self.createdEntry(filename,at:url,root:root)
-                    if let index, index.root == root { self.index = index.addingTopLevelFile(file) }
+                    if let index, index.root == root { self.index = index.addingFile(file) }
                     break
                 }
             }
+            attachmentsChanged(from:savedDraftContent ?? "",to:content,page:file.relativePath)
             draftFile = file; savedDraftContent = content; originalText = text
             if let i = tabs.firstIndex(where: { $0.id == activeTabID }), tabs[i].path != file.relativePath { tabs[i].path = file.relativePath }
             searchSaved(file.id,content); keepFrontText(content,stamp:nil); statusValue = .saved(Date()); lastAutosaveError = nil
@@ -902,7 +931,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = true; panel.message = localized("附件会复制到页面的 Attachments 文件夹，并插入链接。")
         guard panel.runModal() == .OK else { return }
         do {
-            let directory = root.appendingPathComponent("Attachments").resolvingSymlinksInPath()
+            let folder = attachmentsFolder
+            let directory = root.appendingPathComponent(folder).resolvingSymlinksInPath()
             guard directory.path.hasPrefix(root.resolvingSymlinksInPath().path + "/") else { throw NSError(domain:"acdian",code:2,userInfo:[NSLocalizedDescriptionKey:"附件目录指向页面存储范围以外，无法导入。"]) }
             try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
             var links: [String] = []
@@ -912,9 +942,204 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 while FileManager.default.fileExists(atPath:dest.path) { dest = directory.appendingPathComponent("\(source.deletingPathExtension().lastPathComponent)-\(n).\(source.pathExtension)"); n += 1 }
                 try FileManager.default.copyItem(at:source,to:dest)
                 let embed = Self.images.contains(dest.pathExtension.lowercased()) || dest.pathExtension.lowercased() == "pdf"
-                links.append("\(embed ? "!" : "")[[Attachments/\(dest.lastPathComponent)]]")
+                links.append("\(embed ? "!" : "")[[\(folder)/\(dest.lastPathComponent)]]")
             }
             insertion = EditorInsertion(text:"\n" + links.joined(separator:"\n") + "\n"); refresh()
         } catch { self.error = self.localizedError(error) }
+    }
+
+    // MARK: Modules
+    private var activeModuleKey: String { "activeModule:" + (index?.root.path ?? "") }
+    var activeModule: PageModule? { activeModuleID.flatMap { id in modules.first { $0.id == id } } }
+    /// Modules whose folder is in the vault; a deleted folder's tile comes back if it is restored.
+    var presentModules: [PageModule] {
+        guard let index else { return [] }
+        return modules.filter { module in Self.entry(module.folder,in:index.entries)?.isDirectory == true }
+    }
+    var attachmentsFolder: String { modules.first { $0.kind == .attachments }?.folder ?? "Attachments" }
+    private var hiddenFolders: [String] { modules.filter(\.hidden).map(\.folder) }
+    /// The rows at the top of the sidebar: the active module's contents, or
+    /// everything except hidden modules.
+    var sidebarEntries: [VaultEntry] {
+        guard let index else { return [] }
+        if let module = activeModule { return Self.entry(module.folder,in:index.entries)?.children ?? [] }
+        let hidden = Set(hiddenFolders)
+        return index.entries.filter { !hidden.contains($0.relativePath) }
+    }
+    func module(containing path: String) -> PageModule? {
+        modules.filter { $0.contains(path) }.max { $0.folder.count < $1.folder.count }
+    }
+    private func loadModules() {
+        guard let root = index?.root else { return }
+        modules = ModuleStore.load(root:root)
+        let stored = preferences.string(forKey:activeModuleKey)
+        activeModuleID = modules.contains { $0.id == stored } ? stored : nil
+    }
+    private func saveModules() {
+        guard let root = index?.root else { return }
+        do { try ModuleStore.save(modules,root:root) } catch { self.error = localizedError(error) }
+    }
+    func enterModule(_ id: String?) {
+        guard activeModuleID != id else { return }
+        activeModuleID = id; query = ""
+    }
+    /// A page opened from outside the active module brings its own module into the sidebar.
+    private func followModule(to path: String) {
+        guard let active = activeModule, !active.contains(path) else { return }
+        activeModuleID = module(containing:path)?.id
+    }
+    /// Creates a module over a new top-level folder, or adopts an existing
+    /// folder of that name, and opens it.
+    @discardableResult func createModule(name typed: String, icon: String, color: String) -> Bool {
+        guard ensurePageStorage(), let root = index?.root else { return false }
+        let name = typed.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !name.isEmpty, !name.contains("/"), !name.contains(":"), !name.hasPrefix("."), name.utf8.count <= 200 else {
+            error = localized("请输入有效的名称，不包含 / 或 :。"); return false
+        }
+        var folder = name
+        if let existing = modules.first(where: { $0.folder.compare(name,options:.caseInsensitive) == .orderedSame }) {
+            if presentModules.contains(existing) { error = localized("已经有名为“%@”的项目，请换一个名称。",name); return false }
+            modules.removeAll { $0 == existing }
+        }
+        var isDirectory: ObjCBool = false
+        if !(FileManager.default.fileExists(atPath:root.appendingPathComponent(name).path,isDirectory:&isDirectory) && isDirectory.boolValue) {
+            do {
+                folder = try PageOrganizer(root:root).createFolder(name,in:"",after:presentModules.last?.folder)
+                index = index?.addingFolder(folder)
+            } catch { self.error = localizedError(error); return false }
+        }
+        modules.append(PageModule(name:name,folder:folder,icon:icon,color:color,kind:ModuleStore.suggested(for:folder).kind))
+        saveModules(); enterModule(folder)
+        return true
+    }
+    func updateModule(_ id: String, name: String, icon: String, color: String) {
+        guard let i = modules.firstIndex(where: { $0.id == id }) else { return }
+        let clean = name.trimmingCharacters(in:.whitespacesAndNewlines)
+        if !clean.isEmpty { modules[i].name = clean }
+        modules[i].icon = icon; modules[i].color = color
+        saveModules()
+    }
+    func setModuleHidden(_ id: String, _ hidden: Bool) {
+        guard let i = modules.firstIndex(where: { $0.id == id }) else { return }
+        modules[i].hidden = hidden
+        if hidden, activeModuleID == id { activeModuleID = nil }
+        saveModules()
+    }
+    /// Takes a module off the launcher. Its folder and pages stay where they are.
+    func removeModule(_ id: String) {
+        modules.removeAll { $0.id == id }
+        if activeModuleID == id { activeModuleID = nil }
+        saveModules()
+    }
+    func moveModule(_ id: String, before target: String) {
+        guard id != target, let from = modules.firstIndex(where: { $0.id == id }) else { return }
+        let module = modules.remove(at:from)
+        modules.insert(module,at:modules.firstIndex(where: { $0.id == target }) ?? modules.endIndex)
+        saveModules()
+    }
+    private func moduleFolderMoved(from old: String, to new: String) {
+        guard old != new, modules.contains(where: { $0.folder == old || $0.folder.hasPrefix(old + "/") }) else { return }
+        let wasActive = activeModuleID
+        for i in modules.indices where modules[i].folder == old || modules[i].folder.hasPrefix(old + "/") {
+            if modules[i].folder == old && modules[i].name == (old as NSString).lastPathComponent { modules[i].name = (new as NSString).lastPathComponent }
+            modules[i].folder = new + modules[i].folder.dropFirst(old.count)
+        }
+        if let wasActive, wasActive == old || wasActive.hasPrefix(old + "/") { activeModuleID = new + wasActive.dropFirst(old.count) }
+        saveModules()
+    }
+    /// Creates a folder at the top of `folder` ("" is the vault root) and starts naming it.
+    @discardableResult func newFolder(in folder: String) -> String? {
+        guard let root = index?.root else { return nil }
+        do {
+            let path = try PageOrganizer(root:root).createFolder(localized("新建文件夹"),in:folder)
+            if !folder.isEmpty { setFolderExpanded(folder,true) }
+            if index?.root == root { index = index?.addingFolder(path) }
+            query = ""; renamingPath = path
+            return path
+        } catch { self.error = localizedError(error); return nil }
+    }
+    /// Whether a sidebar folder shows its contents. Top rows start open, except attachment folders.
+    func isExpanded(_ entry: VaultEntry, depth: Int) -> Bool {
+        folderExpanded(entry.relativePath) ?? (depth == 0 && !["attachment","attachments","assets"].contains(entry.name.lowercased()))
+    }
+    /// Text of the pages read for search, for counting attachment links.
+    var searchedPages: [(path: String, text: String)] { searchCache.map { ($0.key,$0.value) } }
+    var searchedPageCount: Int { searchCache.count }
+
+    // MARK: Attachment cleanup
+    /// After a save: images and videos no longer linked from the page are
+    /// queued for the trash, and links typed again to a trashed one bring it back.
+    private func attachmentsChanged(from old: String, to new: String, page: String) {
+        guard let index, old.contains("[") || new.contains("[") else { return }
+        let before = AttachmentReferences.targets(in:old), after = AttachmentReferences.targets(in:new)
+        guard before != after else { return }
+        let folder = attachmentsFolder
+        let removed = AttachmentReferences.media(in:before.subtracting(after),from:page,index:index,folder:folder)
+            .subtracting(AttachmentReferences.media(in:after,from:page,index:index,folder:folder))
+        let added = after.subtracting(before).filter { index.resolve($0,from:page) == nil }
+        if !added.isEmpty { restoreTrashedAttachments(added,folder:folder) }
+        guard !removed.isEmpty else { return }
+        let due = trashNow().addingTimeInterval(attachmentCleanupDelay)
+        for path in removed { pendingCleanup[path] = due }
+        scheduleAttachmentCleanup()
+    }
+    private func scheduleAttachmentCleanup() {
+        cleanupTimer?.invalidate(); cleanupTimer = nil
+        guard let next = pendingCleanup.values.min() else { return }
+        cleanupTimer = Timer.scheduledTimer(withTimeInterval:max(0.01,next.timeIntervalSince(trashNow())),repeats:false) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.runAttachmentCleanup() }
+        }
+    }
+    /// Moves queued attachments that no page links to any more into the
+    /// 15-day trash. Every page on disk and the unsaved editor text are checked.
+    func runAttachmentCleanup(completion: (() -> Void)? = nil) {
+        let now = trashNow()
+        let due = pendingCleanup.filter { $0.value <= now }.map(\.key)
+        guard let index, !due.isEmpty else { scheduleAttachmentCleanup(); completion?(); return }
+        for path in due { pendingCleanup[path] = nil }
+        let folder = attachmentsFolder, root = index.root
+        var editing: [(path: String, text: String)] = []
+        if selected?.ext == "md" { editing.append((currentPagePath ?? selected!.relativePath,isDraft ? draftContent : text)) }
+        DispatchQueue.global(qos:.utility).async {
+            let pages = AttachmentReferences.pagesOnDisk(index) + editing
+            let unused = due.filter { path in
+                FileManager.default.fileExists(atPath:root.appendingPathComponent(path).path)
+                    && !AttachmentReferences.isReferenced(path,pages:pages,index:index,folder:folder)
+            }
+            DispatchQueue.main.async {
+                defer { self.scheduleAttachmentCleanup(); completion?() }
+                guard self.index?.root == root, !unused.isEmpty else { return }
+                do {
+                    let trash = try PageTrash(root:root,nowDate:self.trashNow)
+                    for path in unused where self.pendingCleanup[path] == nil {
+                        try trash.moveToTrash(relativePath:path)
+                        self.index = self.index?.removing(path)
+                        if let i = self.tabs.firstIndex(where: { $0.path == path }), self.tabs[i].id != self.activeTabID { self.tabs.remove(at:i) }
+                    }
+                    self.refreshTrash(); self.statusValue = .attachmentsCleaned
+                } catch { self.error = self.localizedError(error) }
+            }
+        }
+    }
+    /// Restores attachments that went to the trash from the attachments folder
+    /// when a link to their file name appears again.
+    private func restoreTrashedAttachments(_ targets: Set<String>, folder: String) {
+        guard let root = index?.root else { return }
+        let names = Set(targets.map { AttachmentReferences.fileName($0).lowercased() }.filter { MediaKinds.isMedia(($0 as NSString).pathExtension) })
+        guard !names.isEmpty else { return }
+        let candidates = trashEntries.filter { !$0.isDirectory && $0.originalRelativePath.hasPrefix(folder + "/") && names.contains($0.name.lowercased()) }
+        var restored = Set<String>()
+        do {
+            let trash = try PageTrash(root:root,nowDate:trashNow)
+            for entry in candidates.sorted(by: { $0.deletedAt > $1.deletedAt }) where restored.insert(entry.name.lowercased()).inserted {
+                let url = try trash.restore(entry.id)
+                guard let path = AttachmentReferences.relativePath(url,root:root) else { continue }
+                pendingCleanup[path] = nil
+                let stamp = FileStamp(of:url)
+                let file = VaultEntry(relativePath:path,url:url,name:url.lastPathComponent,isDirectory:false,children:nil,modified:stamp?.modified,size:stamp?.size ?? 0)
+                index = index?.addingFile(file)
+            }
+        } catch { self.error = localizedError(error) }
+        if !restored.isEmpty { refreshTrash() }
     }
 }

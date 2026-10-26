@@ -5,7 +5,7 @@ ROOT="$PWD"
 APP="${ACDIAN_BUILD_DIR:-/private/tmp/acdian-build-$UID}/ACdian.app"
 MODULE_CACHE="${ACDIAN_MODULE_CACHE:-/private/tmp/acdian-swift-cache-$UID}"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$MODULE_CACHE"
-xcrun swiftc -swift-version 5 -O -module-cache-path "$MODULE_CACHE" -target arm64-apple-macos14.0 -framework SwiftUI -framework AppKit -framework WebKit -framework PDFKit -framework UniformTypeIdentifiers Sources/*.swift -o "$APP/Contents/MacOS/acdian"
+xcrun swiftc -swift-version 5 -O -module-cache-path "$MODULE_CACHE" -target arm64-apple-macos14.0 -framework SwiftUI -framework AppKit -framework WebKit -framework PDFKit -framework UniformTypeIdentifiers -framework AVKit -framework QuickLookThumbnailing Sources/*.swift -o "$APP/Contents/MacOS/acdian"
 cp -R Resources/. "$APP/Contents/Resources/"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -16,7 +16,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>ACdian</string>
 <key>CFBundleDisplayName</key><string>ACdian</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.3.3</string>
+<key>CFBundleShortVersionString</key><string>1.4.0</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>CFBundleDevelopmentRegion</key><string>en</string>

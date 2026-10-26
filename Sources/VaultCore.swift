@@ -122,10 +122,25 @@ struct VaultIndex {
 
     /// The same index with one more top-level file, placed where a rescan would
     /// list it, so a page just created shows without walking the whole folder.
-    func addingTopLevelFile(_ file: VaultEntry) -> VaultIndex {
-        let siblings = entries.filter { $0.relativePath != file.relativePath } + [file]
-        let arranged = PageOrganizer.arrange(siblings.sorted(by: PageOrganizer.defaultOrder), names: PageOrganizer.loadOrder(root: root)[""], name: \.name)
-        return VaultIndex(canonicalRoot: root, entries: arranged, files: files.filter { $0.relativePath != file.relativePath } + [file])
+    func addingTopLevelFile(_ file: VaultEntry) -> VaultIndex { addingFile(file) }
+
+    /// The same index with one more file in an existing folder, placed where a rescan would list it.
+    func addingFile(_ file: VaultEntry) -> VaultIndex {
+        let parentPath = (file.relativePath as NSString).deletingLastPathComponent
+        let order = PageOrganizer.loadOrder(root: root)[parentPath]
+        func place(_ list: [VaultEntry]) -> [VaultEntry] {
+            PageOrganizer.arrange((list.filter { $0.relativePath != file.relativePath } + [file]).sorted(by: PageOrganizer.defaultOrder), names: order, name: \.name)
+        }
+        func insert(_ list: [VaultEntry]) -> [VaultEntry] {
+            list.map { entry in
+                guard entry.isDirectory, entry.relativePath == parentPath || parentPath.hasPrefix(entry.relativePath + "/") else { return entry }
+                let children = entry.relativePath == parentPath ? place(entry.children ?? []) : insert(entry.children ?? [])
+                return VaultEntry(relativePath: entry.relativePath, url: entry.url, name: entry.name, isDirectory: true,
+                                  children: children, modified: entry.modified, size: entry.size)
+            }
+        }
+        return VaultIndex(canonicalRoot: root, entries: parentPath.isEmpty ? place(entries) : insert(entries),
+                          files: files.filter { $0.relativePath != file.relativePath } + [file])
     }
 
     /// The same index with one more empty folder, placed where a rescan would list it.

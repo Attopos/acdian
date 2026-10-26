@@ -31,6 +31,35 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     private static let translations: [String:(english:String,spanish:String)] = [
         "好": ("OK", "Aceptar"),
+        "模块": ("Modules", "Módulos"),
+        "每个模块是一个文件夹，打开后侧栏只显示其中的页面。": ("Each module is a folder. Open one and the sidebar shows only its pages.", "Cada módulo es una carpeta. Al abrirlo, la barra lateral muestra solo sus páginas."),
+        "新建模块": ("New module", "Nuevo módulo"),
+        "收起已隐藏的模块": ("Hide hidden modules", "Ocultar los módulos ocultos"),
+        "显示已隐藏的模块 (%@)": ("Show hidden modules (%@)", "Mostrar módulos ocultos (%@)"),
+        "打开": ("Open", "Abrir"),
+        "编辑模块…": ("Edit module…", "Editar módulo…"),
+        "编辑模块": ("Edit module", "Editar módulo"),
+        "取消隐藏": ("Unhide", "Mostrar"),
+        "隐藏": ("Hide", "Ocultar"),
+        "从模块中移除（保留文件夹）": ("Remove module (keep folder)", "Quitar módulo (conservar carpeta)"),
+        "会在页面文件夹中新建同名文件夹。": ("A folder with this name is created in your pages folder.", "Se crea una carpeta con este nombre en tu carpeta de páginas."),
+        "只改模块的显示名称，文件夹不变。": ("Only the module’s name changes. Its folder stays the same.", "Solo cambia el nombre del módulo. Su carpeta no cambia."),
+        "模块名称": ("Module name", "Nombre del módulo"),
+        "颜色": ("Color", "Color"),
+        "所有模块": ("All modules", "Todos los módulos"),
+        "这个模块还没有页面，按 ⌘N 新建。": ("This module has no pages yet. Press ⌘N to start one.", "Este módulo aún no tiene páginas. Pulsa ⌘N para crear una."),
+        "最近编辑": ("Recently edited", "Editado recientemente"),
+        "隐藏此模块": ("Hide module", "Ocultar módulo"),
+        "隐藏后不在模块和侧栏中显示，附件照常使用。": ("Hidden modules leave the launcher and sidebar. Attachments keep working in pages.", "Los módulos ocultos no aparecen en el inicio ni en la barra lateral. Los adjuntos siguen funcionando."),
+        "在页面中删掉图片或视频后，没有其他页面引用的附件会自动移到垃圾桶，15 天内可恢复。": ("When you delete an image or video from a page and no other page uses it, it moves to Trash automatically. You can restore it for 15 days.", "Al borrar una imagen o un vídeo de una página, si ninguna otra página lo usa, pasa a la papelera automáticamente. Puedes restaurarlo durante 15 días."),
+        "全部": ("All", "Todo"),
+        "图片": ("Images", "Imágenes"),
+        "视频": ("Videos", "Vídeos"),
+        "未被引用": ("Unused", "Sin usar"),
+        "%@ 个页面引用": ("Used in %@ pages", "Usado en %@ páginas"),
+        "1 个页面引用": ("Used in 1 page", "Usado en 1 página"),
+        "引用它的页面": ("Pages using it", "Páginas que lo usan"),
+        "未被引用的附件已移到垃圾桶": ("Unused attachments moved to Trash", "Adjuntos sin usar movidos a la papelera"),
         "页面": ("Pages", "Páginas"),
         "所有页面": ("All pages", "Todas las páginas"),
         "新建页面": ("New page", "Nueva página"),
@@ -156,7 +185,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 }
 
 enum AppStatus {
-    case ready, readingPages, openedPages(Int), refreshed, trashed, restored, opening(String), saving, saveFailed, saved(Date), path(String)
+    case ready, readingPages, openedPages(Int), refreshed, trashed, restored, attachmentsCleaned, opening(String), saving, saveFailed, saved(Date), path(String)
     func localized(_ language: AppLanguage) -> String {
         switch self {
         case .ready: return language.localized("就绪")
@@ -165,6 +194,7 @@ enum AppStatus {
         case .refreshed: return language.localized("页面已刷新")
         case .trashed: return language.localized("文件已移到垃圾桶")
         case .restored: return language.localized("文件已恢复")
+        case .attachmentsCleaned: return language.localized("未被引用的附件已移到垃圾桶")
         case .opening(let name): return language.localized("正在打开 %@…",arguments:[name])
         case .saving: return language.localized("正在保存…")
         case .saveFailed: return language.localized("无法自动保存")

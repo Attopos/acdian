@@ -69,7 +69,7 @@ struct ContentView: View {
                 TabStrip().frame(height:30)
                 if model.showingTrash { TrashView(model:model) }
                 else if model.selected != nil { documentBody }
-                else { Color.canvas.frame(maxWidth:.infinity,maxHeight:.infinity) }
+                else { HomeArea() }
                 Rectangle().fill(Color.faint).frame(height:1)
                 statusBar
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
@@ -112,6 +112,7 @@ struct ContentView: View {
                     }
                 } else if file.ext == "pdf" { PDFPane(url:file.url,model:model).id(file.id) }
                 else if AppModel.images.contains(file.ext) { ImagePane(url:file.url).id(file.id) }
+                else if AppModel.videos.contains(file.ext) { VideoPane(url:file.url).id(file.id) }
                 else if !model.text.isEmpty { ScrollView { Text(model.text).font(.system(size:13,design:.monospaced)).textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading).padding(28) } }
                 else { unsupported(file) }
             // Markdown pages share one editor, which swaps documents in place.
@@ -219,19 +220,23 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing:0) {
             HStack(spacing:10) { BrandMark(size:30,style:model.iconStyle); Text("ACdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer(); SidebarToggle() }.padding(.horizontal,20).frame(height:68)
+            ModuleBar()
             HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused); if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) } else { Text("⌘F").font(.system(size:10)).foregroundStyle(.tertiary) } }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
             HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:[.text],isTargeted:$rootDropTargeted) { providers in
                 // Dropping on the Pages header moves an item to the top level.
-                if let path = model.draggingPath { model.movePage(path,to:PageDropTarget(folder:"")); return true }
+                let folder = model.activeModule?.folder ?? ""
+                if let path = model.draggingPath { model.movePage(path,to:PageDropTarget(folder:folder)); return true }
                 guard let provider = providers.first else { return false }
-                _ = provider.loadObject(ofClass:NSString.self) { object,_ in if let path = object as? String { DispatchQueue.main.async { model.movePage(path,to:PageDropTarget(folder:"")) } } }
+                _ = provider.loadObject(ofClass:NSString.self) { object,_ in if let path = object as? String { DispatchQueue.main.async { model.movePage(path,to:PageDropTarget(folder:folder)) } } }
                 return true
-            }; Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
+            }; Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             ScrollView {
-                VStack(spacing:2) {
-                    if model.query.isEmpty { ForEach(model.index?.entries ?? []) { entry in TreeRow(entry:entry,depth:0) } }
-                    else { ForEach(model.matches) { entry in FileRow(entry:entry,indent:0,showPath:true) }; if model.matches.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.caption).foregroundStyle(.tertiary).padding(.top,25) } }
-                }.padding(.horizontal,10).padding(.bottom,20)
+                if model.query.isEmpty { SidebarTree(entries:model.sidebarEntries).padding(.horizontal,10).padding(.bottom,20) }
+                else {
+                    let matches = model.matches
+                    LazyVStack(spacing:2) { ForEach(matches.prefix(500)) { entry in FileRow(entry:entry,indent:0,showPath:true) }; if matches.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.caption).foregroundStyle(.tertiary).padding(.top,25) } }
+                        .padding(.horizontal,10).padding(.bottom,20)
+                }
             }
             Spacer(minLength:0)
             Button { model.showTrash() } label: {
@@ -247,33 +252,60 @@ struct SidebarView: View {
         .onReceive(NotificationCenter.default.publisher(for:Notification.Name("acdianSearch"))) { _ in searchFocused = true; model.showSidebar = true }
     }
 }
+/// The folder tree as one flat, lazily drawn list, so folders with thousands
+/// of pages open without drawing every row.
+struct SidebarTree: View {
+    @EnvironmentObject var model: AppModel
+    let entries: [VaultEntry]
+    private struct Row: Identifiable { let entry: VaultEntry; let depth: Int; var id: String { entry.relativePath } }
+    private func rows() -> [Row] {
+        var list: [Row] = []
+        func add(_ entries: [VaultEntry], _ depth: Int) {
+            for entry in entries {
+                list.append(Row(entry:entry,depth:depth))
+                if entry.isDirectory, model.isExpanded(entry,depth:depth) { add(entry.children ?? [],depth + 1) }
+            }
+        }
+        add(entries,0)
+        return list
+    }
+    var body: some View {
+        let _ = model.folderStateRevision
+        LazyVStack(spacing:2) { ForEach(rows()) { row in TreeRow(entry:row.entry,depth:row.depth) } }
+    }
+}
 struct TreeRow: View {
     @EnvironmentObject var model: AppModel
     let entry: VaultEntry
     let depth: Int
-    @State private var expanded = false
     var body: some View {
-        VStack(spacing:2) {
-            if entry.isDirectory, model.renamingPath == entry.relativePath {
-                RenameRow(entry:entry,leading:CGFloat(depth)*13+8,folder:true,symbol:expanded ? "folder.fill" : "folder",tint:Color.acPink.opacity(0.72)).id(model.renamingSession)
-                if expanded { ForEach(entry.children ?? []) { child in TreeRow(entry:child,depth:depth+1) } }
-            } else if entry.isDirectory {
-                Button { withAnimation(.easeInOut(duration:0.12)) { expanded.toggle() }; model.setFolderExpanded(entry.relativePath,expanded) } label: {
-                    HStack(spacing:6) { Image(systemName:expanded ? "chevron.down" : "chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8); Image(systemName:expanded ? "folder.fill" : "folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72)); Text(entry.name).font(.system(size:12)).lineLimit(1); Spacer() }.foregroundStyle(.secondary).padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29).contentShape(Rectangle())
-                }.buttonStyle(.plain)
-                .simultaneousGesture(TapGesture(count:2).onEnded { model.startRenaming(entry) })
-                .contextMenu {
-                    Button { if model.newFolder(near:entry) != nil { expanded = true } } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
-                    Button { model.startRenaming(entry) } label: { Label(model.localized("重命名"),systemImage:"pencil") }
-                    Divider()
-                    Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
-                }
-                .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
-                .onDrag { model.draggingPath = entry.relativePath; return NSItemProvider(object:entry.relativePath as NSString) }
-                .onDrop(of:[.text],delegate:SidebarDropDelegate(model:model,entry:entry,height:29) { expanded = true; model.setFolderExpanded(entry.relativePath,true) })
-                if expanded { ForEach(entry.children ?? []) { child in TreeRow(entry:child,depth:depth+1) } }
-            } else { FileRow(entry:entry,indent:depth) }
-        }.onAppear { expanded = model.folderExpanded(entry.relativePath) ?? (depth == 0 && !["attachment","attachments","assets"].contains(entry.name.lowercased())) }
+        let expanded = entry.isDirectory && model.isExpanded(entry,depth:depth)
+        if entry.isDirectory, model.renamingPath == entry.relativePath {
+            RenameRow(entry:entry,leading:CGFloat(depth)*13+8,folder:true,symbol:expanded ? "folder.fill" : "folder",tint:Color.acPink.opacity(0.72)).id(model.renamingSession)
+        } else if entry.isDirectory {
+            Button { model.setFolderExpanded(entry.relativePath,!expanded) } label: {
+                HStack(spacing:6) { Image(systemName:expanded ? "chevron.down" : "chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8); Image(systemName:expanded ? "folder.fill" : "folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72)); Text(entry.name).font(.system(size:12)).lineLimit(1); Spacer() }.foregroundStyle(.secondary).padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            .simultaneousGesture(TapGesture(count:2).onEnded { model.startRenaming(entry) })
+            .contextMenu {
+                Button { if model.newFolder(near:entry) != nil { model.setFolderExpanded(entry.relativePath,true) } } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
+                Button { model.startRenaming(entry) } label: { Label(model.localized("重命名"),systemImage:"pencil") }
+                Divider()
+                Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
+            }
+            .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
+            .onDrag { model.draggingPath = entry.relativePath; return NSItemProvider(object:entry.relativePath as NSString) }
+            .onDrop(of:[.text],delegate:SidebarDropDelegate(model:model,entry:entry,height:29) { model.setFolderExpanded(entry.relativePath,true) })
+        } else { FileRow(entry:entry,indent:depth) }
+    }
+}
+/// The main area with no page open: the module launcher, or the open module's home.
+struct HomeArea: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        if let module = model.activeModule {
+            if module.kind == .attachments { AttachmentsView(module:module) } else { ModuleHomeView(module:module) }
+        } else { LauncherView() }
     }
 }
 /// A sidebar row whose name is being edited in place. Return or clicking
@@ -365,7 +397,7 @@ struct FileRow: View {
     let entry: VaultEntry
     var indent: Int
     var showPath = false
-    var symbol: String { if entry.ext == "md" { return "doc.text" }; if entry.ext == "pdf" { return "doc.richtext" }; if AppModel.images.contains(entry.ext) { return "photo" }; return "doc" }
+    var symbol: String { if entry.ext == "md" { return "doc.text" }; if entry.ext == "pdf" { return "doc.richtext" }; if AppModel.images.contains(entry.ext) { return "photo" }; if AppModel.videos.contains(entry.ext) { return "film" }; return "doc" }
     private var isCurrentPage: Bool { model.currentPagePath == entry.relativePath }
     var body: some View {
         if model.renamingPath == entry.relativePath {
