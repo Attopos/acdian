@@ -180,9 +180,9 @@ struct ModuleTests {
         try check(fm.fileExists(atPath:root.appendingPathComponent("Lenguas/Words.acdian").path) && app.currentPagePath == "Lenguas/Words.acdian","The component is saved as a small file and opens")
         try check(ComponentStore.read(root.appendingPathComponent("Lenguas/Words.acdian")) == ComponentInstance(component:.cardIndex,source:"Lenguas/English/GRE",hideSource:true),"The component file records its kind and folder")
         try check(app.componentInstances.count == 1 && app.componentHiddenFolders == ["Lenguas/English/GRE"],"The app lists the component and the folder it hides")
-        try check(!app.createComponent(.recentPages,name:"a/b",in:"",source:"Teaching",hideSource:false),"Names with / are refused")
+        try check(!app.createComponent(.cardIndex,name:"a/b",in:"",source:"Teaching",hideSource:false),"Names with / are refused")
         app.error = nil
-        try check(app.createComponent(.recentPages,name:"Words",in:"Lenguas",source:"Teaching",hideSource:false) && fm.fileExists(atPath:root.appendingPathComponent("Lenguas/Words 2.acdian").path),"A taken name gets a number")
+        try check(app.createComponent(.cardIndex,name:"Words",in:"Lenguas",source:"Teaching",hideSource:false) && fm.fileExists(atPath:root.appendingPathComponent("Lenguas/Words 2.acdian").path),"A taken name gets a number")
         app.renamingPath = "Lenguas/English"
         app.finishRenaming("Lenguas/English",to:"Inglés")
         try await eventually("The component follows its renamed folder") { ComponentStore.read(root.appendingPathComponent("Lenguas/Words.acdian"))?.source == "Lenguas/Inglés/GRE" }

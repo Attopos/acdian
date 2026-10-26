@@ -43,8 +43,6 @@ struct ComponentPage: View {
         if let instance = ComponentStore.read(file.url) {
             switch instance.component {
             case .cardIndex: CardIndexView(title:title,folder:instance.source)
-            case .mediaGallery: AttachmentsView(module:PageModule(name:title,folder:instance.source,icon:instance.component.icon,color:instance.component.color,kind:.attachments))
-            case .recentPages: ModuleHomeView(module:PageModule(name:title,folder:instance.source,icon:instance.component.icon,color:instance.component.color))
             }
         } else {
             VStack(spacing:12) {

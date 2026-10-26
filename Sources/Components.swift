@@ -4,24 +4,22 @@ import Foundation
 /// a small `.acdian` file says which component it is and which folder it
 /// shows. Opening it draws the component natively, never as page text.
 enum ComponentKind: String, CaseIterable, Identifiable, Codable {
-    case cardIndex = "card-index", mediaGallery = "media-gallery", recentPages = "recent-pages"
+    case cardIndex = "card-index"
     var id: String { rawValue }
     /// Chinese source strings, translated through AppLanguage like the rest of the UI.
     var title: String {
-        switch self { case .cardIndex: return "卡片索引"; case .mediaGallery: return "媒体墙"; case .recentPages: return "最近页面" }
+        switch self { case .cardIndex: return "卡片索引" }
     }
     var summary: String {
         switch self {
         case .cardIndex: return "把文件夹里的每个页面显示成卡片，带字母栏和搜索，适合单词表和术语表。"
-        case .mediaGallery: return "把文件夹里的图片和视频排成网格，并显示每个被几个页面引用。"
-        case .recentPages: return "文件夹里最近编辑的页面。"
         }
     }
     var icon: String {
-        switch self { case .cardIndex: return "rectangle.grid.2x2"; case .mediaGallery: return "photo.on.rectangle.angled"; case .recentPages: return "clock.arrow.circlepath" }
+        switch self { case .cardIndex: return "rectangle.grid.2x2" }
     }
     var color: String {
-        switch self { case .cardIndex: return "pink"; case .mediaGallery: return "plum"; case .recentPages: return "teal" }
+        switch self { case .cardIndex: return "pink" }
     }
     /// Whether hiding the source folder from the sidebar is offered, and its default.
     var hidesSourceByDefault: Bool { self == .cardIndex }
