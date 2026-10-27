@@ -186,6 +186,20 @@ struct ModuleTests {
         app.renamingPath = "Lenguas/English"
         app.finishRenaming("Lenguas/English",to:"Inglés")
         try await eventually("The component follows its renamed folder") { ComponentStore.read(root.appendingPathComponent("Lenguas/Words.acdian"))?.source == "Lenguas/Inglés/GRE" }
+        // Files dropped in from Finder are copied, never moved or overwritten.
+        let outside = base.appendingPathComponent("Outside",isDirectory:true)
+        try fm.createDirectory(at:outside.appendingPathComponent("Pack"),withIntermediateDirectories:true)
+        try Data("# Notes".utf8).write(to:outside.appendingPathComponent("Lesson.md"))
+        try Data("x".utf8).write(to:outside.appendingPathComponent("Pack/inner.txt"))
+        app.importFiles([outside.appendingPathComponent("Lesson.md"),outside.appendingPathComponent("Pack")],to:PageDropTarget(folder:"Teaching",anchor:"Other.md",after:false))
+        try await eventually("Dropped files are copied in") { app.index?.files.contains { $0.relativePath == "Teaching/Pack/inner.txt" } == true }
+        try check(fm.fileExists(atPath:root.appendingPathComponent("Teaching/Lesson 2.md").path) && (try? String(contentsOf:root.appendingPathComponent("Teaching/Lesson.md"),encoding:.utf8))?.contains("Lesson") == true,"A dropped file with a taken name gets a number and leaves the existing page alone")
+        try check(fm.fileExists(atPath:outside.appendingPathComponent("Lesson.md").path),"The original file stays where it was")
+        let teaching = PageOrganizer.loadOrder(root:root)["Teaching"] ?? []
+        try check(teaching.firstIndex(of:"Lesson 2.md").map { $0 + 2 == teaching.firstIndex(of:"Other.md") } == true,"Dropped items land where they were dropped")
+        app.importFiles([root.appendingPathComponent("Teaching")],to:PageDropTarget(folder:"Teaching/Pack"))
+        await pause(0.5)
+        try check(!fm.fileExists(atPath:root.appendingPathComponent("Teaching/Pack/Teaching").path),"A folder is never copied into itself")
         app.showMarket()
         try await eventually("The component market opens") { app.showingMarket && !app.showingTrash && app.selected == nil }
         app.showTrash()

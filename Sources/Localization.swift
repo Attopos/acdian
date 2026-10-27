@@ -31,6 +31,8 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     private static let translations: [String:(english:String,spanish:String)] = [
         "好": ("OK", "Aceptar"),
+        "已复制 1 个项目": ("Copied 1 item", "Se copió 1 elemento"),
+        "已复制 %@ 个项目": ("Copied %@ items", "Se copiaron %@ elementos"),
         "组件": ("Components", "Componentes"),
         "无法读取这个组件。": ("This component could not be read.", "No se pudo leer este componente."),
         "搜索": ("Search", "Buscar"),
@@ -204,7 +206,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 }
 
 enum AppStatus {
-    case ready, readingPages, openedPages(Int), refreshed, trashed, restored, attachmentsCleaned, opening(String), saving, saveFailed, saved(Date), path(String)
+    case ready, readingPages, openedPages(Int), refreshed, trashed, restored, attachmentsCleaned, imported(Int), opening(String), saving, saveFailed, saved(Date), path(String)
     func localized(_ language: AppLanguage) -> String {
         switch self {
         case .ready: return language.localized("就绪")
@@ -214,6 +216,7 @@ enum AppStatus {
         case .trashed: return language.localized("文件已移到垃圾桶")
         case .restored: return language.localized("文件已恢复")
         case .attachmentsCleaned: return language.localized("未被引用的附件已移到垃圾桶")
+        case .imported(let count): return count == 1 ? language.localized("已复制 1 个项目") : language.localized("已复制 %@ 个项目",arguments:[language.number(count)])
         case .opening(let name): return language.localized("正在打开 %@…",arguments:[name])
         case .saving: return language.localized("正在保存…")
         case .saveFailed: return language.localized("无法自动保存")

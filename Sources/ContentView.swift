@@ -230,13 +230,10 @@ struct SidebarView: View {
             if home {
                 HStack { Text(model.localized("模块")).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(Color.secondary.opacity(0.6)); Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { editingModule = .new } label: { Image(systemName:"plus") }.help(model.localized("新建模块")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             } else {
-            HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:[.text],isTargeted:$rootDropTargeted) { providers in
-                // Dropping on the Pages header moves an item to the top level.
-                let folder = model.activeModule?.folder ?? ""
-                if let path = model.draggingPath { model.movePage(path,to:PageDropTarget(folder:folder)); return true }
-                guard let provider = providers.first else { return false }
-                _ = provider.loadObject(ofClass:NSString.self) { object,_ in if let path = object as? String { DispatchQueue.main.async { model.movePage(path,to:PageDropTarget(folder:folder)) } } }
-                return true
+            HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
+                // Dropping on the Pages header puts an item at the top of the open module.
+                let target = PageDropTarget(folder:model.activeModule?.folder ?? "")
+                return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }
             }; Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             }
             ScrollView {
@@ -315,7 +312,7 @@ struct TreeRow: View {
             }
             .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
             .onDrag { model.draggingPath = entry.relativePath; return NSItemProvider(object:entry.relativePath as NSString) }
-            .onDrop(of:[.text],delegate:SidebarDropDelegate(model:model,entry:entry,height:29) { model.setFolderExpanded(entry.relativePath,true) })
+            .onDrop(of:SidebarDrops.types,delegate:SidebarDropDelegate(model:model,entry:entry,height:29) { model.setFolderExpanded(entry.relativePath,true) })
         } else { FileRow(entry:entry,indent:depth) }
     }
 }
@@ -438,7 +435,7 @@ struct FileRow: View {
         }
         .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
         .onDrag { model.draggingPath = entry.relativePath; return NSItemProvider(object:entry.relativePath as NSString) }
-        .onDrop(of:[.text],delegate:SidebarDropDelegate(model:model,entry:entry,height:nil))
+        .onDrop(of:SidebarDrops.types,delegate:SidebarDropDelegate(model:model,entry:entry,height:nil))
     }
 }
 /// "Move to" in a sidebar row's menu: every module and the folders inside it,
@@ -494,23 +491,47 @@ struct SidebarDropDelegate: DropDelegate {
         if entry.isDirectory { return y < rowHeight * 0.25 ? .before : y > rowHeight * 0.75 ? .after : .into }
         return y < rowHeight / 2 ? .before : .after
     }
-    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to:[.text]) }
-    func dropUpdated(info: DropInfo) -> DropProposal? { model.setSidebarDrop(SidebarDropHighlight(path:entry.relativePath,place:placement(info))); return DropProposal(operation:.move) }
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to:SidebarDrops.types) }
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        model.setSidebarDrop(SidebarDropHighlight(path:entry.relativePath,place:placement(info)))
+        return DropProposal(operation:model.draggingPath == nil && info.hasItemsConforming(to:[.fileURL]) ? .copy : .move)
+    }
     func dropExited(info: DropInfo) { if model.sidebarDrop?.path == entry.relativePath { model.setSidebarDrop(nil) } }
     func performDrop(info: DropInfo) -> Bool {
         let place = placement(info); model.setSidebarDrop(nil)
         let parent = entry.relativePath.split(separator:"/").dropLast().joined(separator:"/")
         let target = place == .into ? PageDropTarget(folder:entry.relativePath) : PageDropTarget(folder:parent,anchor:entry.name,after:place == .after)
-        let finish = { (path: String) in
+        if place == .into, model.draggingPath == nil { onInto() }
+        return SidebarDrops.perform(info.itemProviders(for:SidebarDrops.types),target:target,model:model) { path in
             guard path != entry.relativePath else { return }
             model.movePage(path,to:target); if place == .into { onInto() }
         }
-        // A drag that started in this sidebar is moved at once; the item
-        // provider is only read for drags that arrive from elsewhere.
-        if let path = model.draggingPath { finish(path); return true }
-        guard let provider = info.itemProviders(for:[.text]).first else { return false }
+    }
+}
+/// What the sidebar accepts: rows dragged within it, which move, and files
+/// from Finder or other apps, which are copied in.
+enum SidebarDrops {
+    static let types: [UTType] = [.fileURL,.text]
+    @MainActor static func perform(_ providers: [NSItemProvider], target: PageDropTarget, model: AppModel, move: @escaping (String) -> Void) -> Bool {
+        // A drag that started in this sidebar is moved at once.
+        if let path = model.draggingPath { move(path); return true }
+        let files = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        if !files.isEmpty {
+            let group = DispatchGroup(), lock = NSLock()
+            var urls: [URL] = []
+            for provider in files {
+                group.enter()
+                _ = provider.loadObject(ofClass:URL.self) { url,_ in
+                    if let url, url.isFileURL { lock.lock(); urls.append(url); lock.unlock() }
+                    group.leave()
+                }
+            }
+            group.notify(queue:.main) { model.importFiles(urls,to:target) }
+            return true
+        }
+        guard let provider = providers.first(where: { $0.canLoadObject(ofClass:NSString.self) }) else { return false }
         _ = provider.loadObject(ofClass:NSString.self) { object,_ in
-            if let path = object as? String { DispatchQueue.main.async { finish(path) } }
+            if let path = object as? String { DispatchQueue.main.async { move(path) } }
         }
         return true
     }

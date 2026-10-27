@@ -255,12 +255,11 @@ struct SidebarModuleRow: View {
             Button { edit(.edit(module)) } label: { Label(model.localized("编辑模块…"),systemImage:"slider.horizontal.3") }
             Button { model.setModuleHidden(module.id,true) } label: { Label(model.localized("隐藏"),systemImage:"eye.slash") }
         }
-        // Dropping a page or folder on a module moves it into the module's folder.
-        .onDrop(of:[.text],isTargeted:$dropTargeted) { providers in
-            if let path = model.draggingPath { model.movePage(path,to:PageDropTarget(folder:module.folder)); return true }
-            guard let provider = providers.first else { return false }
-            _ = provider.loadObject(ofClass:NSString.self) { object,_ in if let path = object as? String { DispatchQueue.main.async { model.movePage(path,to:PageDropTarget(folder:module.folder)) } } }
-            return true
+        // Dropping a page or folder on a module moves it into the module's
+        // folder; files from Finder are copied there.
+        .onDrop(of:SidebarDrops.types,isTargeted:$dropTargeted) { providers in
+            let target = PageDropTarget(folder:module.folder)
+            return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }
         }
         .accessibilityIdentifier("sidebar-module-\(module.folder)")
     }

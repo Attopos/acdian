@@ -1240,4 +1240,50 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         }
         componentMemo = (-1,[])
     }
+
+    // MARK: Importing files
+    /// Copies files or folders from outside into `target.folder`, next to its
+    /// anchor when there is one. Names already in use get a number; nothing is
+    /// overwritten. The copy and the rescan run off the main thread.
+    func importFiles(_ urls: [URL], to target: PageDropTarget) {
+        guard let root = index?.root, !urls.isEmpty else { return }
+        let destination = target.folder.isEmpty ? root : root.appendingPathComponent(target.folder,isDirectory:true)
+        let request = UUID(); loadID = request; loading = true
+        DispatchQueue.global(qos:.userInitiated).async {
+            let fm = FileManager.default
+            var copied: [String] = [], failure: Error?
+            for source in urls {
+                let from = source.standardizedFileURL.resolvingSymlinksInPath()
+                // A folder cannot be copied into itself.
+                if VaultIndex.contains(destination.resolvingSymlinksInPath(),in:from) || destination.resolvingSymlinksInPath() == from { continue }
+                var isDirectory: ObjCBool = false
+                guard fm.fileExists(atPath:from.path,isDirectory:&isDirectory) else { continue }
+                var number = 1
+                while true {
+                    let name = PageOrganizer.numberedName(from.lastPathComponent,isDirectory:isDirectory.boolValue,number:number)
+                    do { try fm.copyItem(at:from,to:destination.appendingPathComponent(name)); copied.append(name); break }
+                    catch let error as CocoaError where error.code == .fileWriteFileExists { number += 1 }
+                    catch { failure = error; break }
+                }
+            }
+            if !copied.isEmpty {
+                let organizer = PageOrganizer(root:root)
+                var order = PageOrganizer.loadOrder(root:root)
+                var names = organizer.currentOrder(of:target.folder,order:order).filter { !copied.contains($0) }
+                let at = target.anchor.flatMap { names.firstIndex(of:$0) }.map { target.after ? $0 + 1 : $0 } ?? names.count
+                names.insert(contentsOf:copied,at:at)
+                order[target.folder] = names
+                try? organizer.saveOrder(order)
+            }
+            let newIndex = try? VaultIndex(root:root)
+            DispatchQueue.main.async {
+                if self.loadID == request { self.loading = false }
+                guard self.index?.root == root else { return }
+                if let newIndex { self.index = newIndex; self.rebuildSearch() }
+                if !target.folder.isEmpty, !copied.isEmpty { self.setFolderExpanded(target.folder,true) }
+                if let failure { self.error = self.localizedError(failure) }
+                else if !copied.isEmpty { self.statusValue = .imported(copied.count) }
+            }
+        }
+    }
 }
