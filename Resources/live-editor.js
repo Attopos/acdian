@@ -111,7 +111,7 @@ function fragment(source,state) {
     if (url) { image.src = url; image.loading = 'lazy'; }
     else image.replaceWith(document.createTextNode(image.alt));
   });
-  holder.querySelectorAll('a').forEach(link => { const target = link.dataset.liveTarget || link.getAttribute('href'); link.href='#'; link.title=uiText(state,'openLinkShort'); link.addEventListener('click',event=>{event.preventDefault(); if(event.metaKey||event.ctrlKey||!metadata.editable) navigate(target||'');}); });
+  holder.querySelectorAll('a').forEach(link => { const target = link.dataset.liveTarget || link.getAttribute('href'); link.href='#'; link.title=uiText(state,'openLinkShort'); link.addEventListener('click',event=>{event.preventDefault(); navigate(target||'');}); });
   const quote = holder.querySelector('blockquote');
   if (quote && /^>\s*\[!/.test(source)) {
     quote.className='callout';
@@ -128,7 +128,8 @@ class BlockWidget extends WidgetType {
     if(this.kind==='math') { const math=document.createElement('div'); try { katex.render(this.source.replace(/^\$\$\s*|\s*\$\$$/g,''),math,{displayMode:true,throwOnError:false,trust:false}); } catch {math.textContent=this.source;} holder.append(math); }
     else holder.append(fragment(this.source,view.state));
     holder.addEventListener('mousedown',event=>{
-      if(event.metaKey||event.ctrlKey||!metadata.editable) return;
+      // A link inside the block opens on click instead of selecting the block.
+      if(event.metaKey||event.ctrlKey||!metadata.editable||event.target.closest?.('a')) return;
       event.preventDefault(); view.dispatch({selection:{anchor:this.from,head:Math.min(this.from+this.source.length,view.state.doc.length)}}); view.focus();
     }); return holder;
   }
@@ -529,7 +530,8 @@ function extensions() {return [
     if(applyingExternal)return;
     if(update.docChanged){for(const tr of update.transactions)if(tr.docChanged){applyRawChanges(tr);revision++;}lastSource=rawSource;const selection=update.state.selection.main;post({type:'change',text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:selection.anchor,selectionHead:selection.head});}
   }),
-  EditorView.domEventHandlers({click(event){const link=event.target.closest?.('[data-live-target]');if(link&&(event.metaKey||event.ctrlKey||!metadata.editable)){event.preventDefault();navigate(link.dataset.liveTarget);return true;}return false;}})
+  // A plain click on a link opens it; a drag across it still selects text.
+  EditorView.domEventHandlers({click(event,view){const link=event.target.closest?.('[data-live-target]');if(link&&(view.state.selection.main.empty||event.metaKey||event.ctrlKey||!metadata.editable)){event.preventDefault();navigate(link.dataset.liveTarget);return true;}return false;}})
 ];}
 const view=new EditorView({state:EditorState.create({doc:'',extensions:extensions()}),parent:document.getElementById('editor')});
 window.acdianEditor=view;

@@ -666,18 +666,18 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func saveFromEditor() { withEditorSnapshot { self.save() } }
     /// Opens a page in its tab. A page whose tab still holds its text shows at
     /// once, and the file is checked in the background; `fromDisk` always reads it.
-    func open(_ entry: VaultEntry, fragment: String = "", skipConfirmation: Bool = false, fromDisk: Bool = false) {
+    func open(_ entry: VaultEntry, fragment: String = "", skipConfirmation: Bool = false, fromDisk: Bool = false, inPlace: Bool = false) {
         guard !entry.isDirectory, entry.relativePath != currentPagePath || skipConfirmation else { return }
         openID = UUID()
-        if skipConfirmation { openAfterSnapshot(entry,fragment:fragment,skipConfirmation:true,fromDisk:fromDisk) }
-        else { withEditorSnapshot { self.openAfterSnapshot(entry,fragment:fragment,skipConfirmation:false,fromDisk:fromDisk) } }
+        if skipConfirmation { openAfterSnapshot(entry,fragment:fragment,skipConfirmation:true,fromDisk:fromDisk,inPlace:inPlace) }
+        else { withEditorSnapshot { self.openAfterSnapshot(entry,fragment:fragment,skipConfirmation:false,fromDisk:fromDisk,inPlace:inPlace) } }
     }
-    private func openAfterSnapshot(_ entry: VaultEntry, fragment: String, skipConfirmation: Bool, fromDisk: Bool) {
+    private func openAfterSnapshot(_ entry: VaultEntry, fragment: String, skipConfirmation: Bool, fromDisk: Bool, inPlace: Bool = false) {
         guard skipConfirmation || saveBeforeLeaving() else { return }
         showingTrash = false; showingMarket = false
         // A page already in a tab is shown there, and a blank new page hands
         // its tab to the page opened from it; anything else gets a new tab.
-        let tab = tabs.first(where: { $0.path == entry.relativePath })?.id ?? (isDraft && draftFile == nil ? activeTabID : nil)
+        let tab = tabs.first(where: { $0.path == entry.relativePath })?.id ?? (isDraft && draftFile == nil || inPlace ? activeTabID : nil)
         let needsText = entry.ext == "md" || ["txt","json","csv","css","js","yaml","yml","canvas","xml","html","log"].contains(entry.ext)
         let request = UUID(); openID = request
         let root = index?.root
@@ -777,7 +777,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     private func showInTab(_ id: UUID?, path: String?) {
         guard let id, let i = tabs.firstIndex(where: { $0.id == id }) else { let tab = PageTab(path:path); tabs.append(tab); activeTabID = tab.id; return }
-        if tabs[i].path != path { tabs[i].path = path }
+        // A tab that now shows another page forgets the old page's text and place.
+        if tabs[i].path != path { tabs[i].path = path; if path != nil { tabMemory[id] = nil } }
         if activeTabID != id { activeTabID = id }
     }
     private func remapTabs(from old: String, to new: String) {
@@ -852,7 +853,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         if raw.hasPrefix("#") { anchor = String(raw.dropFirst()); return }
         guard let index, let url = index.resolve(raw, from:selected?.relativePath ?? ""), let entry = index.files.first(where: { $0.url.resolvingSymlinksInPath() == url.resolvingSymlinksInPath() }) else { error = localized("找不到链接的文件：%@\n请检查文件路径；同名文件请使用完整路径。",raw); return }
         let fragment = raw.components(separatedBy:"#").dropFirst().joined(separator:"#")
-        open(entry,fragment:fragment.removingPercentEncoding ?? fragment)
+        // A link opens in the current tab, unless its page already has one.
+        open(entry,fragment:fragment.removingPercentEncoding ?? fragment,inPlace:true)
         if currentPagePath == entry.relativePath {
             anchor = fragment.removingPercentEncoding ?? fragment
             if fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5).prefix(while: {$0.isNumber})) { pdfPage = max(1,n) }

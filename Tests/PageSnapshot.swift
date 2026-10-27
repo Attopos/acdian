@@ -33,6 +33,13 @@ struct PageSnapshot {
         let image = try await web.takeSnapshot(configuration:nil)
         let rep = NSBitmapImageRep(data:image.tiffRepresentation!)!
         try rep.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:args[3]))
+        // ACDIAN_CLICK_LINK=1 clicks the first link once, then reports where it went.
+        if ProcessInfo.processInfo.environment["ACDIAN_CLICK_LINK"] != nil {
+            let tabs = model.tabs.count
+            _ = try? await web.evaluateJavaScript("document.querySelector('.cm-content [data-live-target]').dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}))")
+            try await Task.sleep(nanoseconds:2_000_000_000)
+            print("after link click:",model.currentPagePath ?? "-","tabs",tabs,"->",model.tabs.count)
+        }
         print("snapshot written")
         exit(0)
     }

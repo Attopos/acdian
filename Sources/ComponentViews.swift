@@ -7,14 +7,16 @@ import AppKit
 struct IndexRail: View {
     let groups: [String]
     @Binding var selection: String?
+    /// Text shown for a group, when it differs from the group's name.
+    var labels: [String:String] = [:]
     private let rowHeight: CGFloat = 20
     var body: some View {
         VStack(spacing:0) {
             ForEach(groups,id:\.self) { group in
                 let selected = group == selection
-                Text(group).font(.system(size:11,weight:.semibold))
+                Text(labels[group] ?? group).font(.system(size:11,weight:.semibold)).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(selected ? Color.white : Color.secondary)
-                    .frame(width:26,height:rowHeight)
+                    .frame(width:30,height:rowHeight)
                     .background(selected ? Color.acPink : .clear,in:RoundedRectangle(cornerRadius:6,style:.continuous))
             }
         }
@@ -69,20 +71,23 @@ struct CardIndexView: View {
     @State private var notes: [String:String] = [:]
     private struct Card: Identifiable { let page: VaultEntry; let name: String; let group: String; var id: String { page.relativePath } }
     private var perRow: Int { columnCount ?? initialColumns }
+    /// The rail entry that shows every card; letters never take this name.
+    static let all = "\u{2217}all"
     var body: some View {
         let prefix = folder + "/"
         let cards: [Card] = (model.index?.files ?? []).filter { $0.relativePath.hasPrefix(prefix) && $0.ext == "md" }.map { page in
             let name = String(page.name.dropLast(3)), first = name.prefix(1).uppercased()
             return Card(page:page,name:name,group:first.range(of:"^[A-Z]$",options:.regularExpression) != nil ? first : "#")
         }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        let groups = Array(Set(cards.map(\.group))).sorted()
+        // "All" first, then each first letter present.
+        let groups = [Self.all] + Array(Set(cards.map(\.group))).sorted()
         let needle = AppModel.searchFold(query.trimmingCharacters(in:.whitespaces))
         let current = group.flatMap { groups.contains($0) ? $0 : nil } ?? groups.first
-        let shown: [Card] = needle.isEmpty ? cards.filter { $0.group == current } : Array(cards.filter { AppModel.searchFold($0.name).contains(needle) || AppModel.searchFold(notes[$0.id] ?? "").contains(needle) }
+        let shown: [Card] = needle.isEmpty ? (current == Self.all ? cards : cards.filter { $0.group == current }) : Array(cards.filter { AppModel.searchFold($0.name).contains(needle) || AppModel.searchFold(notes[$0.id] ?? "").contains(needle) }
             .sorted { AppModel.searchFold($0.name).hasPrefix(needle) && !AppModel.searchFold($1.name).hasPrefix(needle) }.prefix(500))
         HStack(alignment:.top,spacing:18) {
-            if groups.count > 1 {
-                IndexRail(groups:groups,selection:Binding(get:{ needle.isEmpty ? current : nil },set:{ group = $0; query = "" })).padding(.top,92)
+            if groups.count > 2 {
+                IndexRail(groups:groups,selection:Binding(get:{ needle.isEmpty ? current : nil },set:{ group = $0; query = "" }),labels:[Self.all:model.localized("全部")]).padding(.top,92)
             }
             VStack(alignment:.leading,spacing:14) {
                 HStack(alignment:.firstTextBaseline,spacing:10) {

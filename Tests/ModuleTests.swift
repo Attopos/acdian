@@ -186,6 +186,12 @@ struct ModuleTests {
         app.renamingPath = "Lenguas/English"
         app.finishRenaming("Lenguas/English",to:"Inglés")
         try await eventually("The component follows its renamed folder") { ComponentStore.read(root.appendingPathComponent("Lenguas/Words.acdian"))?.source == "Lenguas/Inglés/GRE" }
+        // A link opens in the current tab instead of adding one.
+        try await open(app,"Teaching/Lesson.md")
+        let tabCount = app.tabs.count
+        app.navigate("Other")
+        try await eventually("The link opens") { app.currentPagePath == "Teaching/Other.md" }
+        try check(app.tabs.count == tabCount && app.tabs.first { $0.id == app.activeTabID }?.path == "Teaching/Other.md","Following a link replaces the current tab's page")
         // Files dropped in from Finder are copied, never moved or overwritten.
         let outside = base.appendingPathComponent("Outside",isDirectory:true)
         try fm.createDirectory(at:outside.appendingPathComponent("Pack"),withIntermediateDirectories:true)
