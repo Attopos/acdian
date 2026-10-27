@@ -1227,6 +1227,12 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             return true
         } catch { self.error = localizedError(error); return false }
     }
+    /// Saves a component's settings back to its file.
+    func updateComponent(_ file: VaultEntry, _ instance: ComponentInstance) {
+        guard let root = index?.root, let data = try? ComponentStore.encode(instance) else { return }
+        do { try VaultFileIO.checkedWrite(data,to:file.url,allowedRoot:root); componentMemo = (-1,[]) }
+        catch { self.error = localizedError(error) }
+    }
     /// Components keep showing their folder after it is renamed or moved.
     private func componentSourcesMoved(from old: String, to new: String) {
         guard old != new else { return }

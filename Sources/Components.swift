@@ -31,16 +31,20 @@ struct ComponentInstance: Codable, Equatable {
     var source: String
     /// Leave the source folder out of the sidebar; its pages stay searchable.
     var hideSource = false
+    /// Cards per row in a Card Index; the cards stay square.
+    var columns = ComponentInstance.defaultColumns
+    static let defaultColumns = 6, columnRange = 2...10
 
-    private enum CodingKeys: String, CodingKey { case component, source, hideSource }
-    init(component: ComponentKind, source: String, hideSource: Bool = false) {
-        self.component = component; self.source = source; self.hideSource = hideSource
+    private enum CodingKeys: String, CodingKey { case component, source, hideSource, columns }
+    init(component: ComponentKind, source: String, hideSource: Bool = false, columns: Int = ComponentInstance.defaultColumns) {
+        self.component = component; self.source = source; self.hideSource = hideSource; self.columns = columns
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy:CodingKeys.self)
         component = try values.decode(ComponentKind.self,forKey:.component)
         source = try values.decodeIfPresent(String.self,forKey:.source) ?? ""
         hideSource = try values.decodeIfPresent(Bool.self,forKey:.hideSource) ?? false
+        columns = min(max(try values.decodeIfPresent(Int.self,forKey:.columns) ?? Self.defaultColumns,Self.columnRange.lowerBound),Self.columnRange.upperBound)
     }
 }
 

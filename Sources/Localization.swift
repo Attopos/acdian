@@ -31,6 +31,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     private static let translations: [String:(english:String,spanish:String)] = [
         "好": ("OK", "Aceptar"),
+        "每行卡片数": ("Cards per row", "Tarjetas por fila"),
         "已复制 1 个项目": ("Copied 1 item", "Se copió 1 elemento"),
         "已复制 %@ 个项目": ("Copied %@ items", "Se copiaron %@ elementos"),
         "组件": ("Components", "Componentes"),

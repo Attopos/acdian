@@ -399,6 +399,11 @@ enum VaultFileIO {
         }
     }
 
+    /// Replaces a small data file inside the pages folder in one step.
+    static func checkedWrite(_ data: Data, to url: URL, allowedRoot: URL) throws {
+        try data.write(to: try checkedURL(url, allowedRoot: allowedRoot), options: .atomic)
+    }
+
     private static func checkedURL(_ url: URL, allowedRoot: URL?) throws -> URL {
         let target = url.standardizedFileURL.resolvingSymlinksInPath()
         guard target.isFileURL else { throw VaultCoreError.unsafeLocation(url) }

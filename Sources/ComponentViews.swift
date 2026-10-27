@@ -42,7 +42,9 @@ struct ComponentPage: View {
         let title = (file.name as NSString).deletingPathExtension
         if let instance = ComponentStore.read(file.url) {
             switch instance.component {
-            case .cardIndex: CardIndexView(title:title,folder:instance.source)
+            case .cardIndex: CardIndexView(title:title,folder:instance.source,initialColumns:instance.columns) { columns in
+                var updated = instance; updated.columns = columns; model.updateComponent(file,updated)
+            }
             }
         } else {
             VStack(spacing:12) {
@@ -59,12 +61,14 @@ struct CardIndexView: View {
     @EnvironmentObject var model: AppModel
     let title: String
     let folder: String
+    var initialColumns = ComponentInstance.defaultColumns
+    var saveColumns: (Int) -> Void = { _ in }
+    @State private var columnCount: Int?
     @State private var group: String?
     @State private var query = ""
     @State private var notes: [String:String] = [:]
     private struct Card: Identifiable { let page: VaultEntry; let name: String; let group: String; var id: String { page.relativePath } }
-    // Four square cards to a row, whatever the window width.
-    private let columns = Array(repeating:GridItem(.flexible(),spacing:12,alignment:.top),count:4)
+    private var perRow: Int { columnCount ?? initialColumns }
     var body: some View {
         let prefix = folder + "/"
         let cards: [Card] = (model.index?.files ?? []).filter { $0.relativePath.hasPrefix(prefix) && $0.ext == "md" }.map { page in
@@ -84,6 +88,18 @@ struct CardIndexView: View {
                 HStack(alignment:.firstTextBaseline,spacing:10) {
                     Text(title).font(.system(size:28,weight:.bold))
                     Text(model.language.noteCount(cards.count)).font(.system(size:12)).foregroundStyle(.secondary)
+                    Spacer()
+                    // Cards per row; the cards stay square, so more per row means smaller cards.
+                    HStack(spacing:2) {
+                        Button { setColumns(perRow - 1) } label: { Image(systemName:"minus").frame(width:22,height:20).contentShape(Rectangle()) }
+                            .disabled(perRow <= ComponentInstance.columnRange.lowerBound)
+                        Label(model.language.number(perRow),systemImage:"square.grid.3x3").font(.system(size:11).monospacedDigit()).frame(minWidth:44)
+                        Button { setColumns(perRow + 1) } label: { Image(systemName:"plus").frame(width:22,height:20).contentShape(Rectangle()) }
+                            .disabled(perRow >= ComponentInstance.columnRange.upperBound)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,4).padding(.vertical,3)
+                    .background(Color.wash,in:RoundedRectangle(cornerRadius:7)).overlay(RoundedRectangle(cornerRadius:7).strokeBorder(Color.faint))
+                    .help(model.localized("每行卡片数"))
                 }
                 HStack(spacing:8) {
                     Image(systemName:"magnifyingglass").font(.system(size:12)).foregroundStyle(.secondary)
@@ -93,8 +109,8 @@ struct CardIndexView: View {
                     Text(model.language.number(shown.count)).font(.system(size:11).monospacedDigit()).foregroundStyle(.tertiary)
                 }.padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:9)).overlay(RoundedRectangle(cornerRadius:9).strokeBorder(Color.faint))
                 ScrollView {
-                    LazyVGrid(columns:columns,spacing:12) {
-                        ForEach(shown) { card in IndexCard(name:card.name,note:notes[card.id] ?? "") { model.open(card.page) } }
+                    LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:10,alignment:.top),count:perRow),spacing:10) {
+                        ForEach(shown) { card in IndexCard(name:card.name,note:notes[card.id] ?? "",perRow:perRow) { model.open(card.page) } }
                     }.padding(.bottom,24)
                     if shown.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.system(size:12)).foregroundStyle(.tertiary).padding(.top,40) }
                 }.id((current ?? "") + "|" + needle)
@@ -102,26 +118,37 @@ struct CardIndexView: View {
         }
         .padding(.horizontal,36).padding(.top,30).frame(maxWidth:1100,maxHeight:.infinity,alignment:.topLeading).frame(maxWidth:.infinity)
         .background(Color.canvas)
+        .onChange(of:initialColumns) { columnCount = nil }
         .task(id:"\(folder)-\(model.searchedPageCount)") {
             let pages = model.searchedPages.filter { $0.path.hasPrefix(prefix) }
             notes = await Task.detached(priority:.userInitiated) { Dictionary(pages.map { ($0.path,ComponentStore.cardNote($0.text)) },uniquingKeysWith: { first,_ in first }) }.value
         }
     }
 }
+extension CardIndexView {
+    fileprivate func setColumns(_ value: Int) {
+        let clamped = min(max(value,ComponentInstance.columnRange.lowerBound),ComponentInstance.columnRange.upperBound)
+        guard clamped != perRow else { return }
+        columnCount = clamped; saveColumns(clamped)
+    }
+}
 struct IndexCard: View {
     let name: String
     let note: String
+    var perRow = ComponentInstance.defaultColumns
     let open: () -> Void
     @State private var hovering = false
     var body: some View {
         Button(action:open) {
             // A square card: the name on top, the note filling the rest.
-            VStack(alignment:.leading,spacing:8) {
-                Text(name).font(.system(size:17,weight:.semibold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
-                Text(note).font(.system(size:12)).foregroundStyle(.secondary).lineLimit(6).multilineTextAlignment(.leading)
+            // Text and padding shrink with the card, so small cards stay readable.
+            let compact = perRow >= 7, roomy = perRow <= 4
+            VStack(alignment:.leading,spacing:compact ? 4 : 8) {
+                Text(name).font(.system(size:roomy ? 17 : compact ? 13 : 15,weight:.semibold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
+                Text(note).font(.system(size:compact ? 10.5 : 12)).foregroundStyle(.secondary).lineLimit(roomy ? 6 : compact ? 3 : 4).multilineTextAlignment(.leading)
                 Spacer(minLength:0)
             }
-            .padding(14).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
+            .padding(compact ? 9 : 12).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
             .aspectRatio(1,contentMode:.fit)
             .background(Color.wash,in:RoundedRectangle(cornerRadius:10,style:.continuous))
             .overlay(RoundedRectangle(cornerRadius:10,style:.continuous).strokeBorder(hovering ? Color.acPink.opacity(0.6) : Color.faint))
