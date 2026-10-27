@@ -7,6 +7,7 @@ or fonts from a CDN.
 - **DOMPurify 3.4.16** — https://github.com/cure53/DOMPurify — Apache-2.0 OR MPL-2.0 (`dompurify.LICENSE`, `dompurify.LICENSE-MPL`).
 - **KaTeX 0.19.0** — https://github.com/KaTeX/KaTeX — MIT (`katex.LICENSE`). Font files are included under `fonts/`.
 - **D3 7.9.0** — https://github.com/d3/d3 — ISC (`d3.LICENSE`). Offered only to `acdian-interactive` blocks as `lib/d3.min.js`.
+- **three.js r169** — https://github.com/mrdoob/three.js — MIT (`three.LICENSE`). Bundled with OrbitControls as one classic script that sets `window.THREE`; offered only to `acdian-interactive` blocks as `lib/three.min.js`.
 
 Markdown HTML is sanitized before insertion. KaTeX receives only extracted math
 text, with trusted commands disabled. PDF previews use sandboxed frames and
