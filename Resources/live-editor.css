@@ -55,7 +55,9 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-live-block table { margin:0; }
 .cm-editor .cm-live-block .callout { margin:0; }
 .cm-editor .cm-live-block a { cursor:pointer; }
-.cm-editor .cm-block-math { padding:8px 0; }
+.cm-editor .cm-block-math { padding:8px 0; overflow-x:auto; }
+.cm-editor .cm-inline-math { padding:0 1px; }
+.cm-editor .cm-inline-math .katex { font-size:1.05em; }
 .cm-editor .cm-block-interactive { cursor:default; overflow:hidden; background:#19191e; border:1px solid #ffffff10; border-radius:10px; }
 .cm-editor .cm-interactive-bar { display:flex; align-items:center; gap:6px; padding:5px 8px 5px 14px; border-bottom:1px solid #ffffff10; font-size:12px; line-height:1.6; color:#929099; user-select:none; }
 .cm-editor .cm-interactive-label { flex:1; color:#e57bad; }

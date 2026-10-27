@@ -125,7 +125,7 @@ class BlockWidget extends WidgetType {
   eq(other) { return this.source===other.source && this.from===other.from && this.kind===other.kind && this.language===other.language; }
   toDOM(view) {
     const holder=document.createElement('div'); holder.className='cm-live-block cm-block-'+this.kind;
-    if(this.kind==='math') { const math=document.createElement('div'); try { katex.render(this.source.replace(/^\$\$\s*|\s*\$\$$/g,''),math,{displayMode:true,throwOnError:false,trust:false}); } catch {math.textContent=this.source;} holder.append(math); }
+    if(this.kind==='math') { const math=document.createElement('div'); try { katex.render(this.source.trim().replace(/^\$\$\s*|\s*\$\$$/g,''),math,{displayMode:true,throwOnError:false,trust:false}); } catch {math.textContent=this.source;} holder.append(math); }
     else holder.append(fragment(this.source,view.state));
     holder.addEventListener('mousedown',event=>{
       // A link inside the block opens on click instead of selecting the block.
@@ -187,6 +187,12 @@ window.addEventListener('message',event=>{
 });
 new MutationObserver(()=>{const theme=currentAppearance();for(const frame of interactiveFrames())frame.contentWindow?.postMessage({type:'acdian-interactive:theme',theme},'*');}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
 
+class InlineMathWidget extends WidgetType {
+  constructor(tex) { super(); this.tex=tex; }
+  eq(other) { return other.tex===this.tex; }
+  toDOM() { const span=document.createElement('span'); span.className='cm-inline-math'; try { katex.render(this.tex,span,{throwOnError:false,trust:false}); } catch { span.textContent='$'+this.tex+'$'; } return span; }
+  ignoreEvent() { return false; }
+}
 class CalloutKindWidget extends WidgetType {
   constructor(kind,title) {super();Object.assign(this,{kind,title});}
   eq(other) {return this.kind===other.kind&&this.title===other.title;}
@@ -289,7 +295,8 @@ function decorations(state) {
     } else if(/^\s*\$\$\s*$/.test(line.text)) {
       let end=n+1; while(end<=state.doc.lines&&!/^\s*\$\$\s*$/.test(state.doc.line(end).text)) end++;
       if(end<=state.doc.lines) {addBlock(line.from,state.doc.line(end).to,'math');n=end;}
-    } else if(/^\s*(?:!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\))\s*$/.test(line.text)) addBlock(line.from,line.to,'image');
+    } else if(/^\s*\$\$(?!\s*\$\$\s*$).+\$\$\s*$/.test(line.text)) addBlock(line.from,line.to,'math');
+    else if(/^\s*(?:!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\))\s*$/.test(line.text)) addBlock(line.from,line.to,'image');
   }
   const within=(from,to)=>covered.some(([a,b])=>from>=a&&to<=b);
   tree.iterate({enter(node){
@@ -358,6 +365,15 @@ function decorations(state) {
     }
     const highlights=/==([^=\n]+)==/g;
     while((match=highlights.exec(line.text))) {const from=line.from+match.index,to=from+match[0].length;if(inlineCodeRanges.some(([a,b])=>from>=a&&from<b))continue;list.push(Decoration.mark({class:'cm-live-highlight'}).range(from,to));}
+    // Inline $…$ math shows typeset, and its source while the caret is in it.
+    // A $ next to a digit or space is left alone, so prices stay plain text.
+    const inlineMath=/(?<![\\$])\$(?![\s$])((?:\\.|[^$\\\n])+?)(?<![\s\\])\$(?![$\d])/g;
+    while((match=inlineMath.exec(line.text))) {
+      const from=line.from+match.index,to=from+match[0].length;
+      if(inlineCodeRanges.some(([a,b])=>from<b&&to>a))continue;
+      if(metadata.editable&&state.selection.ranges.some(range=>range.to>=from&&range.from<=to))continue;
+      list.push(Decoration.replace({widget:new InlineMathWidget(match[1])}).range(from,to));
+    }
     if(!line.text.trim()) {
       // Tables, code blocks, quotes and callouts end without a paragraph gap,
       // so the blank line after one keeps a gap before whatever follows.
