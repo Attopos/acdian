@@ -145,8 +145,9 @@ struct IndexCard: View {
             let compact = perRow >= 7, roomy = perRow <= 4
             VStack(alignment:.leading,spacing:compact ? 4 : 8) {
                 Text(name).font(.system(size:roomy ? 17 : compact ? 13 : 15,weight:.semibold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
-                Text(note).font(.system(size:compact ? 10.5 : 12)).foregroundStyle(.secondary).lineLimit(roomy ? 6 : compact ? 3 : 4).multilineTextAlignment(.leading)
-                Spacer(minLength:0)
+                // The note fills the rest of the square and is cut off with "…" only where it runs out of room.
+                Text(note).font(.system(size:compact ? 10.5 : 12)).foregroundStyle(.secondary).lineLimit(nil).multilineTextAlignment(.leading)
+                    .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
             }
             .padding(compact ? 9 : 12).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
             .aspectRatio(1,contentMode:.fit)

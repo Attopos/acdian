@@ -58,19 +58,20 @@ enum ComponentStore {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted,.sortedKeys,.withoutEscapingSlashes]
         return try encoder.encode(instance)
     }
-    /// A one-line summary of a page for its card: the first definition under
-    /// "## Definitions" if there is one, otherwise its first line of text.
+    /// A summary of a page for its card: its definitions under "## Definitions"
+    /// joined together, otherwise its first line of text. Cards cut it to fit.
     static func cardNote(_ text: String) -> String {
-        var inDefinitions = false, fallback = ""
+        var inDefinitions = false, fallback = "", definitions: [String] = []
         for raw in text.split(separator:"\n",omittingEmptySubsequences:true) {
             let line = raw.trimmingCharacters(in:.whitespaces)
-            if line.hasPrefix("#") { inDefinitions = line.lowercased().hasPrefix("## definition"); continue }
+            if line.hasPrefix("#") { if inDefinitions && !definitions.isEmpty { break }; inDefinitions = line.lowercased().hasPrefix("## definition"); continue }
             if line.isEmpty || line.hasPrefix("```") || line.hasPrefix("![") { continue }
             let plain = clean(line)
-            if inDefinitions, line.hasPrefix("- "), !plain.isEmpty { return plain }
+            if inDefinitions, line.hasPrefix("- "), plain.contains(where: { $0.isLetter }) { definitions.append(plain) }
             if fallback.isEmpty, !plain.isEmpty, !line.hasPrefix(">"), !line.hasPrefix("UK /"), !line.hasPrefix("US /") { fallback = plain }
         }
-        return fallback
+        let note = definitions.isEmpty ? fallback : definitions.joined(separator:"; ")
+        return note.count > 400 ? String(note.prefix(397)) + "…" : note
     }
     private static func clean(_ line: String) -> String {
         var text = line
@@ -79,6 +80,6 @@ enum ComponentStore {
         if text.hasPrefix("*"), let end = text.dropFirst().firstIndex(of:"*") { text = String(text[text.index(after:end)...]) }
         text = text.replacingOccurrences(of:"\\",with:"").replacingOccurrences(of:"**",with:"").replacingOccurrences(of:"==",with:"")
         text = text.trimmingCharacters(in:.whitespaces)
-        return text.count > 140 ? String(text.prefix(137)) + "…" : text
+        return text
     }
 }

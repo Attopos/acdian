@@ -173,7 +173,7 @@ struct ModuleTests {
         try check(app.modules.contains { $0.folder == "Lenguas" },"The renamed module folder is saved")
 
         // Components: a Card Index placed in a module shows a folder, which leaves the sidebar.
-        try check(ComponentStore.cardNote("UK /x/\n\n## Definitions\n\n- *verb* to become less strong\n") == "to become less strong","A card note is the first definition, without its part of speech")
+        try check(ComponentStore.cardNote("UK /x/\n\n## Definitions\n\n- *verb* to become less strong\n- *verb* make less intense\n\n## Examples\n\n> It abated.") == "to become less strong; make less intense","A card note joins the definitions, without parts of speech or examples")
         try check(ComponentStore.cardNote("Just a line of text.\n\nMore.") == "Just a line of text.","A page without definitions uses its first line")
         app.enterModule("Lenguas")
         try check(app.createComponent(.cardIndex,name:"Words",in:"Lenguas",source:"Lenguas/English/GRE",hideSource:true),"A component can be added to a module")
