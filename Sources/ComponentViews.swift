@@ -63,7 +63,8 @@ struct CardIndexView: View {
     @State private var query = ""
     @State private var notes: [String:String] = [:]
     private struct Card: Identifiable { let page: VaultEntry; let name: String; let group: String; var id: String { page.relativePath } }
-    private let columns = [GridItem(.adaptive(minimum:170,maximum:260),spacing:10,alignment:.top)]
+    // Four square cards to a row, whatever the window width.
+    private let columns = Array(repeating:GridItem(.flexible(),spacing:12,alignment:.top),count:4)
     var body: some View {
         let prefix = folder + "/"
         let cards: [Card] = (model.index?.files ?? []).filter { $0.relativePath.hasPrefix(prefix) && $0.ext == "md" }.map { page in
@@ -92,7 +93,7 @@ struct CardIndexView: View {
                     Text(model.language.number(shown.count)).font(.system(size:11).monospacedDigit()).foregroundStyle(.tertiary)
                 }.padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:9)).overlay(RoundedRectangle(cornerRadius:9).strokeBorder(Color.faint))
                 ScrollView {
-                    LazyVGrid(columns:columns,spacing:10) {
+                    LazyVGrid(columns:columns,spacing:12) {
                         ForEach(shown) { card in IndexCard(name:card.name,note:notes[card.id] ?? "") { model.open(card.page) } }
                     }.padding(.bottom,24)
                     if shown.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.system(size:12)).foregroundStyle(.tertiary).padding(.top,40) }
@@ -114,11 +115,14 @@ struct IndexCard: View {
     @State private var hovering = false
     var body: some View {
         Button(action:open) {
-            VStack(alignment:.leading,spacing:4) {
-                Text(name).font(.system(size:14,weight:.semibold)).foregroundStyle(Color.acPink).lineLimit(1)
-                Text(note.isEmpty ? " " : note).font(.system(size:11.5)).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)
+            // A square card: the name on top, the note filling the rest.
+            VStack(alignment:.leading,spacing:8) {
+                Text(name).font(.system(size:17,weight:.semibold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
+                Text(note).font(.system(size:12)).foregroundStyle(.secondary).lineLimit(6).multilineTextAlignment(.leading)
+                Spacer(minLength:0)
             }
-            .padding(.horizontal,12).padding(.vertical,10).frame(maxWidth:.infinity,minHeight:64,alignment:.topLeading)
+            .padding(14).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
+            .aspectRatio(1,contentMode:.fit)
             .background(Color.wash,in:RoundedRectangle(cornerRadius:10,style:.continuous))
             .overlay(RoundedRectangle(cornerRadius:10,style:.continuous).strokeBorder(hovering ? Color.acPink.opacity(0.6) : Color.faint))
             .offset(y:hovering ? -1 : 0).contentShape(Rectangle())
