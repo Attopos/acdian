@@ -75,10 +75,13 @@ struct CardIndexView: View {
     static let all = "\u{2217}all"
     var body: some View {
         let prefix = folder + "/"
-        let cards: [Card] = (model.index?.files ?? []).filter { $0.relativePath.hasPrefix(prefix) && $0.ext == "md" }.map { page in
-            let name = String(page.name.dropLast(3)), first = name.prefix(1).uppercased()
-            return Card(page:page,name:name,group:first.range(of:"^[A-Z]$",options:.regularExpression) != nil ? first : "#")
-        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        // Built once per scan of the pages folder, not on every redraw.
+        let cards: [Card] = model.memo("cards:" + folder) {
+            (model.index?.files ?? []).filter { $0.relativePath.hasPrefix(prefix) && $0.ext == "md" }.map { page in
+                let name = String(page.name.dropLast(3)), first = name.prefix(1).uppercased()
+                return Card(page:page,name:name,group:first.range(of:"^[A-Z]$",options:.regularExpression) != nil ? first : "#")
+            }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
         // "All" first, then each first letter present.
         let groups = [Self.all] + Array(Set(cards.map(\.group))).sorted()
         let needle = AppModel.searchFold(query.trimmingCharacters(in:.whitespaces))

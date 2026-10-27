@@ -186,6 +186,17 @@ struct ModuleTests {
         app.renamingPath = "Lenguas/English"
         app.finishRenaming("Lenguas/English",to:"Inglés")
         try await eventually("The component follows its renamed folder") { ComponentStore.read(root.appendingPathComponent("Lenguas/Words.acdian"))?.source == "Lenguas/Inglés/GRE" }
+        // A move updates the sidebar in memory, matching what a rescan finds.
+        app.movePage("Teaching/Other.md",to:PageDropTarget(folder:"wandering-wondering"))
+        try await eventually("The page moves") { app.index?.files.contains { $0.relativePath == "wandering-wondering/Other.md" } == true }
+        let rescanned = try VaultIndex(root:root)
+        try check(Set(app.index!.files.map(\.relativePath)) == Set(rescanned.files.map(\.relativePath)) && AppModel.entry("wandering-wondering",in:app.index!.entries)?.children?.map(\.name) == AppModel.entry("wandering-wondering",in:rescanned.entries)?.children?.map(\.name),"The moved index equals a fresh scan")
+        app.movePage("wandering-wondering/Other.md",to:PageDropTarget(folder:"Teaching"))
+        try await eventually("The page moves back") { app.index?.files.contains { $0.relativePath == "Teaching/Other.md" } == true }
+        app.movePage("Lenguas/Inglés",to:PageDropTarget(folder:"Teaching"))
+        try await eventually("A folder moves with its pages") { app.index?.files.contains { $0.relativePath == "Teaching/Inglés/GRE/abate.md" } == true && !app.index!.files.contains { $0.relativePath.hasPrefix("Lenguas/Inglés/") } }
+        app.movePage("Teaching/Inglés",to:PageDropTarget(folder:"Lenguas"))
+        try await eventually("The folder moves back") { app.index?.files.contains { $0.relativePath == "Lenguas/Inglés/GRE/abate.md" } == true }
         // A link opens in the current tab instead of adding one.
         try await open(app,"Teaching/Lesson.md")
         let tabCount = app.tabs.count

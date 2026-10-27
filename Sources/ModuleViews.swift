@@ -271,8 +271,8 @@ struct ModuleHomeView: View {
     let module: PageModule
     var body: some View {
         let prefix = module.folder + "/"
-        let pages = (model.index?.files ?? []).filter { $0.relativePath.hasPrefix(prefix) && $0.ext == "md" }
-        let recent = pages.sorted { ($0.modified ?? .distantPast) > ($1.modified ?? .distantPast) }.prefix(12)
+        let pages: [VaultEntry] = model.memo("pages:" + module.folder) { (model.index?.files ?? []).filter { $0.relativePath.hasPrefix(prefix) && $0.ext == "md" } }
+        let recent: [VaultEntry] = model.memo("recent:" + module.folder) { Array(pages.sorted { ($0.modified ?? .distantPast) > ($1.modified ?? .distantPast) }.prefix(12)) }
         ScrollView {
             VStack(alignment:.leading,spacing:22) {
                 HStack(spacing:16) {

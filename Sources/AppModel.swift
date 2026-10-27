@@ -32,6 +32,8 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
 /// Where a sidebar drag would land, shown while hovering a row.
 enum SidebarDrop: Equatable { case before, after, into }
 struct SidebarDropHighlight: Equatable { let path: String; let place: SidebarDrop }
+/// The sidebar's drop highlight, observed only by row indicators.
+@MainActor final class SidebarDragState: ObservableObject { @Published var highlight: SidebarDropHighlight? }
 struct EditorInsertion: Equatable { let id = UUID(); let text: String }
 struct EditorSnapshot {
     let text: String
@@ -502,9 +504,12 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// saved first when the open page moves, and it stays open at its new path.
     // One drop highlight for the whole sidebar, so a finished or cancelled drag
     // can never leave a stale insertion line on some other row.
-    @Published var sidebarDrop: SidebarDropHighlight?
+    // The highlight lives in its own small object: a drag updates it on every
+    // mouse move, and only the rows' indicators should redraw, not the window.
+    let drag = SidebarDragState()
+    var sidebarDrop: SidebarDropHighlight? { drag.highlight }
     var draggingPath: String?
-    func setSidebarDrop(_ highlight: SidebarDropHighlight?) { if sidebarDrop != highlight { sidebarDrop = highlight } }
+    func setSidebarDrop(_ highlight: SidebarDropHighlight?) { if drag.highlight != highlight { drag.highlight = highlight } }
     func movePage(_ relativePath: String, to target: PageDropTarget) {
         setSidebarDrop(nil); draggingPath = nil
         guard let root = index?.root, let entry = index.flatMap({ Self.entry(relativePath, in: $0.entries) }) else { return }
@@ -514,21 +519,19 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             guard self.index?.root == root else { return }
             if affectsSelection, !self.saveBeforeLeaving() { return }
             let request = UUID(); self.loadID = request
-            // The move and the rescan run off the main thread, so the sidebar
-            // stays responsive; the new tree replaces the old one in one step.
+            // The move runs off the main thread. The sidebar then updates in
+            // memory at once, and a rescan in the background confirms it.
             DispatchQueue.global(qos:.userInitiated).async {
-                let result = Result { () -> (String,VaultIndex) in
-                    let newPath = try PageOrganizer(root:root).move(relativePath,to:target)
-                    return (newPath,try VaultIndex(root:root))
-                }
+                let result = Result { try PageOrganizer(root:root).move(relativePath,to:target) }
                 DispatchQueue.main.async {
-                    guard self.index?.root == root else { return }
+                    guard self.index?.root == root, let current = self.index else { return }
                     switch result {
-                    case .success(let (newPath,newIndex)):
+                    case .success(let newPath):
+                        let newIndex = current.moving(relativePath,to:newPath)
                         if self.loadID == request { self.loading = false }
                         if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath); self.moduleFolderMoved(from:relativePath,to:newPath); self.componentSourcesMoved(from:relativePath,to:newPath) }
                         self.remapTabs(from:relativePath,to:newPath)
-                        self.index = newIndex; self.rebuildSearch()
+                        self.index = newIndex; self.rebuildSearch(); self.rescanInBackground(root)
                         if affectsSelection, let openPath, newPath != relativePath {
                             let moved = openPath == relativePath ? newPath : newPath + openPath.dropFirst(relativePath.count)
                             if let file = newIndex.files.first(where: { $0.relativePath == moved }) { self.open(file,skipConfirmation:true) }
@@ -1293,5 +1296,15 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 else if !copied.isEmpty { self.statusValue = .imported(copied.count) }
             }
         }
+    }
+
+    // MARK: Per-scan caches
+    private var memoStore: (generation: Int, values: [String:Any]) = (-1,[:])
+    /// A value worked out from the index once per scan, so views can ask for it on every redraw.
+    func memo<T>(_ key: String, _ make: () -> T) -> T {
+        if memoStore.generation != indexGeneration { memoStore = (indexGeneration,[:]) }
+        if let value = memoStore.values[key] as? T { return value }
+        let value = make(); memoStore.values[key] = value
+        return value
     }
 }

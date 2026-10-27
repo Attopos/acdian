@@ -163,6 +163,45 @@ struct VaultIndex {
         return VaultIndex(canonicalRoot: root, entries: parentPath.isEmpty ? place(entries) : insert(entries), files: files)
     }
 
+    /// The same index after moving an item, and everything inside it, from
+    /// `old` to `new`, placed where a rescan would place it.
+    func moving(_ old: String, to new: String) -> VaultIndex {
+        guard old != new, let entry = Self.find(old, in: entries) else { return self }
+        func remap(_ item: VaultEntry) -> VaultEntry {
+            let path = new + item.relativePath.dropFirst(old.count)
+            return VaultEntry(relativePath: path, url: root.appendingPathComponent(path, isDirectory: item.isDirectory),
+                              name: (path as NSString).lastPathComponent, isDirectory: item.isDirectory,
+                              children: item.children?.map(remap), modified: item.modified, size: item.size)
+        }
+        let moved = remap(entry)
+        var movedFiles: [VaultEntry] = []
+        func collect(_ item: VaultEntry) { if item.isDirectory { item.children?.forEach(collect) } else { movedFiles.append(item) } }
+        collect(moved)
+        let remaining = removing(old)
+        let parentPath = (new as NSString).deletingLastPathComponent
+        let order = PageOrganizer.loadOrder(root: root)
+        func place(_ list: [VaultEntry]) -> [VaultEntry] {
+            PageOrganizer.arrange((list.filter { $0.relativePath != new } + [moved]).sorted(by: PageOrganizer.defaultOrder), names: order[parentPath], name: \.name)
+        }
+        func insert(_ list: [VaultEntry]) -> [VaultEntry] {
+            list.map { item in
+                guard item.isDirectory, item.relativePath == parentPath || parentPath.hasPrefix(item.relativePath + "/") else { return item }
+                let children = item.relativePath == parentPath ? place(item.children ?? []) : insert(item.children ?? [])
+                return VaultEntry(relativePath: item.relativePath, url: item.url, name: item.name, isDirectory: true,
+                                  children: children, modified: item.modified, size: item.size)
+            }
+        }
+        return VaultIndex(canonicalRoot: root, entries: parentPath.isEmpty ? place(remaining.entries) : insert(remaining.entries),
+                          files: remaining.files + movedFiles)
+    }
+    private static func find(_ path: String, in list: [VaultEntry]) -> VaultEntry? {
+        for item in list {
+            if item.relativePath == path { return item }
+            if item.isDirectory, path.hasPrefix(item.relativePath + "/"), let found = find(path, in: item.children ?? []) { return found }
+        }
+        return nil
+    }
+
     /// The same index after renaming an item in place: it and everything inside
     /// it get their new paths, and its folder is ordered as a rescan would order it.
     func renaming(_ old: String, to new: String) -> VaultIndex {

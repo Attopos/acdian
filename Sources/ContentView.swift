@@ -310,7 +310,7 @@ struct TreeRow: View {
                 Divider()
                 Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
             }
-            .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
+            .sidebarDropIndicator(entry.relativePath,drag:model.drag)
             .onDrag { model.draggingPath = entry.relativePath; return NSItemProvider(object:entry.relativePath as NSString) }
             .onDrop(of:SidebarDrops.types,delegate:SidebarDropDelegate(model:model,entry:entry,height:29) { model.setFolderExpanded(entry.relativePath,true) })
         } else { FileRow(entry:entry,indent:depth) }
@@ -433,7 +433,7 @@ struct FileRow: View {
             Divider()
             Button(role:.destructive) { model.delete(entry) } label: { Label(model.localized("删除"),systemImage:"trash") }
         }
-        .sidebarDropIndicator(model.sidebarDrop?.path == entry.relativePath ? model.sidebarDrop?.place : nil)
+        .sidebarDropIndicator(entry.relativePath,drag:model.drag)
         .onDrag { model.draggingPath = entry.relativePath; return NSItemProvider(object:entry.relativePath as NSString) }
         .onDrop(of:SidebarDrops.types,delegate:SidebarDropDelegate(model:model,entry:entry,height:nil))
     }
@@ -537,8 +537,16 @@ enum SidebarDrops {
     }
 }
 extension View {
-    func sidebarDropIndicator(_ drop: SidebarDrop?) -> some View {
-        overlay(alignment:drop == .after ? .bottom : .top) {
+    func sidebarDropIndicator(_ path: String, drag: SidebarDragState) -> some View { modifier(SidebarDropIndicator(path:path,drag:drag)) }
+}
+/// The insertion line or folder highlight under a drag. Only this redraws as
+/// the pointer moves, not the row or the sidebar around it.
+struct SidebarDropIndicator: ViewModifier {
+    let path: String
+    @ObservedObject var drag: SidebarDragState
+    func body(content: Content) -> some View {
+        let drop = drag.highlight?.path == path ? drag.highlight?.place : nil
+        content.overlay(alignment:drop == .after ? .bottom : .top) {
             if drop == .before || drop == .after { Rectangle().fill(Color.acPink).frame(height:2).padding(.horizontal,8) }
         }
         .background(drop == .into ? Color.acPink.opacity(0.15) : .clear,in:RoundedRectangle(cornerRadius:6))
