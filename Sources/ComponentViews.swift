@@ -149,7 +149,7 @@ struct IndexCard: View {
             // Text and padding shrink with the card, so small cards stay readable.
             let compact = perRow >= 7, roomy = perRow <= 4
             VStack(alignment:.leading,spacing:compact ? 4 : 8) {
-                Text(name).font(.system(size:roomy ? 17 : compact ? 13 : 15,weight:.semibold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
+                Text(name).font(.system(size:roomy ? 23 : compact ? 16 : 19,weight:.bold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
                 // The note fills the rest of the square and is cut off with "…" only where it runs out of room.
                 Text(note).font(.system(size:compact ? 10.5 : 12)).foregroundStyle(.secondary).lineLimit(nil).multilineTextAlignment(.leading)
                     .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
