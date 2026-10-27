@@ -357,7 +357,13 @@ function decorations(state) {
     }
     const highlights=/==([^=\n]+)==/g;
     while((match=highlights.exec(line.text))) {const from=line.from+match.index,to=from+match[0].length;if(inlineCodeRanges.some(([a,b])=>from>=a&&from<b))continue;list.push(Decoration.mark({class:'cm-live-highlight'}).range(from,to));}
-    if(!line.text.trim())list.push(Decoration.line({class:'cm-blank-line'+(editableBlank(state,line)?' cm-input-blank-line':'')}).range(line.from));
+    if(!line.text.trim()) {
+      // Tables, code blocks, quotes and callouts end without a paragraph gap,
+      // so the blank line after one keeps a gap before whatever follows.
+      const prev=n>1?state.doc.line(n-1).text:'',next=n<state.doc.lines?state.doc.line(n+1).text:'';
+      const gap=next.trim()&&/^\s*(?:\||```|~~~|>)/.test(prev);
+      list.push(Decoration.line({class:'cm-blank-line'+(gap?' cm-block-gap':'')+(editableBlank(state,line)?' cm-input-blank-line':'')}).range(line.from));
+    }
   }
   return Decoration.set(list,true);
 }

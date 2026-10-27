@@ -13,6 +13,7 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-content > .cm-line:where(:not(.cm-code-line,.cm-code-fence,.cm-table-row,.cm-table-separator,.cm-blank-line,.cm-heading,.cm-divider-line,.cm-callout-line)) { padding-bottom:calc(var(--editor-font-size) * .4); }
 .cm-editor .cm-content > .cm-line.cm-list-line, .cm-editor .cm-content > .cm-line.cm-quote-line:not(.cm-callout-line) { padding-bottom:calc(var(--editor-font-size) * .15); }
 .cm-editor .cm-blank-line { height:0!important; min-height:0!important; line-height:0!important; padding:0!important; font-size:0!important; }
+.cm-editor .cm-blank-line.cm-block-gap { height:calc(var(--editor-font-size) * .9)!important; }
 .cm-editor .cm-blank-line.cm-input-blank-line { height:auto!important; min-height:1.6em!important; line-height:1.6!important; font-size:inherit!important; }
 /* Reader image spacing must not expand CodeMirror's zero-width caret buffers. */
 .cm-editor .cm-widgetBuffer { margin:0!important; padding:0!important; border:0!important; border-radius:0; cursor:text; }
