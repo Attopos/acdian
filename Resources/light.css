@@ -16,7 +16,7 @@ html.light ::-webkit-scrollbar-thumb { background: #00000026; }
 html.light .cm-editor { background: #ffffff; color: #2a2830; }
 html.light .cm-editor .cm-content { caret-color: #d93b86; }
 html.light .cm-editor .cm-cursor, html.light .cm-editor .cm-dropCursor { border-left-color: #d93b86; }
-html.light .cm-editor .cm-selectionBackground, html.light .cm-editor.cm-focused .cm-selectionBackground, html.light .cm-editor ::selection { background: #d93b862e !important; }
+html.light .cm-editor ::selection { background: #d93b862e !important; }
 html.light .cm-editor .cm-placeholder { color: #a8a3ae; }
 html.light .cm-editor .cm-heading { color: #17161b; }
 html.light .cm-editor .cm-page-title { color: #17161b; }
@@ -35,8 +35,7 @@ html.light .cm-editor .cm-callout-line { background: #d93b860a; color: #45404b; 
 html.light .cm-editor .cm-callout-kind { color: #c4206f; }
 html.light .cm-editor .cm-table-row { border-color: #0000001f; background-image: linear-gradient(to right,transparent calc(100% - 1px),#0000001f calc(100% - 1px)); }
 html.light .cm-editor .cm-table-header { border-top-color: #0000001f; background-color: #fafafa; }
-html.light .cm-editor .cm-table-row:not(.cm-table-separator):not(.cm-table-header) { background-color: #ffffff; }
-html.light .cm-editor .cm-table-cell-selected { background-color: #d93b862e; }
+html.light .cm-editor .cm-selected-text { background-color: #d93b8638; }
 html.light .cm-editor .cm-live-divider hr { border-top-color: #00000024; }
 html.light .cm-editor .cm-tooltip { background: #ffffff; border-color: #0000001a; color: #2a2830; }
 

@@ -263,7 +263,7 @@ const blankSelectionFilter=EditorState.transactionFilter.of(tr=>{
 });
 
 function decorations(state) {
-  const list=[], covered=[],quoteLines=new Set(),codeRanges=[],inlineCodeRanges=[];
+  const list=[], covered=[],quoteLines=new Set(),codeRanges=[],inlineCodeRanges=[],tableRanges=[];
   const tree=ensureSyntaxTree(state,state.doc.length,40)||syntaxTree(state);
   const interactive=[];
   tree.iterate({enter(node){if(node.name==='FencedCode'||node.name==='CodeBlock'){codeRanges.push([node.from,node.to]);if(node.name==='FencedCode')interactive.push(node.node);return false;}if(node.name==='InlineCode')inlineCodeRanges.push([node.from,node.to]);}});
@@ -317,7 +317,7 @@ function decorations(state) {
       list.push(Decoration.widget({widget:new DividerWidget(line.from,line.to,state.facet(editorLanguage)),side:-1}).range(line.from));
       covered.push([line.from,line.to]);return false;
     }
-    if(name==='Table') list.push(...tableDecorations(state,node.node));
+    if(name==='Table') {list.push(...tableDecorations(state,node.node));tableRanges.push([node.from,node.to]);}
     if(/^ATXHeading[1-6]$/.test(name)) {
       const level=name.slice(-1),line=state.doc.lineAt(node.from);
       // "#" without a space stays plain text; an empty "# " shows a grey H1 hint.
@@ -381,6 +381,18 @@ function decorations(state) {
       const gap=next.trim()&&/^\s*(?:\||```|~~~|>)/.test(prev);
       list.push(Decoration.line({class:'cm-blank-line'+(gap?' cm-block-gap':'')+(editableBlank(state,line)?' cm-input-blank-line':'')}).range(line.from));
     }
+  }
+  // The selection is shown as a highlight on its text only. Tables mark the
+  // selected text inside each cell themselves (rich-table.js), so they are left out here.
+  for(const range of state.selection.ranges) {
+    if(range.empty)continue;
+    let from=range.from;
+    for(const [a,b] of tableRanges) {
+      if(b<=from||a>=range.to)continue;
+      if(a>from)list.push(Decoration.mark({class:'cm-selected-text'}).range(from,a));
+      from=Math.max(from,b);
+    }
+    if(from<range.to)list.push(Decoration.mark({class:'cm-selected-text'}).range(from,range.to));
   }
   return Decoration.set(list,true);
 }

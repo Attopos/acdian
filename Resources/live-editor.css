@@ -18,7 +18,10 @@ html,body { height:100%; margin:0; }
 /* Reader image spacing must not expand CodeMirror's zero-width caret buffers. */
 .cm-editor .cm-widgetBuffer { margin:0!important; padding:0!important; border:0!important; border-radius:0; cursor:text; }
 .cm-editor .cm-cursor,.cm-editor .cm-dropCursor { border-left-color:#e57bad; }
-.cm-editor .cm-selectionBackground,.cm-editor.cm-focused .cm-selectionBackground { background:#d93b8635!important; }
+/* A selection highlights only the selected text (.cm-selected-text), never
+   whole line boxes, so the editor's own selection boxes stay invisible. */
+.cm-editor .cm-selectionBackground,.cm-editor.cm-focused .cm-selectionBackground { background:transparent!important; }
+.cm-editor .cm-selected-text { background:#d93b8645; border-radius:2px; }
 .cm-editor ::selection { background:#d93b8635; }
 .cm-editor .cm-placeholder { color:#68616e; }
 /* Heading sizes and the space above them step down evenly from H1 to H4;
@@ -78,11 +81,7 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-table-row { display:block; white-space:nowrap; min-height:0; padding:0; border:1px solid #ffffff18; border-top:0; line-height:0; background-image:linear-gradient(to right,transparent calc(100% - 1px),#ffffff18 calc(100% - 1px)); background-size:calc(100% / var(--table-columns)) 100%; background-repeat:repeat-x; }
 .cm-editor .cm-table-cell { display:inline-block; box-sizing:border-box; width:calc(100% / var(--table-columns)); vertical-align:top; padding:6px 10px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.6; }
 .cm-editor .cm-table-header { border-top:1px solid #ffffff18; border-radius:6px 6px 0 0; background-color:#151519; font-weight:600; }
-/* Rows are opaque so the editor's selection boxes, drawn underneath, never
-   show through; selected cells are painted instead. */
-.cm-editor .cm-table-row:not(.cm-table-separator):not(.cm-table-header) { background-color:#111114; }
 .cm-editor .cm-table-row ::selection { background:transparent; }
-.cm-editor .cm-table-cell-selected { background-color:#d93b8635; }
 .cm-editor .cm-table-header span { text-decoration:none; }
 .cm-editor .cm-table-separator { height:0!important; min-height:0!important; line-height:0!important; padding:0!important; border:0!important; }
 .cm-editor .cm-table-syntax { font-size:0!important; color:transparent!important; letter-spacing:0; word-spacing:0; }
