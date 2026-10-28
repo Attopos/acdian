@@ -34,7 +34,9 @@ html.light .cm-editor .cm-quote-line { color: #5f5966; }
 html.light .cm-editor .cm-callout-line { background: #d93b860a; color: #45404b; }
 html.light .cm-editor .cm-callout-kind { color: #c4206f; }
 html.light .cm-editor .cm-table-row { border-color: #0000001f; background-image: linear-gradient(to right,transparent calc(100% - 1px),#0000001f calc(100% - 1px)); }
-html.light .cm-editor .cm-table-header { border-top-color: #0000001f; background-color: #00000005; }
+html.light .cm-editor .cm-table-header { border-top-color: #0000001f; background-color: #fafafa; }
+html.light .cm-editor .cm-table-row:not(.cm-table-separator):not(.cm-table-header) { background-color: #ffffff; }
+html.light .cm-editor .cm-table-cell-selected { background-color: #d93b862e; }
 html.light .cm-editor .cm-live-divider hr { border-top-color: #00000024; }
 html.light .cm-editor .cm-tooltip { background: #ffffff; border-color: #0000001a; color: #2a2830; }
 

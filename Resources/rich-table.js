@@ -80,13 +80,16 @@ function locate(state,pos,preferredColumn=0) {
 export function tableDecorations(state,tree) {
   const result=[];
   const hide=(from,to)=>{if(from<to)result.push(Decoration.mark({class:syntaxClass}).range(from,to));};
+  // A selection is painted cell by cell: the editor's own selection boxes
+  // cannot follow the cell layout, so table rows hide them (see the CSS).
+  const selected=(from,to)=>state.selection.ranges.some(range=>!range.empty&&range.from<to&&range.to>from);
   for(const node of tableNodes(tree)) {
     const table=modelFor(state,node);if(!table)continue;
     for(const [index,row] of table.rows.entries()) {
       result.push(Decoration.line({class:'cm-table-row'+(row.header?' cm-table-header':'')+(index===0?' cm-table-first':'')+(index===table.rows.length-1?' cm-table-last':''),
         attributes:{style:`--table-columns:${table.columns}`}}).range(row.line.from));
       for(const cell of row.cells) {
-        if(cell.markFrom<cell.rawTo)result.push(Decoration.mark({class:'cm-table-cell',inclusive:true,attributes:{
+        if(cell.markFrom<cell.rawTo)result.push(Decoration.mark({class:'cm-table-cell'+(selected(cell.markFrom,cell.rawTo)?' cm-table-cell-selected':''),inclusive:true,attributes:{
           // Keep DOM attributes stable while text changes. Position attributes
           // would force CM to split an active IME composition into multiple
           // styled cell spans as the cell's end offset grows.
