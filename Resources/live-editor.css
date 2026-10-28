@@ -23,6 +23,12 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-selectionBackground,.cm-editor.cm-focused .cm-selectionBackground { background:transparent!important; }
 .cm-editor .cm-selected-text { background:#d93b8645; border-radius:2px; }
 .cm-editor ::selection { background:#d93b8635; }
+/* The browser's own selection is hidden in the page: inside rendered blocks
+   it painted whole boxes and patchy formula glyphs. */
+.cm-editor .cm-content ::selection { background:transparent; }
+/* The formula's own box, not the full line, takes the highlight. */
+.cm-editor .cm-block-math .katex-display > .katex { display:inline-block; padding:0 4px; }
+.cm-editor .cm-block-selected .katex-display > .katex, .cm-editor .cm-block-selected img { background:#d93b8645; border-radius:3px; }
 .cm-editor .cm-placeholder { color:#68616e; }
 /* Heading sizes and the space above them step down evenly from H1 to H4;
    the space below stays small. Spacing follows the body font size. */

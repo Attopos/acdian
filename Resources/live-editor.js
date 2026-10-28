@@ -121,10 +121,10 @@ function fragment(source,state) {
   return holder;
 }
 class BlockWidget extends WidgetType {
-  constructor(source,from,kind,language) { super(); Object.assign(this,{source,from,kind,language}); }
-  eq(other) { return this.source===other.source && this.from===other.from && this.kind===other.kind && this.language===other.language; }
+  constructor(source,from,kind,language,selected=false) { super(); Object.assign(this,{source,from,kind,language,selected}); }
+  eq(other) { return this.source===other.source && this.from===other.from && this.kind===other.kind && this.language===other.language && this.selected===other.selected; }
   toDOM(view) {
-    const holder=document.createElement('div'); holder.className='cm-live-block cm-block-'+this.kind;
+    const holder=document.createElement('div'); holder.className='cm-live-block cm-block-'+this.kind+(this.selected?' cm-block-selected':'');
     if(this.kind==='math') { const math=document.createElement('div'); try { katex.render(this.source.trim().replace(/^\$\$\s*|\s*\$\$$/g,''),math,{displayMode:true,throwOnError:false,trust:false}); } catch {math.textContent=this.source;} holder.append(math); }
     else holder.append(fragment(this.source,view.state));
     holder.addEventListener('mousedown',event=>{
@@ -269,7 +269,9 @@ function decorations(state) {
   tree.iterate({enter(node){if(node.name==='FencedCode'||node.name==='CodeBlock'){codeRanges.push([node.from,node.to]);if(node.name==='FencedCode')interactive.push(node.node);return false;}if(node.name==='InlineCode')inlineCodeRanges.push([node.from,node.to]);}});
   const addBlock=(from,to,kind)=>{
     if(from===to) return false;
-    list.push(Decoration.replace({widget:new BlockWidget(state.doc.sliceString(from,to),from,kind,state.facet(editorLanguage)),block:true}).range(from,to)); covered.push([from,to]); return true;
+    // A block inside a selection is marked, so its content can be highlighted like text.
+    const selected=state.selection.ranges.some(range=>!range.empty&&range.from<to&&range.to>from);
+    list.push(Decoration.replace({widget:new BlockWidget(state.doc.sliceString(from,to),from,kind,state.facet(editorLanguage),selected),block:true}).range(from,to)); covered.push([from,to]); return true;
   };
   // A closed interactive block runs unless the caret is inside it, where its source shows.
   for(const node of interactive) {
