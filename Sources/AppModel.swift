@@ -1435,9 +1435,31 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// as renaming it in the sidebar would. A name another page already has
     /// is left alone. Returns the page at its new path.
     private func renameToTitle(_ entry: VaultEntry, from old: String, to new: String) -> VaultEntry? {
-        guard entry.ext == "md", let root = index?.root, let title = Self.leadingTitle(new), title != Self.leadingTitle(old) else { return nil }
+        guard let title = Self.leadingTitle(new), title != Self.leadingTitle(old) else { return nil }
+        return renamePage(entry,title:title)
+    }
+    /// A page with no heading on top shows its file name as its title, and
+    /// editing that title in the page renames the file. The edit is saved first.
+    /// Returns false when the page keeps its old name, so the title shows it again.
+    @discardableResult func renameFromTitle(_ path: String, to title: String) -> Bool {
+        let title = title.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !title.isEmpty else { return false }
+        if path == splitPath, let entry = splitEntry {
+            guard saveSplit(), let renamed = renamePage(entry,title:title,reporting:true) else { return false }
+            splitEntry = renamed
+        } else if path == currentPagePath, !isDraft, let entry = selected {
+            guard saveBeforeLeaving(), let renamed = renamePage(entry,title:title,reporting:true) else { return false }
+            selected = renamed
+        } else { return false }
+        return true
+    }
+    private func renamePage(_ entry: VaultEntry, title: String, reporting: Bool = false) -> VaultEntry? {
+        guard entry.ext == "md", let root = index?.root else { return nil }
         let name = Self.draftFilenameBase(title) + ".md"
-        guard name != entry.name, let newPath = try? PageOrganizer(root:root).rename(entry.relativePath,to:name) else { return nil }
+        guard name != entry.name else { return nil }
+        let newPath: String
+        do { newPath = try PageOrganizer(root:root).rename(entry.relativePath,to:name) }
+        catch { if reporting { self.error = localizedError(error) }; return nil }
         remapTabs(from:entry.relativePath,to:newPath)
         guard let newIndex = index?.renaming(entry.relativePath,to:newPath) else { return nil }
         index = newIndex; rebuildSearch()

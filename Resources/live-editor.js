@@ -22,16 +22,36 @@ const localization = new Compartment();
 const pageTitle = new Compartment();
 // A saved page's name is the first block of the document view, so it scrolls
 // away with the text instead of staying pinned above the editor.
+// Bumped to redraw the title after a rename that did not happen.
+let titleVersion = 0;
 class PageTitleWidget extends WidgetType {
-  constructor(title) { super(); this.title = title; }
-  eq(other) { return this.title === other.title; }
-  toDOM() { const heading = document.createElement('h1'); heading.className = 'cm-page-title'; heading.textContent = this.title; return heading; }
+  constructor(title,canEdit) { super(); this.title = title; this.canEdit = canEdit; this.version = titleVersion; }
+  eq(other) { return this.title === other.title && this.canEdit === other.canEdit && this.version === other.version; }
+  // The file name shown as the title can be edited in place: Return or
+  // leaving it renames the page, and Escape puts the old name back.
+  toDOM(view) {
+    const heading = document.createElement('h1'); heading.className = 'cm-page-title'; heading.textContent = this.title;
+    if (!this.canEdit) return heading;
+    heading.contentEditable = 'plaintext-only'; heading.spellcheck = false;
+    const original = this.title, path = metadata.currentPath;
+    heading.addEventListener('keydown', event => {
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); heading.blur(); view.focus(); }
+      else if (event.key === 'Escape') { event.preventDefault(); heading.textContent = original; heading.blur(); view.focus(); }
+    });
+    heading.addEventListener('blur', () => {
+      const title = heading.textContent.replace(/\s+/g,' ').trim();
+      if (!title) { heading.textContent = original; return; }
+      if (title !== original) post({type:'renameTitle', title, currentPath:path});
+    });
+    return heading;
+  }
   ignoreEvent() { return true; }
 }
 // A page that starts with a "# " heading has its title in the text, and the
 // file name is not shown again above it.
 const leadingTitle=state=>/^#[ \t]+\S/.test(state.doc.line(1).text);
-const pageTitleExtension=()=>metadata.pageTitle?EditorView.decorations.compute(['doc'],state=>leadingTitle(state)?Decoration.none:Decoration.set([Decoration.widget({widget:new PageTitleWidget(metadata.pageTitle),block:true,side:-1}).range(0)])):[];
+const pageTitleExtension=()=>metadata.pageTitle?EditorView.decorations.compute(['doc'],state=>leadingTitle(state)?Decoration.none:Decoration.set([Decoration.widget({widget:new PageTitleWidget(metadata.pageTitle,metadata.editable),block:true,side:-1}).range(0)])):[];
 const localeExtensions=()=>{
   const strings=messagesForLanguage(metadata.language);
   return [editorLanguage.of(metadata.language),placeholder(strings.placeholder),EditorView.contentAttributes.of({lang:metadata.language,'aria-label':strings.editorLabel})];
@@ -648,6 +668,7 @@ const ownLines=(state,text)=>{const {from,to}=state.selection.main,doc=state.doc
 window.acdianInsertText=(text,insertionID,block)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;const insert=canonical(String(text));view.dispatch(view.state.replaceSelection(block?ownLines(view.state,insert):insert));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
 // Files dragged in from another app land where the caret follows the pointer.
 window.acdianDropCaret=(x,y)=>{if(!metadata.editable)return false;const pos=view.posAtCoords({x,y},false);if(pos==null)return false;if(view.state.selection.main.head!==pos||!view.state.selection.main.empty)view.dispatch({selection:{anchor:pos}});if(!view.hasFocus)view.focus();return true;};
+window.acdianRefreshTitle=()=>{titleVersion++;view.dispatch({effects:pageTitle.reconfigure(pageTitleExtension())});};
 window.acdianUndo=()=>undo(view);
 window.acdianRedo=()=>redo(view);
 window.acdianScrollTo=raw=>{

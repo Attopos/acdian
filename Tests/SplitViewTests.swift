@@ -124,6 +124,20 @@ struct SplitViewTests {
         try await wait(2)
         let fileTitleShown = try await split.evaluateJavaScript("document.querySelector('.cm-page-title')?.textContent") as? String
         check(fileTitleShown == "N", "A page with no heading on top still shows its file name as its title")
+        func editTitle(_ web: WKWebView, _ title: String) async throws {
+            _ = try await web.evaluateJavaScript("(()=>{const h=document.querySelector('.cm-page-title');h.textContent=\(String(reflecting:title));h.dispatchEvent(new FocusEvent('blur'));})()")
+            try await wait(1)
+        }
+        try await editTitle(split,"Plain page")
+        check(model.splitPath == "Plain page.md" && disk("Plain page.md") == "Just text, no heading.\n", "Editing the file-name title renames the page and leaves its text alone")
+        let renamedTitle = try await split.evaluateJavaScript("document.querySelector('.cm-page-title')?.textContent") as? String
+        check(renamedTitle == "Plain page", "The title shows the new name")
+        model.error = nil
+        try await editTitle(split,"T2")
+        check(model.splitPath == "Plain page.md" && model.error != nil, "A name another page has is refused with a message")
+        let keptTitle = try await split.evaluateJavaScript("document.querySelector('.cm-page-title')?.textContent") as? String
+        check(keptTitle == "Plain page", "A refused name puts the old title back")
+        model.error = nil
         model.openInSplit(file("T2.md"))
         try await wait(2)
         for (web,name) in [(mainView,"main"),(split,"split")] {
