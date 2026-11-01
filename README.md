@@ -166,4 +166,6 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/Vau
 
 打开与切换耗时：同样方式用 `Tests/TabSwitchBenchmark.swift` 构建（加 `-O -D ACDIAN_HOST`）；去掉 `-D ACDIAN_HOST` 可对照 1.2.8 源码测量。
 
+侧栏拖动耗时：同 `Tests/SplitViewTests.swift` 的方式（加 `-O`）构建 `Tests/DragMoveBenchmark.swift`，运行 `drag-move-benchmark <页面文件夹副本> <模块> <页面或文件夹> <目标文件夹> [open]`，会来回移动多次，请用副本。
+
 测试通过独立的 `Fixtures/Vault` 或临时页面目录运行，不修改个人页面或保存偏好。

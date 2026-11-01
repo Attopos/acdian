@@ -129,6 +129,49 @@ struct CoreTests {
             _ = try VaultFileIO.readMarkdown(at: invalid)
             throw TestFailure("Invalid UTF-8 must be rejected")
         } catch VaultCoreError.invalidUTF8 { }
+        // Indexes updated in memory after a move, rename, removal or new file
+        // list, order and resolve links the same as a fresh scan of the folder.
+        let updates = fixture.appendingPathComponent("Updates")
+        func write(_ path: String) throws {
+            let url = updates.appendingPathComponent(path)
+            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("page".utf8).write(to: url)
+        }
+        for path in ["Inbox/Draft.md", "Inbox/Café note.md", "🇺🇸 English/words/abate.md", "🇺🇸 English/words/Zeal.md", "Archive/old.md", "Archive/picture.png", "top.md"] { try write(path) }
+        var updated = try VaultIndex(root: updates)
+        let organizer = PageOrganizer(root: updated.root)
+        func matchesScan(_ what: String) throws {
+            let scanned = try VaultIndex(root: updates)
+            try check(updated.files.map(\.relativePath) == scanned.files.map(\.relativePath), "\(what): files are listed as a scan lists them")
+            func resolved(_ index: VaultIndex, _ target: String) -> String? { index.resolve(target, from: "")?.resolvingSymlinksInPath().path }
+            func tree(_ list: [VaultEntry]) -> [String] { list.flatMap { [$0.relativePath] + tree($0.children ?? []) } }
+            try check(tree(updated.entries) == tree(scanned.entries), "\(what): the tree matches a scan")
+            for file in scanned.files {
+                let base = (file.name as NSString).deletingPathExtension
+                for target in [file.relativePath, file.name, base, base.uppercased(), file.relativePath.lowercased()] {
+                    try check(resolved(updated, target) == resolved(scanned, target), "\(what): \(target) resolves as after a scan")
+                }
+                try check(file.ext == file.url.pathExtension.lowercased(), "\(what): \(file.name) keeps its extension")
+            }
+            for gone in ["Draft", "Inbox/Draft.md", "abate", "Archive/old.md", "words/abate"] {
+                try check(resolved(updated, gone) == resolved(scanned, gone), "\(what): \(gone) resolves as after a scan")
+            }
+        }
+        var newPath = try organizer.move("Inbox/Draft.md", to: PageDropTarget(folder: "Archive"))
+        updated = updated.moving("Inbox/Draft.md", to: newPath); try matchesScan("Moving a page")
+        newPath = try organizer.move("🇺🇸 English/words", to: PageDropTarget(folder: "Inbox"))
+        updated = updated.moving("🇺🇸 English/words", to: newPath); try matchesScan("Moving a folder")
+        newPath = try organizer.move("top.md", to: PageDropTarget(folder: "Archive", anchor: "old.md", after: false))
+        updated = updated.moving("top.md", to: newPath); try matchesScan("Moving a page before another")
+        newPath = try organizer.rename("Inbox/words", to: "vocabulary")
+        updated = updated.renaming("Inbox/words", to: newPath); try matchesScan("Renaming a folder")
+        try fm.removeItem(at: updates.appendingPathComponent("Archive/old.md"))
+        updated = updated.removing("Archive/old.md"); try matchesScan("Removing a page")
+        try write("Archive/new.md")
+        updated = updated.addingFile(try VaultIndex(root: updates).files.first { $0.relativePath == "Archive/new.md" }!); try matchesScan("Adding a page")
+        try fm.createDirectory(at: updates.appendingPathComponent("Inbox/Empty"), withIntermediateDirectories: false)
+        updated = updated.addingFolder("Inbox/Empty"); try matchesScan("Adding a folder")
+
         print("VaultCore: all index, link, attachment, safety, and save tests passed")
     }
 }

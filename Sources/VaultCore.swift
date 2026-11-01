@@ -9,8 +9,15 @@ struct VaultEntry: Identifiable {
     let children: [VaultEntry]?
     let modified: Date?
     let size: Int
+    /// Worked out once: views filter the whole vault by it on every redraw,
+    /// and reading it from the URL each time costs about 5 ms per 10,000 files.
+    let ext: String
 
-    var ext: String { url.pathExtension.lowercased() }
+    init(relativePath: String, url: URL, name: String, isDirectory: Bool, children: [VaultEntry]?, modified: Date?, size: Int) {
+        self.relativePath = relativePath; self.url = url; self.name = name; self.isDirectory = isDirectory
+        self.children = children; self.modified = modified; self.size = size
+        ext = url.pathExtension.lowercased()
+    }
 }
 
 enum VaultCoreError: LocalizedError {
@@ -120,6 +127,58 @@ struct VaultIndex {
         byBasename = Dictionary(grouping: files, by: { Self.foldedKey($0.name) })
     }
 
+    private init(root: URL, entries: [VaultEntry], files: [VaultEntry], byPath: [String: VaultEntry],
+                 byFoldedPath: [String: [VaultEntry]], byBasename: [String: [VaultEntry]]) {
+        self.root = root; self.entries = entries; self.files = files
+        self.byPath = byPath; self.byFoldedPath = byFoldedPath; self.byBasename = byBasename
+    }
+
+    /// The same index with a new tree, and with the files `gone` matches taken
+    /// out and `added` put in. The sorted file list and the lookups are updated
+    /// rather than rebuilt: rebuilding them takes about 40 ms per 10,000 files,
+    /// which a sidebar drop or rename would otherwise spend on the main thread.
+    private func updating(entries: [VaultEntry], removing gone: (VaultEntry) -> Bool = { _ in false }, adding added: [VaultEntry] = []) -> VaultIndex {
+        var byPath = self.byPath, byFoldedPath = self.byFoldedPath, byBasename = self.byBasename
+        func drop(_ file: VaultEntry, from table: inout [String: [VaultEntry]], key: String) {
+            guard var list = table[key] else { return }
+            list.removeAll { $0.relativePath == file.relativePath }
+            table[key] = list.isEmpty ? nil : list
+        }
+        // A file added again at a path already listed replaces it. Paths are
+        // compared as bytes: hashing or comparing 10,000 of them as Unicode
+        // text would cost more than the rest of the update.
+        let replaced = added.compactMap { byPath[Self.key($0.relativePath)]?.relativePath }
+        var kept: [VaultEntry] = []
+        kept.reserveCapacity(files.count + added.count)
+        for file in files {
+            guard gone(file) || (!replaced.isEmpty && replaced.contains { $0.utf8.elementsEqual(file.relativePath.utf8) }) else { kept.append(file); continue }
+            let key = Self.key(file.relativePath)
+            if byPath[key]?.relativePath == file.relativePath { byPath[key] = nil }
+            drop(file, from: &byFoldedPath, key: Self.foldedKey(file.relativePath))
+            drop(file, from: &byBasename, key: Self.foldedKey(file.name))
+        }
+        // Merged into the sorted list. Files moved together usually sit next to
+        // each other in it, so most need one comparison, not a search.
+        func before(_ a: VaultEntry, _ b: VaultEntry) -> Bool { a.relativePath.localizedStandardCompare(b.relativePath) == .orderedAscending }
+        var merged: [VaultEntry] = []
+        merged.reserveCapacity(kept.count + added.count)
+        var next = 0
+        for file in added.sorted(by: before) {
+            var low = next, high = kept.count
+            if low < high, before(kept[low], file) {
+                low += 1
+                while low < high { let middle = (low + high) / 2; if before(kept[middle], file) { low = middle + 1 } else { high = middle } }
+            }
+            merged.append(contentsOf: kept[next..<low]); merged.append(file); next = low
+            let key = Self.key(file.relativePath)
+            if byPath[key] == nil { byPath[key] = file }
+            byFoldedPath[Self.foldedKey(file.relativePath), default: []].append(file)
+            byBasename[Self.foldedKey(file.name), default: []].append(file)
+        }
+        merged.append(contentsOf: kept[next...])
+        return VaultIndex(root: root, entries: entries, files: merged, byPath: byPath, byFoldedPath: byFoldedPath, byBasename: byBasename)
+    }
+
     /// The same index with one more top-level file, placed where a rescan would
     /// list it, so a page just created shows without walking the whole folder.
     func addingTopLevelFile(_ file: VaultEntry) -> VaultIndex { addingFile(file) }
@@ -139,8 +198,7 @@ struct VaultIndex {
                                   children: children, modified: entry.modified, size: entry.size)
             }
         }
-        return VaultIndex(canonicalRoot: root, entries: parentPath.isEmpty ? place(entries) : insert(entries),
-                          files: files.filter { $0.relativePath != file.relativePath } + [file])
+        return updating(entries: parentPath.isEmpty ? place(entries) : insert(entries), adding: [file])
     }
 
     /// The same index with one more empty folder, placed where a rescan would list it.
@@ -160,7 +218,7 @@ struct VaultIndex {
                                   children: children, modified: entry.modified, size: entry.size)
             }
         }
-        return VaultIndex(canonicalRoot: root, entries: parentPath.isEmpty ? place(entries) : insert(entries), files: files)
+        return updating(entries: parentPath.isEmpty ? place(entries) : insert(entries))
     }
 
     /// The same index after moving an item, and everything inside it, from
@@ -191,8 +249,7 @@ struct VaultIndex {
                                   children: children, modified: item.modified, size: item.size)
             }
         }
-        return VaultIndex(canonicalRoot: root, entries: parentPath.isEmpty ? place(remaining.entries) : insert(remaining.entries),
-                          files: remaining.files + movedFiles)
+        return remaining.updating(entries: parentPath.isEmpty ? place(remaining.entries) : insert(remaining.entries), adding: movedFiles)
     }
     private static func find(_ path: String, in list: [VaultEntry]) -> VaultEntry? {
         for item in list {
@@ -221,25 +278,27 @@ struct VaultIndex {
             let mapped = list.map(remap)
             return folder == parent ? PageOrganizer.arrange(mapped.sorted(by: PageOrganizer.defaultOrder), names: order[folder], name: \.name) : mapped
         }
-        let renamedFiles = files.map { file -> VaultEntry in
-            guard let path = moved(file.relativePath) else { return file }
+        let renamedFiles = files.compactMap { file -> VaultEntry? in
+            guard let path = moved(file.relativePath) else { return nil }
             return VaultEntry(relativePath: path, url: root.appendingPathComponent(path), name: (path as NSString).lastPathComponent,
                               isDirectory: false, children: nil, modified: file.modified, size: file.size)
         }
-        return VaultIndex(canonicalRoot: root, entries: arranged(entries, folder: ""), files: renamedFiles)
+        return updating(entries: arranged(entries, folder: ""), removing: { moved($0.relativePath) != nil }, adding: renamedFiles)
     }
 
     /// The same index without an item and, for a folder, everything inside it.
     func removing(_ relativePath: String) -> VaultIndex {
-        func gone(_ path: String) -> Bool { path == relativePath || path.hasPrefix(relativePath + "/") }
+        // Compared as bytes, like the paths in `updating`.
+        func gone(_ path: String) -> Bool { path.utf8.starts(with: relativePath.utf8) && (path.utf8.count == relativePath.utf8.count || path.utf8.dropFirst(relativePath.utf8.count).first == UInt8(ascii: "/")) }
+        // Only the folders on the way to the item are rebuilt.
         func prune(_ list: [VaultEntry]) -> [VaultEntry] {
             list.filter { !gone($0.relativePath) }.map { entry in
-                guard entry.isDirectory else { return entry }
+                guard entry.isDirectory, relativePath.hasPrefix(entry.relativePath + "/") else { return entry }
                 return VaultEntry(relativePath: entry.relativePath, url: entry.url, name: entry.name, isDirectory: true,
                                   children: prune(entry.children ?? []), modified: entry.modified, size: entry.size)
             }
         }
-        return VaultIndex(canonicalRoot: root, entries: prune(entries), files: files.filter { !gone($0.relativePath) })
+        return updating(entries: prune(entries), removing: { gone($0.relativePath) })
     }
 
     /// Resolves Obsidian wiki targets and ordinary local Markdown links.

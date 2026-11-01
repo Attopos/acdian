@@ -522,19 +522,27 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             guard self.index?.root == root, self.saveSplit() else { return }
             if affectsSelection, !self.saveBeforeLeaving() { return }
             let request = UUID(); self.loadID = request
-            // The move runs off the main thread. The sidebar then updates in
-            // memory at once, and a rescan in the background confirms it.
-            DispatchQueue.global(qos:.userInitiated).async {
-                let result = Result { try PageOrganizer(root:root).move(relativePath,to:target) }
+            // The move, and the index after it, are worked out off the main
+            // thread. The sidebar and search then follow it in memory:
+            // rescanning the pages folder and redrawing the window once more
+            // would stall the end of the drop.
+            guard let before = self.index else { return }
+            let generation = self.indexGeneration
+            DispatchQueue.global(qos:.userInteractive).async {
+                let result = Result { () -> (String,VaultIndex) in
+                    let newPath = try PageOrganizer(root:root).move(relativePath,to:target)
+                    return (newPath,before.moving(relativePath,to:newPath))
+                }
                 DispatchQueue.main.async {
                     guard self.index?.root == root, let current = self.index else { return }
                     switch result {
-                    case .success(let newPath):
-                        let newIndex = current.moving(relativePath,to:newPath)
+                    case .success(let (newPath,moved)):
+                        // The index changed meanwhile: the move is applied to the newer one.
+                        let newIndex = self.indexGeneration == generation ? moved : current.moving(relativePath,to:newPath)
                         if self.loadID == request { self.loading = false }
                         if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath); self.moduleFolderMoved(from:relativePath,to:newPath); self.componentSourcesMoved(from:relativePath,to:newPath) }
-                        self.remapTabs(from:relativePath,to:newPath)
-                        self.index = newIndex; self.rebuildSearch(); self.rescanInBackground(root)
+                        self.remapTabs(from:relativePath,to:newPath); self.searchMoved(from:relativePath,to:newPath)
+                        self.index = newIndex; self.rebuildSearch()
                         if affectsSelection, let openPath, newPath != relativePath {
                             let moved = openPath == relativePath ? newPath : newPath + openPath.dropFirst(relativePath.count)
                             if let file = newIndex.files.first(where: { $0.relativePath == moved }) { self.open(file,skipConfirmation:true) }
@@ -607,6 +615,23 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 self.searchCache = cache; self.searchStamps = stamps; self.searchSaves = [:]; self.objectWillChange.send()
             }
         }
+    }
+    /// Search text read for pages that moved follows them, so they are not read
+    /// again. Past a few hundred pages, rekeying the cache on the main thread
+    /// costs more than reading them again in the background, so those are left
+    /// to `rebuildSearch`.
+    private func searchMoved(from old: String, to new: String) {
+        let inside = old + "/"
+        let keys = searchCache.keys.compactMap { key -> (String,String)? in
+            if key.utf8.elementsEqual(old.utf8) { return (key,new) }
+            return key.utf8.starts(with:inside.utf8) ? (key,new + key.dropFirst(old.count)) : nil
+        }
+        guard !keys.isEmpty, keys.count <= 300 else { return }
+        var cache = searchCache, folded = searchFolded, stamps = searchStamps
+        for (key,path) in keys {
+            cache[path] = cache.removeValue(forKey:key); folded[path] = folded.removeValue(forKey:key); stamps[path] = stamps.removeValue(forKey:key)
+        }
+        searchFolded = folded; searchStamps = stamps; searchCache = cache
     }
     private func searchSaved(_ id: String, _ text: String) {
         searchFolded[id] = Self.searchFold(text) as NSString
