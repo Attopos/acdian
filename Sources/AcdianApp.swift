@@ -69,7 +69,7 @@ import AppKit
             guard let self else { return }
             model.withEditorSnapshot({
                 self.closePending = false
-                guard let sender, model.saveBeforeLeaving() else { return }
+                guard let sender, model.saveBeforeLeaving(), model.saveSplit() else { return }
                 self.lastWindowCloseApproved = NSApp.windows.filter { $0.isVisible && $0.canBecomeMain }.count <= 1
                 self.closeApproved = true; sender.performClose(nil); self.closeApproved = false
             },onFailure:{ self.closePending = false })
@@ -85,7 +85,7 @@ import AppKit
             guard let self else { NSApp.reply(toApplicationShouldTerminate:false); return }
             model.withEditorSnapshot({
                 self.terminationPending = false
-                NSApp.reply(toApplicationShouldTerminate:model.saveBeforeLeaving())
+                NSApp.reply(toApplicationShouldTerminate:model.saveBeforeLeaving() && model.saveSplit())
             },onFailure:{
                 self.terminationPending = false
                 NSApp.reply(toApplicationShouldTerminate:false)

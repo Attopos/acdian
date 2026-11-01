@@ -66,11 +66,13 @@ struct ContentView: View {
                 // No top bar: open pages sit as tabs in a transparent strip that
                 // keeps clear of the window controls and still drags the window.
                 // A hidden sidebar comes back with Control-Command-S or View > Show or hide sidebar.
-                TabStrip().frame(height:30)
-                if model.showingTrash { TrashView(model:model) }
-                else if model.showingMarket { ComponentMarketView() }
-                else if model.selected != nil { documentBody }
-                else { HomeArea() }
+                if model.selected != nil, !model.showingTrash, !model.showingMarket { pageColumns }
+                else {
+                    TabStrip().frame(height:30)
+                    if model.showingTrash { TrashView(model:model) }
+                    else if model.showingMarket { ComponentMarketView() }
+                    else { HomeArea() }
+                }
                 Rectangle().fill(Color.faint).frame(height:1)
                 statusBar
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
@@ -89,6 +91,35 @@ struct ContentView: View {
             Button { model.pdfZoomAction -= 1 } label:{ Image(systemName:"minus.magnifyingglass") }.help(model.localized("缩小"))
             Button { model.pdfZoomAction += 1 } label:{ Image(systemName:"plus.magnifyingglass") }.help(model.localized("放大"))
         }
+    }
+    // The open page and the split page side by side, as two equal columns
+    // that each start with their own row of tabs. The divider drags, and a
+    // double click on it evens the two out again.
+    // Without a split page the open page's column takes the whole width.
+    private var pageColumns: some View {
+        GeometryReader { geometry in
+            let available = geometry.size.width
+            let split = model.splitEntry
+            let leftWidth = split == nil ? available : min(max(available * model.splitFraction,320),max(320,available - 320))
+            // The columns keep their identity when the split opens, closes or
+            // swaps sides, so neither editor is rebuilt.
+            let order = split == nil ? ["main"] : model.splitOnLeft ? ["split","main"] : ["main","split"]
+            HStack(spacing:0) {
+                ForEach(order,id:\.self) { side in
+                    let left = side == order[0]
+                    pageColumn(split,main:side == "main",atWindowEdge:left).frame(width:left ? leftWidth : max(0,available - leftWidth))
+                }
+            }
+            .overlay(alignment:.topLeading) { if split != nil { SplitDivider(width:available,leftWidth:leftWidth).offset(x:leftWidth - 5) } }
+        }
+    }
+    @ViewBuilder private func pageColumn(_ split: VaultEntry?, main: Bool, atWindowEdge: Bool) -> some View {
+        VStack(spacing:0) {
+            if main { TabStrip(atWindowEdge:atWindowEdge).frame(height:30); documentBody }
+            else if let split { SplitTabBar(entry:split,atWindowEdge:atWindowEdge).frame(height:30); SplitPane(entry:split) }
+        }
+        .frame(maxHeight:.infinity)
+        .background(PaneClickWatcher { if model.splitFocused == main { model.splitFocused = !main } })
     }
     @ViewBuilder private var documentBody: some View {
         if let file = model.selected {
@@ -158,12 +189,14 @@ struct ContentView: View {
 // Tabs share the strip's width evenly, like browser tabs, up to a comfortable maximum.
 struct TabStrip: View {
     @EnvironmentObject var model: AppModel
+    /// The strip starts at the window's left edge, under the window controls when the sidebar is hidden.
+    var atWindowEdge = true
     var body: some View {
         GeometryReader { geometry in
-            let leading: CGFloat = model.showSidebar ? 10 : 78
+            let leading: CGFloat = model.showSidebar || !atWindowEdge ? 10 : 78
             let width = model.tabs.isEmpty ? 0 : min(200,max(36,(geometry.size.width - leading - 10) / CGFloat(model.tabs.count) - 2))
             HStack(spacing:2) {
-                ForEach(model.tabs) { tab in TabButton(tab:tab,active:tab.id == model.activeTabID && model.selected != nil && !model.showingTrash && !model.showingMarket).frame(width:width) }
+                ForEach(model.tabs) { tab in TabButton(tab:tab,active:tab.id == model.activeTabID && model.selected != nil && !model.showingTrash && !model.showingMarket,dimmed:model.splitEntry != nil && model.splitFocused).frame(width:width) }
             }.padding(.leading,leading).padding(.top,4).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
         }.contentShape(Rectangle()).clipped()
     }
@@ -172,6 +205,8 @@ struct TabButton: View {
     @EnvironmentObject var model: AppModel
     let tab: PageTab
     let active: Bool
+    /// The front tab of the column that is not in use keeps its text but loses its background.
+    var dimmed = false
     @State private var hovering = false
     var body: some View {
         HStack(spacing:2) {
@@ -181,9 +216,9 @@ struct TabButton: View {
         }
         .foregroundStyle(active ? Color.primary : Color.secondary)
         .padding(.leading,10).padding(.trailing,4).frame(height:24)
-        .background(active ? Color.wash : .clear,in:RoundedRectangle(cornerRadius:6))
+        .background(active && !dimmed ? Color.wash : .clear,in:RoundedRectangle(cornerRadius:6))
         .contentShape(Rectangle())
-        .onTapGesture { model.selectTab(tab.id) }
+        .onTapGesture { model.splitFocused = false; model.selectTab(tab.id) }
         .onHover { hovering = $0 }
     }
 }
@@ -415,18 +450,21 @@ struct FileRow: View {
     var indent: Int
     var showPath = false
     var symbol: String { if entry.ext == "md" { return "doc.text" }; if entry.ext == "pdf" { return "doc.richtext" }; if AppModel.images.contains(entry.ext) { return "photo" }; if AppModel.videos.contains(entry.ext) { return "film" }; if entry.ext == ComponentStore.fileExtension { return "rectangle.grid.2x2" }; return "doc" }
-    private var isCurrentPage: Bool { model.currentPagePath == entry.relativePath }
+    private var isCurrentPage: Bool { model.currentPagePath == entry.relativePath || model.splitPath == entry.relativePath }
     var body: some View {
         if model.renamingPath == entry.relativePath {
             RenameRow(entry:entry,leading:CGFloat(indent)*13+23,symbol:symbol,tint:Color.acPink).id(model.renamingSession)
         } else { row }
     }
     private var row: some View {
-        Button { model.open(entry) } label: {
+        Button { model.openInFocusedColumn(entry) } label: {
             HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(AppModel.editableName(entry)).font(.system(size:12)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:9)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,7).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
         }.buttonStyle(.plain).help(entry.relativePath)
         .simultaneousGesture(TapGesture(count:2).onEnded { model.startRenaming(entry) })
         .contextMenu {
+            Button { model.openInSplit(entry) } label: { Label(model.localized("在分屏中打开"),systemImage:"rectangle.split.2x1") }
+                .disabled(entry.relativePath == model.currentPagePath || entry.relativePath == model.splitPath)
+            Divider()
             Button { model.newFolder(near:entry) } label: { Label(model.localized("新建文件夹"),systemImage:"folder.badge.plus") }
             Button { model.startRenaming(entry) } label: { Label(model.localized("重命名"),systemImage:"pencil") }
             MoveToMenu(entry:entry)

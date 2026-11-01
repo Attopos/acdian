@@ -69,7 +69,7 @@ extension String {
 struct PageTab: Identifiable { let id = UUID(); var path: String? }
 
 @MainActor final class AppModel: ObservableObject {
-    @Published var index: VaultIndex? { didSet { indexGeneration &+= 1 } }
+    @Published var index: VaultIndex? { didSet { indexGeneration &+= 1; followSplitEntry() } }
     private var indexGeneration = 0
     @Published var loading = false {
         didSet { if oldValue && !loading { scheduleAutosave() } }
@@ -384,7 +384,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard let root = index?.root else { completion?(false); return }
         let affectsSelection = deletionAffectsSelection(entry)
         let action = {
-            guard self.index?.root == root else { completion?(false); return }
+            guard self.index?.root == root, self.saveSplit() else { completion?(false); return }
             if affectsSelection, !self.saveBeforeLeaving() { completion?(false); return }
             do {
                 let trash = try PageTrash(root:root,nowDate:self.trashNow)
@@ -485,7 +485,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let affectsSelection = deletionAffectsSelection(entry)
         let openPath = persistedPage?.relativePath
         let action = {
-            guard self.index?.root == root else { return }
+            guard self.index?.root == root, self.saveSplit() else { return }
             if affectsSelection, !self.saveBeforeLeaving() { return }
             do {
                 let newPath = try PageOrganizer(root:root).rename(path,to:name)
@@ -519,7 +519,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let affectsSelection = deletionAffectsSelection(entry)
         let openPath = persistedPage?.relativePath
         let action = {
-            guard self.index?.root == root else { return }
+            guard self.index?.root == root, self.saveSplit() else { return }
             if affectsSelection, !self.saveBeforeLeaving() { return }
             let request = UUID(); self.loadID = request
             // The move runs off the main thread. The sidebar then updates in
@@ -680,11 +680,13 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     private func openAfterSnapshot(_ entry: VaultEntry, fragment: String, skipConfirmation: Bool, fromDisk: Bool, inPlace: Bool = false) {
         guard skipConfirmation || saveBeforeLeaving() else { return }
+        // A page shown beside the open one moves into the main editor.
+        if entry.relativePath == splitPath { guard closeSplit() else { return } }
         showingTrash = false; showingMarket = false
         // A page already in a tab is shown there, and a blank new page hands
         // its tab to the page opened from it; anything else gets a new tab.
         let tab = tabs.first(where: { $0.path == entry.relativePath })?.id ?? (isDraft && draftFile == nil || inPlace ? activeTabID : nil)
-        let needsText = entry.ext == "md" || ["txt","json","csv","css","js","yaml","yml","canvas","xml","html","log"].contains(entry.ext)
+        let needsText = entry.ext == "md" || Self.textExtensions.contains(entry.ext)
         let request = UUID(); openID = request
         let root = index?.root
         if !needsText { install(entry,content:"",fragment:fragment,tab:tab); return }
@@ -788,6 +790,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         if activeTabID != id { activeTabID = id }
     }
     private func remapTabs(from old: String, to new: String) {
+        if let path = splitPath, path == old || path.hasPrefix(old + "/") { splitPath = new + path.dropFirst(old.count) }
         guard old != new, tabs.contains(where: { $0.path == old || $0.path?.hasPrefix(old + "/") == true }) else { return }
         tabs = tabs.map { tab in
             var tab = tab
@@ -828,6 +831,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     /// Command-W closes the front tab, and the window once no page is open.
     func closeCurrentTab() {
+        if splitFocused, splitEntry != nil, selected != nil { closeSplit(); return }
         if let activeTabID, selected != nil { closeTab(activeTabID) }
         else { NSApp?.mainWindow?.performClose(nil) }
     }
@@ -1334,6 +1338,90 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 else if !copied.isEmpty { self.statusValue = .imported(copied.count) }
             }
         }
+    }
+
+    // MARK: Split view
+    // A second page shown beside the open one. A Markdown page there has an
+    // editor of its own and saves on its own, a moment after typing stops.
+    @Published private(set) var splitPath: String?
+    @Published private(set) var splitEntry: VaultEntry?
+    @Published private(set) var splitLoading = false
+    @Published private(set) var splitDocumentID = UUID()
+    /// The split page sits left of the open page instead of right of it.
+    @Published var splitOnLeft = false
+    /// The share of the width the left column takes.
+    @Published var splitFraction: CGFloat = 0.5
+    /// The split page's column was clicked last, so pages chosen in the sidebar open there.
+    @Published var splitFocused = false
+    private(set) var splitText = ""
+    private var splitOriginal = ""
+    private var splitSaveTask: Task<Void,Never>?
+    static let textExtensions: Set<String> = ["txt","json","csv","css","js","yaml","yml","canvas","xml","html","log"]
+    var splitDirty: Bool { splitEntry?.ext == "md" && !splitLoading && !splitText.sameBytes(splitOriginal) }
+    func openInSplit(_ entry: VaultEntry) {
+        guard !entry.isDirectory, entry.relativePath != splitPath else { return }
+        // With no page open there is nothing to show it beside.
+        guard selected != nil, !showingTrash, !showingMarket else { open(entry); return }
+        guard entry.relativePath != currentPagePath, saveSplit() else { return }
+        splitSaveTask?.cancel(); splitSaveTask = nil
+        splitPath = entry.relativePath; splitEntry = entry; splitText = ""; splitOriginal = ""; splitFocused = true
+        let request = UUID(); splitDocumentID = request
+        guard entry.ext == "md" || Self.textExtensions.contains(entry.ext) else { splitLoading = false; return }
+        guard entry.size < 20_000_000 else { error = localized("文件较大，无法作为文本打开。"); closeSplit(); return }
+        splitLoading = true
+        let root = index?.root
+        DispatchQueue.global(qos:.userInitiated).async {
+            let result = Result { try VaultFileIO.readMarkdown(at:entry.url,allowedRoot:root) }
+            DispatchQueue.main.async {
+                guard self.splitDocumentID == request else { return }
+                switch result {
+                case .success(let content): self.splitText = content; self.splitOriginal = content; self.splitLoading = false
+                case .failure(let failure): self.splitLoading = false; self.error = self.localizedError(failure); self.closeSplit()
+                }
+            }
+        }
+    }
+    /// Closes the split page, saving it first. Unsaved edits that fail to save keep it open.
+    @discardableResult func closeSplit() -> Bool {
+        guard saveSplit() else { return false }
+        splitPath = nil; splitEntry = nil; splitText = ""; splitOriginal = ""; splitLoading = false; splitDocumentID = UUID(); splitFocused = false
+        return true
+    }
+    /// Swaps the two columns; each page keeps its width.
+    func swapSplitSides() { splitOnLeft.toggle(); splitFraction = 1 - splitFraction }
+    /// A page chosen in the sidebar opens in the column in use.
+    func openInFocusedColumn(_ entry: VaultEntry) {
+        if entry.relativePath == splitPath { splitFocused = true; return }
+        if entry.relativePath == currentPagePath { splitFocused = false; return }
+        if splitFocused, splitEntry != nil, !entry.isDirectory { openInSplit(entry) } else { open(entry) }
+    }
+    func splitEdited(_ text: String, documentID: UUID) {
+        guard documentID == splitDocumentID, !splitLoading, !splitText.sameBytes(text) else { return }
+        splitText = text
+        splitSaveTask?.cancel()
+        let delay = UInt64(autosaveDelay * 1_000_000_000)
+        splitSaveTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds:delay) } catch { return }
+            guard let self, !Task.isCancelled, self.splitDocumentID == documentID else { return }
+            self.splitSaveTask = nil
+            self.saveSplit(automatically:true)
+        }
+    }
+    @discardableResult func saveSplit(automatically: Bool = false) -> Bool {
+        splitSaveTask?.cancel(); splitSaveTask = nil
+        guard splitDirty, let entry = splitEntry else { return true }
+        do {
+            try VaultFileIO.saveMarkdown(splitText,at:entry.url,expectedContent:splitOriginal,allowedRoot:index?.root)
+            attachmentsChanged(from:splitOriginal,to:splitText,page:entry.relativePath)
+            splitOriginal = splitText; searchSaved(entry.id,splitText); lastAutosaveError = nil
+            return true
+        } catch { reportSaveFailure(error,automatically:automatically); return false }
+    }
+    /// Keeps the split page's entry current as the index changes, and closes it once its file is gone.
+    private func followSplitEntry() {
+        guard let path = splitPath else { return }
+        if let entry = index?.files.first(where: { $0.relativePath == path }) { splitEntry = entry }
+        else { splitPath = nil; splitEntry = nil; splitText = ""; splitOriginal = ""; splitLoading = false; splitDocumentID = UUID(); splitFocused = false }
     }
 
     // MARK: Per-scan caches

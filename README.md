@@ -146,6 +146,15 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm
 .build/image-tests/image-tests
 ```
 
+分屏验证（右键“在分屏中打开”后的第二个编辑器：自动保存、左右互换后两栏等宽且标签栏对齐、分屏内链接、移入主编辑器、改名跟随与关闭；离屏窗口，临时页面；可传一个文件夹保存截图）：
+
+```sh
+sed 's/^@main struct AcdianApp/struct AcdianApp/' Sources/AcdianApp.swift > .build/AcdianApp-nomain.swift
+mkdir -p .build/split-tests && cp -R Resources/. .build/split-tests/
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm64-apple-macos14.0 $(ls Sources/*.swift | grep -v AcdianApp) .build/AcdianApp-nomain.swift Tests/SplitViewTests.swift -o .build/split-tests/split-tests
+.build/split-tests/split-tests
+```
+
 模块与附件清理验证：
 
 ```sh
