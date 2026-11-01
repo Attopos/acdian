@@ -71,11 +71,11 @@ struct PageOrderTests {
         guard let page = model.index?.files.first(where: { $0.name == "Open.md" }) else { throw NSError(domain:"PageOrderTest",code:2) }
         model.open(page,skipConfirmation:true)
         for _ in 0..<200 where model.loading || model.selected?.relativePath != "Open.md" { try await Task.sleep(nanoseconds:10_000_000) }
-        model.text = "# Edited"
+        model.text = "# Saved\n\nEdited"
         model.movePage("Open.md",to:PageDropTarget(folder:"Box"))
         for _ in 0..<200 where model.loading || model.selected?.relativePath != "Box/Open.md" { try await Task.sleep(nanoseconds:10_000_000) }
         try check(model.selected?.relativePath == "Box/Open.md","The open page is selected at its new path")
-        try check(try String(contentsOf:modelRoot.appendingPathComponent("Box/Open.md"),encoding:.utf8) == "# Edited","Unsaved edits are saved before the move")
+        try check(try String(contentsOf:modelRoot.appendingPathComponent("Box/Open.md"),encoding:.utf8) == "# Saved\n\nEdited","Unsaved edits are saved before the move")
 
         // New folders go right below the clicked item, then are named in place.
         let folders = try vault("folders",["Top.md":"t","Box/A.md":"a","Box/B.md":"b","Box/Z/":"","Box/新建文件夹/":"","Box/资料/":""])

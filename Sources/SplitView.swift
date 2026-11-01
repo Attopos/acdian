@@ -191,8 +191,8 @@ struct SplitMarkdownEditor: NSViewRepresentable {
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let value = message.body as? [String:Any], let type = value["type"] as? String else { return }
         if type == "ready" { ready = true; installed = nil; render(); return }
-        guard let model, let id = installed, id == model.splitDocumentID, value["documentID"] as? String == id.uuidString,
-              (value["currentPath"] as? String ?? value["from"] as? String) == model.splitPath else { return }
+        // The document ID alone names the page: it survives the page being renamed.
+        guard let model, let id = installed, id == model.splitDocumentID, value["documentID"] as? String == id.uuidString else { return }
         if type == "change", var text = value["text"] as? String {
             let revision = value["revision"] as? Int ?? latestRevision
             guard revision >= latestRevision else { return }

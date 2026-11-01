@@ -35,6 +35,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     // The document the page was last sent, and the per-document bridge state.
     private var documentID: UUID?
     private var documentPath = ""
+    private var renamedFrom: String?
     private var documentInstalled = false
     private var focusPending = false
     private var initialSelection: (anchor:Int,head:Int)?
@@ -89,7 +90,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
             self.view.evaluateJavaScript("window.acdianGetDocument()") { result,error in
                 guard self.isCurrent, self.documentID == expected else { completion(.failure(URLError(.cancelled))); return }
                 if let error { completion(.failure(error)); return }
-                guard let result = result as? [String:Any], var text = result["text"] as? String, let path = result["currentPath"] as? String, path == self.documentPath,
+                guard let result = result as? [String:Any], var text = result["text"] as? String, let path = result["currentPath"] as? String, path == self.documentPath || path == self.renamedFrom,
                       result["documentID"] as? String == expected.uuidString else { completion(.failure(URLError(.cannotParseResponse))); return }
                 text.makeContiguousUTF8()
                 let revision = result["revision"] as? Int ?? self.latestJSRevision
@@ -99,14 +100,14 @@ struct LiveMarkdownEditor: NSViewRepresentable {
                 self.latestJSRevision = max(self.latestJSRevision,revision)
                 self.lastJSText = newest
                 let selection = revision < self.latestJSRevision ? model.editorSelection : nil
-                completion(.success(EditorSnapshot(text:newest,currentPath:path,selectionAnchor:selection?.anchor ?? result["selectionAnchor"] as? Int,selectionHead:selection?.head ?? result["selectionHead"] as? Int,
+                completion(.success(EditorSnapshot(text:newest,currentPath:self.documentPath,selectionAnchor:selection?.anchor ?? result["selectionAnchor"] as? Int,selectionHead:selection?.head ?? result["selectionHead"] as? Int,
                                                    scrollPosition:result["scrollPosition"] as? Int,scrollOffset:(result["scrollOffset"] as? NSNumber)?.doubleValue)))
             }
         }
     }
     /// Starts bridging the document the model now has open.
     private func beginDocument(_ model: AppModel) {
-        documentID = model.editorDocumentID; documentPath = model.selected?.relativePath ?? ""
+        documentID = model.editorDocumentID; documentPath = model.selected?.relativePath ?? ""; renamedFrom = nil
         documentInstalled = false; lastJSText = nil; latestJSRevision = -1
         syncFailures = 0; syncBlocked = false; lastConfig = ""
         initialSelection = model.pendingEditorSelection; focusPending = initialSelection != nil
@@ -125,7 +126,9 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     }
     func render() {
         guard ready, let model, model.selected?.ext == "md" else { return }
-        if model.editorDocumentID != documentID || model.selected?.relativePath != documentPath { beginDocument(model) }
+        if model.editorDocumentID != documentID { beginDocument(model) }
+        // A page renamed after its title changed stays in the editor at its new path.
+        else if let path = model.selected?.relativePath, path != documentPath { renamedFrom = documentPath; documentPath = path }
         guard !syncBlocked, let documentID else { return }
         // Every Markdown page shows its title natively above the editor, so the
         // editor always uses the compact spacing below a title.
@@ -178,7 +181,8 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         if type == "ready" { ready = true; render(); return }
         guard isCurrent, let model, let documentID, value["documentID"] as? String == documentID.uuidString else { return }
         let path = value["currentPath"] as? String ?? value["from"] as? String
-        guard path == documentPath else { return }
+        // Messages sent before the page heard of a rename still name the old path.
+        guard path == documentPath || (path != nil && path == renamedFrom) else { return }
         if type == "change", var text = value["text"] as? String {
             text.makeContiguousUTF8() // compared and kept natively from here on
             let revision = value["revision"] as? Int ?? latestJSRevision

@@ -110,7 +110,41 @@ struct SplitViewTests {
         model.closeSplit()
         try await wait(1)
         check(model.splitPath == nil && !webViews(window.contentView!).contains(split), "Closing the split leaves the open page alone")
-        print("Split view: opening, own editor, autosave, swapping sides, links, moving to the main editor, rename and close passed")
+        // A page's title is its leading heading: the file name is not shown
+        // again above it, and editing the heading renames the file.
+        try "# Title one\n\nBody one.\n".write(to:root.appendingPathComponent("T1.md"),atomically:true,encoding:.utf8)
+        try "Just text, no heading.\n".write(to:root.appendingPathComponent("N.md"),atomically:true,encoding:.utf8)
+        try "# Title two\n\nBody two.\n".write(to:root.appendingPathComponent("T2.md"),atomically:true,encoding:.utf8)
+        model.refresh()
+        for _ in 0..<500 where model.loading || model.index?.files.contains(where: { $0.relativePath == "N.md" }) != true { try await wait(0.01) }
+        let mainView = LiveEditorHost.shared.view
+        model.open(file("T1.md"))
+        try await wait(2)
+        model.openInSplit(file("N.md"))
+        try await wait(2)
+        let fileTitleShown = try await split.evaluateJavaScript("document.querySelector('.cm-page-title')?.textContent") as? String
+        check(fileTitleShown == "N", "A page with no heading on top still shows its file name as its title")
+        model.openInSplit(file("T2.md"))
+        try await wait(2)
+        for (web,name) in [(mainView,"main"),(split,"split")] {
+            let titles = try await web.evaluateJavaScript("document.querySelectorAll('.cm-page-title').length") as? Int ?? -1
+            check(titles == 0, "The \(name) editor shows a page's leading heading as its only title")
+        }
+        let mainDocument = model.editorDocumentID
+        _ = try await mainView.evaluateJavaScript("(()=>{const v=window.acdianEditor,l=v.state.doc.line(1);v.dispatch({changes:{from:l.from,to:l.to,insert:'# Renamed one'},userEvent:'input'});})()")
+        _ = try await split.evaluateJavaScript("(()=>{const v=window.acdianEditor,l=v.state.doc.line(1);v.dispatch({changes:{from:l.from,to:l.to,insert:'# Renamed two'},userEvent:'input'});})()")
+        try await wait(2)
+        check(model.currentPagePath == "Renamed one.md" && model.editorDocumentID == mainDocument, "Editing the title renames the open page without reloading it (\(model.currentPagePath ?? "-"))")
+        check(model.splitPath == "Renamed two.md", "Editing the title renames the split page (\(model.splitPath ?? "-"))")
+        check(model.index?.files.contains(where: { $0.relativePath == "Renamed one.md" }) == true && model.index?.files.contains(where: { $0.relativePath == "T1.md" }) == false, "The sidebar lists the page under its new name")
+        check(model.tabs.contains(where: { $0.path == "Renamed one.md" }), "The tab follows the new name")
+        _ = try await mainView.evaluateJavaScript("(()=>{const v=window.acdianEditor;v.dispatch({changes:{from:v.state.doc.length,insert:'After rename.\\n'},userEvent:'input'});})()")
+        _ = try await split.evaluateJavaScript("(()=>{const v=window.acdianEditor;v.dispatch({changes:{from:v.state.doc.length,insert:'After rename.\\n'},userEvent:'input'});})()")
+        try await wait(2)
+        check(disk("Renamed one.md").contains("After rename.") && disk("Renamed two.md").contains("After rename."), "Typing after a rename saves to the renamed files")
+        check(!FileManager.default.fileExists(atPath:root.appendingPathComponent("T1.md").path), "No copy is left under the old name")
+        try await picture("titles")
+        print("Split view: opening, own editor, autosave, swapping sides, links, moving to the main editor, rename, close, and titles that rename pages passed")
         exit(0)
     }
 }

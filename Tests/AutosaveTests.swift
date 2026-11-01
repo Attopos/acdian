@@ -118,12 +118,12 @@ struct AutosaveTests {
             try Data("# Other\n".utf8).write(to:otherURL)
             model.index = try VaultIndex(root:directory)
             guard let other = model.index?.files.first(where: { $0.relativePath == "Other.md" }) else { fatalError("Navigation target missing") }
-            model.text = "# Native pending body"
+            model.text = "# Original\r\n\r\nNative pending body"
             var callback: ((Result<EditorSnapshot,Error>) -> Void)?
             model.editorSnapshot = { callback = $0 }
             model.open(other)
             try check(callback != nil && model.currentPagePath == "Page.md","Navigation waits for the current editor snapshot before leaving")
-            let latest = "# 最新中文🌸\r\n\r\nFinal keystroke\r\n"
+            let latest = "# Original\r\n\r\n最新中文🌸\r\n\r\nFinal keystroke\r\n"
             callback?(.success(EditorSnapshot(text:latest,currentPath:"Page.md")))
             try await eventually("Navigation opens its target after flushing the latest snapshot") { model.selected?.relativePath == "Other.md" && !model.loading }
             try check(try disk(url) == latest && model.text == "# Other\n","Pre-navigation flush writes the newest snapshot instead of the older native bridge value")
@@ -134,13 +134,13 @@ struct AutosaveTests {
         do {
             let (model,directory) = try fixture("exit-flush",delay:0.3)
             let url = try select(model,directory)
-            model.text = "# Native pending exit edit"
+            model.text = "# Original\r\n\r\nNative pending exit edit"
             var callback: ((Result<EditorSnapshot,Error>) -> Void)?
             model.editorSnapshot = { callback = $0 }
             var mayExit: Bool?
             model.withEditorSnapshot({ mayExit = model.saveBeforeLeaving() },onFailure:{ mayExit = false })
             try check(callback != nil && mayExit == nil,"Exit-style flush waits for the latest browser snapshot")
-            let latest = "# 退出前最新内容🌸\r\n"
+            let latest = "# Original\r\n\r\n退出前最新内容🌸\r\n"
             callback?(.success(EditorSnapshot(text:latest,currentPath:"Page.md",selectionAnchor:4,selectionHead:4)))
             try check(mayExit == true && (try disk(url)) == latest && !model.dirty,"Exit can proceed only after the newest snapshot is synchronously saved")
             model.text = latest + "Later native edit"
@@ -152,18 +152,18 @@ struct AutosaveTests {
         do {
             let (model,directory) = try fixture("stale-snapshot",delay:0.15)
             let url = try select(model,directory)
-            model.text = "# First pending revision"
+            model.text = "# Original\r\n\r\nFirst pending revision"
             var callback: ((Result<EditorSnapshot,Error>) -> Void)?
             model.editorSnapshot = { callback = $0 }
             var executed = false, canceled = false
             model.withEditorSnapshot({ executed = true; model.saveBeforeLeaving() },onFailure:{ canceled = true })
             model.editorDocumentID = UUID()
-            let current = "# 当前中文🌸\r\n\r\nNewest native revision\r\n"
+            let current = "# Original\r\n\r\n当前中文🌸\r\n\r\nNewest native revision\r\n"
             model.text = current
-            callback?(.success(EditorSnapshot(text:"# Obsolete snapshot",currentPath:"Page.md")))
+            callback?(.success(EditorSnapshot(text:"# Original\r\n\r\nObsolete snapshot",currentPath:"Page.md")))
             try check(!executed && canceled && model.error == nil && model.text == current,"A stale same-file snapshot cannot flush or overwrite the current editor generation")
             try await eventually("The current generation still autosaves after rejecting an obsolete callback") { !model.dirty && (try? disk(url)) == current }
-            callback?(.success(EditorSnapshot(text:"# Duplicate obsolete snapshot",currentPath:"Page.md")))
+            callback?(.success(EditorSnapshot(text:"# Original\r\n\r\nDuplicate obsolete snapshot",currentPath:"Page.md")))
             try check(model.text == current && (try disk(url)) == current,"A repeated old callback cannot replace already persisted current content")
         }
 
@@ -185,7 +185,7 @@ struct AutosaveTests {
             let (model,directory) = try fixture("external-conflict")
             let url = try select(model,directory)
             let baseline = model.originalText, generation = model.editorDocumentID
-            let local = "# 本地尚未保存🌸\r\n"
+            let local = "# Original\r\n\r\n本地尚未保存🌸\r\n"
             model.text = local
             try Data("# Changed by another app\n".utf8).write(to:url)
             try await eventually("An external edit prevents automatic overwriting") { model.error != nil }

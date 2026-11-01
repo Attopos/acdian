@@ -842,7 +842,11 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         do {
             try VaultFileIO.saveMarkdown(text,at:selected.url,expectedContent:originalText,allowedRoot:index?.root)
             attachmentsChanged(from:originalText,to:text,page:selected.relativePath)
-            originalText = text; searchSaved(selected.id,text); keepFrontText(text,stamp:nil); statusValue = .saved(Date()); lastAutosaveError = nil; return true
+            let before = originalText
+            originalText = text; searchSaved(selected.id,text); keepFrontText(text,stamp:nil); statusValue = .saved(Date()); lastAutosaveError = nil
+            // The editor stays on the page; only the path under it changes.
+            if let renamed = renameToTitle(selected,from:before,to:text) { self.selected = renamed }
+            return true
         } catch { reportSaveFailure(error,automatically:automatically); return false }
     }
     func reload() {
@@ -1413,9 +1417,31 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         do {
             try VaultFileIO.saveMarkdown(splitText,at:entry.url,expectedContent:splitOriginal,allowedRoot:index?.root)
             attachmentsChanged(from:splitOriginal,to:splitText,page:entry.relativePath)
+            let before = splitOriginal
             splitOriginal = splitText; searchSaved(entry.id,splitText); lastAutosaveError = nil
+            if let renamed = renameToTitle(entry,from:before,to:splitText) { splitEntry = renamed }
             return true
         } catch { reportSaveFailure(error,automatically:automatically); return false }
+    }
+    // MARK: Page titles
+    /// A page's title is its leading "# " heading.
+    static func leadingTitle(_ text: String) -> String? {
+        let line = text.prefix { !$0.isNewline }
+        guard line.hasPrefix("#"), let space = line.dropFirst().first, space == " " || space == "\t" else { return nil }
+        let title = line.dropFirst(2).trimmingCharacters(in:.whitespaces)
+        return title.isEmpty ? nil : title
+    }
+    /// After a save that changed a page's title, renames its file to match,
+    /// as renaming it in the sidebar would. A name another page already has
+    /// is left alone. Returns the page at its new path.
+    private func renameToTitle(_ entry: VaultEntry, from old: String, to new: String) -> VaultEntry? {
+        guard entry.ext == "md", let root = index?.root, let title = Self.leadingTitle(new), title != Self.leadingTitle(old) else { return nil }
+        let name = Self.draftFilenameBase(title) + ".md"
+        guard name != entry.name, let newPath = try? PageOrganizer(root:root).rename(entry.relativePath,to:name) else { return nil }
+        remapTabs(from:entry.relativePath,to:newPath)
+        guard let newIndex = index?.renaming(entry.relativePath,to:newPath) else { return nil }
+        index = newIndex; rebuildSearch()
+        return newIndex.files.first { $0.relativePath == newPath }
     }
     /// Keeps the split page's entry current as the index changes, and closes it once its file is gone.
     private func followSplitEntry() {

@@ -28,7 +28,10 @@ class PageTitleWidget extends WidgetType {
   toDOM() { const heading = document.createElement('h1'); heading.className = 'cm-page-title'; heading.textContent = this.title; return heading; }
   ignoreEvent() { return true; }
 }
-const pageTitleExtension=()=>metadata.pageTitle?EditorView.decorations.of(Decoration.set([Decoration.widget({widget:new PageTitleWidget(metadata.pageTitle),block:true,side:-1}).range(0)])):[];
+// A page that starts with a "# " heading has its title in the text, and the
+// file name is not shown again above it.
+const leadingTitle=state=>/^#[ \t]+\S/.test(state.doc.line(1).text);
+const pageTitleExtension=()=>metadata.pageTitle?EditorView.decorations.compute(['doc'],state=>leadingTitle(state)?Decoration.none:Decoration.set([Decoration.widget({widget:new PageTitleWidget(metadata.pageTitle),block:true,side:-1}).range(0)])):[];
 const localeExtensions=()=>{
   const strings=messagesForLanguage(metadata.language);
   return [editorLanguage.of(metadata.language),placeholder(strings.placeholder),EditorView.contentAttributes.of({lang:metadata.language,'aria-label':strings.editorLabel})];
