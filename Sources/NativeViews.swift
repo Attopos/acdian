@@ -28,7 +28,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
 /// swapped out can reach the model.
 @MainActor final class LiveEditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler, WKNavigationDelegate {
     static let shared = LiveEditorHost()
-    let view: WKWebView
+    let view: EditorWebView
     weak var model: AppModel? { didSet { if model !== oldValue { attachBridge() } } }
     var appearance = "dark"
     private var ready = false
@@ -52,9 +52,9 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         config.websiteDataStore = .nonPersistent()
         let schemes = ResourceSchemeRelay()
         config.setURLSchemeHandler(schemes,forURLScheme:"acdian-resource")
-        view = WKWebView(frame:NSRect(x:0,y:0,width:900,height:700),configuration:config)
+        view = EditorWebView(frame:NSRect(x:0,y:0,width:900,height:700),configuration:config)
         super.init()
-        schemes.host = self
+        schemes.host = self; view.host = self
         config.userContentController.add(MessageRelay(self),name:"acdian")
         view.setValue(false,forKey:"drawsBackground")
         view.navigationDelegate = self
@@ -164,9 +164,9 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     }
     func insertPendingAttachment() {
         guard isCurrent, ready, let model, !model.loading, let insertion = model.insertion, pendingInsertion != insertion.id,
-              let data = try? JSONSerialization.data(withJSONObject:[insertion.text,insertion.id.uuidString]), let json = String(data:data,encoding:.utf8) else { return }
+              let data = try? JSONSerialization.data(withJSONObject:[insertion.text,insertion.id.uuidString,insertion.block]), let json = String(data:data,encoding:.utf8) else { return }
         pendingInsertion = insertion.id
-        view.evaluateJavaScript("window.acdianInsertText(\(json)[0], \(json)[1]);") { [weak self] result,error in
+        view.evaluateJavaScript("window.acdianInsertText(\(json)[0], \(json)[1], \(json)[2]);") { [weak self] result,error in
             guard let self, self.isCurrent, let model = self.model else { return }
             if let error { self.pendingInsertion = nil; model.error = model.localized("附件链接插入失败：%@",error.localizedDescription); return }
             if let accepted = result as? Bool, !accepted { self.pendingInsertion = nil; return }
@@ -195,6 +195,53 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         if type == "heading", let index = value["index"] as? Int, model.activeHeading != index { model.activeHeading = index }
         if type == "navigate", let target = value["target"] as? String { model.navigate(target) }
         if type == "external", let target = value["target"] as? String { model.external(target) }
+        if type == "paste" { pasteAttachments() }
+        if type == "pickImage" { model.importAttachment(imagesOnly:true) }
+    }
+    /// The page saw a paste that carries files: files copied in Finder become
+    /// attachments, and so does a picture copied on its own. Anything else is
+    /// pasted as its plain text, as the editor would have pasted it.
+    private func pasteAttachments() {
+        guard let model else { return }
+        let pasteboard = NSPasteboard.general
+        let files = AttachmentPasteboard.fileURLs(pasteboard)
+        if !files.isEmpty { model.insertAttachments(files) }
+        else if let image = AttachmentPasteboard.image(pasteboard) { model.insertImage(image.data,ext:image.ext) }
+        else if let text = pasteboard.string(forType:.string) { model.insertText(text) }
+    }
+    /// Shows where a drop will land by moving the caret under the pointer.
+    func placeDropCaret(at point: NSPoint) {
+        guard isCurrent, ready else { return }
+        view.evaluateJavaScript("window.acdianDropCaret(\(Double(point.x)),\(Double(point.y)));",completionHandler:nil)
+    }
+    /// Links what was dropped from another app at the caret: files as they are,
+    /// files promised by apps such as Photos once they are written, or a picture.
+    func dropAttachments(_ info: NSDraggingInfo) -> Bool {
+        guard isCurrent, let model, model.acceptsAttachments else { return false }
+        let pasteboard = info.draggingPasteboard
+        let files = AttachmentPasteboard.fileURLs(pasteboard)
+        if !files.isEmpty { return model.insertAttachments(files) }
+        if let receivers = pasteboard.readObjects(forClasses:[NSFilePromiseReceiver.self]) as? [NSFilePromiseReceiver], !receivers.isEmpty {
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("acdian-drop-\(UUID().uuidString)",isDirectory:true)
+            guard (try? FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)) != nil else { return false }
+            let documentID = documentID, expected = receivers.reduce(0) { $0 + max(1,$1.fileNames.count) }
+            var received: [URL] = [], answered = 0
+            let queue = OperationQueue(); queue.qualityOfService = .userInitiated
+            for receiver in receivers {
+                receiver.receivePromisedFiles(atDestination:folder,options:[:],operationQueue:queue) { url,error in
+                    DispatchQueue.main.async {
+                        if error == nil { received.append(url) }
+                        answered += 1
+                        guard answered == expected else { return }
+                        if self.isCurrent, self.documentID == documentID, !received.isEmpty { model.insertAttachments(received) }
+                        try? FileManager.default.removeItem(at:folder)
+                    }
+                }
+            }
+            return true
+        }
+        if let image = AttachmentPasteboard.image(pasteboard) { return model.insertImage(image.data,ext:image.ext) }
+        return false
     }
     func webView(_ webView: WKWebView,decidePolicyFor navigationAction: WKNavigationAction,decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
@@ -262,6 +309,41 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         func webView(_ webView: WKWebView,start task: WKURLSchemeTask) { if let host { host.webView(webView,start:task) } else { task.didFailWithError(URLError(.cancelled)) } }
         func webView(_ webView: WKWebView,stop task: WKURLSchemeTask) { host?.webView(webView,stop:task) }
     }
+}
+
+/// The editor's web view. Files and pictures dragged in from other apps are
+/// taken here, because WebKit would otherwise open a dropped file in place of
+/// the editor or insert only its name. Drags that start inside ACdian, such as
+/// moving text, still go to the page.
+final class EditorWebView: WKWebView {
+    weak var host: LiveEditorHost?
+    private var takesDrop = false
+    private var lastDropPoint: NSPoint?
+    override init(frame: NSRect,configuration: WKWebViewConfiguration) {
+        super.init(frame:frame,configuration:configuration)
+        registerForDraggedTypes(Array(Set(registeredDraggedTypes + AttachmentPasteboard.dragTypes)))
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    private func pagePoint(_ info: NSDraggingInfo) -> NSPoint {
+        let point = convert(info.draggingLocation,from:nil)
+        return isFlipped ? point : NSPoint(x:point.x,y:bounds.height-point.y)
+    }
+    private func follow(_ info: NSDraggingInfo) -> NSDragOperation {
+        let point = pagePoint(info)
+        if point != lastDropPoint { lastDropPoint = point; host?.placeDropCaret(at:point) }
+        return .copy
+    }
+    override func draggingEntered(_ info: NSDraggingInfo) -> NSDragOperation {
+        takesDrop = info.draggingSource == nil && host?.isCurrent == true && host?.model?.acceptsAttachments == true && AttachmentPasteboard.offersAttachments(info.draggingPasteboard)
+        guard takesDrop else { return super.draggingEntered(info) }
+        lastDropPoint = nil; window?.makeFirstResponder(self)
+        return follow(info)
+    }
+    override func draggingUpdated(_ info: NSDraggingInfo) -> NSDragOperation { takesDrop ? follow(info) : super.draggingUpdated(info) }
+    override func draggingExited(_ info: NSDraggingInfo?) { if !takesDrop { super.draggingExited(info) } }
+    override func prepareForDragOperation(_ info: NSDraggingInfo) -> Bool { takesDrop || super.prepareForDragOperation(info) }
+    override func performDragOperation(_ info: NSDraggingInfo) -> Bool { takesDrop ? host?.dropAttachments(info) ?? false : super.performDragOperation(info) }
+    override func concludeDragOperation(_ info: NSDraggingInfo?) { if !takesDrop { super.concludeDragOperation(info) } }
 }
 
 struct PDFPane: NSViewRepresentable {

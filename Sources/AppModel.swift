@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 
 enum AppAppearance: String, CaseIterable, Identifiable {
     case system, light, dark
@@ -34,7 +35,9 @@ enum SidebarDrop: Equatable { case before, after, into }
 struct SidebarDropHighlight: Equatable { let path: String; let place: SidebarDrop }
 /// The sidebar's drop highlight, observed only by row indicators.
 @MainActor final class SidebarDragState: ObservableObject { @Published var highlight: SidebarDropHighlight? }
-struct EditorInsertion: Equatable { let id = UUID(); let text: String }
+/// Text waiting to go in at the editor's caret. A block insertion, such as an
+/// image embed, is given lines of its own.
+struct EditorInsertion: Equatable { let id = UUID(); let text: String; var block = false }
 struct EditorSnapshot {
     let text: String
     let currentPath: String
@@ -970,26 +973,61 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func newNoteFromEditor(_ name: String, completion: @escaping (Bool) -> Void) {
         withEditorSnapshot({ completion(self.newNote(name)) }, onFailure:{ completion(false) })
     }
-    func importAttachment() {
-        guard let root = index?.root, selected?.ext == "md" else { return }
+    /// Lets the user pick files to copy into the attachments folder and links
+    /// them at the caret. The image picker of the slash command offers only images.
+    func importAttachment(imagesOnly: Bool = false) {
+        guard index != nil, selected?.ext == "md" else { return }
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = true; panel.message = localized("附件会复制到页面的 Attachments 文件夹，并插入链接。")
+        if imagesOnly { panel.allowedContentTypes = [.image] }
         guard panel.runModal() == .OK else { return }
-        do {
-            let folder = attachmentsFolder
-            let directory = root.appendingPathComponent(folder).resolvingSymlinksInPath()
-            guard directory.path.hasPrefix(root.resolvingSymlinksInPath().path + "/") else { throw NSError(domain:"acdian",code:2,userInfo:[NSLocalizedDescriptionKey:"附件目录指向页面存储范围以外，无法导入。"]) }
-            try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
-            var links: [String] = []
-            for source in panel.urls {
-                var dest = directory.appendingPathComponent(source.lastPathComponent)
-                var n = 2
-                while FileManager.default.fileExists(atPath:dest.path) { dest = directory.appendingPathComponent("\(source.deletingPathExtension().lastPathComponent)-\(n).\(source.pathExtension)"); n += 1 }
-                try FileManager.default.copyItem(at:source,to:dest)
-                let embed = Self.images.contains(dest.pathExtension.lowercased()) || dest.pathExtension.lowercased() == "pdf"
-                links.append("\(embed ? "!" : "")[[\(folder)/\(dest.lastPathComponent)]]")
-            }
-            insertion = EditorInsertion(text:"\n" + links.joined(separator:"\n") + "\n"); refresh()
-        } catch { self.error = self.localizedError(error) }
+        insertAttachments(panel.urls)
+    }
+    /// Whether files and pictures can be pasted or dropped into the open page now.
+    var acceptsAttachments: Bool { index != nil && selected?.ext == "md" && !loading }
+    /// Copies files into the attachments folder and links each one at the caret.
+    @discardableResult func insertAttachments(_ urls: [URL]) -> Bool {
+        guard acceptsAttachments, !urls.isEmpty else { return false }
+        do { insertLinks(try urls.map { source in try storeAttachment(named:source.lastPathComponent) { try FileManager.default.copyItem(at:source,to:$0) } }); return true }
+        catch { self.error = self.localizedError(error); return false }
+    }
+    /// Saves a pasted or dropped picture into the attachments folder and embeds it at the caret.
+    @discardableResult func insertImage(_ data: Data,ext: String) -> Bool {
+        guard acceptsAttachments else { return false }
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier:"en_US_POSIX"); formatter.dateFormat = "yyyyMMddHHmmss"
+        do { insertLinks([try storeAttachment(named:"Pasted image \(formatter.string(from:Date())).\(ext)") { try data.write(to:$0,options:.withoutOverwriting) }]); return true }
+        catch { self.error = self.localizedError(error); return false }
+    }
+    /// Puts the links at the caret, one per line, each on a line of its own.
+    private func insertLinks(_ links: [String]) { insertion = EditorInsertion(text:links.joined(separator:"\n"),block:true) }
+    /// Inserts text at the caret of the open page, or over its selection.
+    func insertText(_ text: String) { insertion = EditorInsertion(text:text) }
+    /// Writes one file into the attachments folder, under its own name or the
+    /// name with a number added when that is taken, and returns its link:
+    /// an embed for images and PDFs, a plain link for other files.
+    func storeAttachment(named name: String,write: (URL) throws -> Void) throws -> String {
+        guard let root = index?.root else { throw URLError(.cancelled) }
+        let folder = attachmentsFolder
+        let directory = root.appendingPathComponent(folder).resolvingSymlinksInPath()
+        guard directory.path.hasPrefix(root.resolvingSymlinksInPath().path + "/") else { throw NSError(domain:"acdian",code:2,userInfo:[NSLocalizedDescriptionKey:"附件目录指向页面存储范围以外，无法导入。"]) }
+        try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+        let (base,ext) = Self.attachmentName(name)
+        var dest = directory.appendingPathComponent(ext.isEmpty ? base : base + "." + ext), n = 2
+        while FileManager.default.fileExists(atPath:dest.path) { dest = directory.appendingPathComponent("\(base)-\(n)" + (ext.isEmpty ? "" : "." + ext)); n += 1 }
+        try write(dest)
+        // The new file joins the sidebar and link lookup without rescanning the vault.
+        if var updated = index {
+            if Self.entry(folder,in:updated.entries) == nil { updated = updated.addingFolder(folder) }
+            index = updated.addingFile(Self.createdEntry(folder + "/" + dest.lastPathComponent,at:dest,root:root))
+        }
+        let embed = Self.images.contains(ext.lowercased()) || ext.lowercased() == "pdf"
+        return "\(embed ? "!" : "")[[\(folder)/\(dest.lastPathComponent)]]"
+    }
+    /// A file name that a [[link]] can hold: characters that end or split
+    /// the link, or point into the file, become dashes.
+    static func attachmentName(_ name: String) -> (base: String,ext: String) {
+        let clean = String(name.map { "[]|#^/:\\".contains($0) || $0.isNewline ? "-" : $0 }).trimmingCharacters(in:.whitespaces)
+        let url = URL(fileURLWithPath:clean.hasPrefix(".") || clean.isEmpty ? "attachment" + clean : clean)
+        return (url.deletingPathExtension().lastPathComponent,url.pathExtension)
     }
 
     // MARK: Modules

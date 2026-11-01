@@ -136,6 +136,16 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm
 .build/interactive-tests/interactive-tests
 ```
 
+插入图片验证（粘贴、拖入的存储与链接；第二组在真实 WebKit 编辑器里粘贴和拖放，会临时使用并恢复系统剪贴板）：
+
+```sh
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Sources/Components.swift Sources/AttachmentPasteboard.swift Tests/AttachmentInsertTests.swift -o .build/attachment-insert-tests
+.build/attachment-insert-tests
+mkdir -p .build/image-tests && cp -R Resources/. .build/image-tests/
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm64-apple-macos14.0 $(ls Sources/*.swift | grep -v AcdianApp) .build/AcdianApp-nomain.swift Tests/ImageInsertWebKitTests.swift -o .build/image-tests/image-tests
+.build/image-tests/image-tests
+```
+
 模块与附件清理验证：
 
 ```sh

@@ -1,4 +1,4 @@
-import { StateEffect, StateField, Prec } from '@codemirror/state';
+import { StateEffect, StateField, Prec, Facet } from '@codemirror/state';
 import { EditorView, keymap, showTooltip } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
@@ -12,13 +12,18 @@ const commands = [
   {id:'bullet',label:'Bulleted List',description:'无序列表',icon:'• ≡',insert:'- ',aliases:'bulleted bullet unordered list 无序列表 项目符号'},
   {id:'number',label:'Numbered List',description:'有序列表',icon:'1 ≡',insert:'1. ',aliases:'numbered number ordered list 有序列表 编号'},
   {id:'code',label:'Code Block',description:'代码块',icon:'{ }',insert:'```\n\n```',caret:4,aliases:'code block fenced 代码块'},
-  {id:'callout',label:'Callout',description:'提示块',icon:'▣',insert:'> [!note]\n> ',aliases:'callout note info 提示块 提示 高亮块'}
+  {id:'callout',label:'Callout',description:'提示块',icon:'▣',insert:'> [!note]\n> ',aliases:'callout note info 提示块 提示 高亮块'},
+  // Asks the app to pick an image, which it copies into Attachments and embeds here.
+  {id:'image',label:'Image',description:'图片',icon:'▨',action:'image',aliases:'image picture photo img 图片 图像 照片 插图'}
 ];
-export const blockCommands = commands;
+// The blocks a line can be turned into; commands that hand off to the app are not blocks.
+export const blockCommands = commands.filter(command=>!command.action);
+// What commands that hand off to the app do, such as picking an image.
+const slashActions = Facet.define({combine:values=>Object.assign({},...values)});
 const selectCommand = StateEffect.define();
 const closeMenu = StateEffect.define();
 const composing = StateEffect.define();
-const spanishAliases={text:'texto párrafo parrafo',h1:'título 1 titulo 1 encabezado 1',h2:'título 2 titulo 2 encabezado 2',h3:'título 3 titulo 3 encabezado 3',h4:'título 4 titulo 4 encabezado 4',quote:'cita',todo:'tareas pendiente casilla',bullet:'lista con viñetas vinetas',number:'lista numerada',code:'bloque de código codigo',callout:'aviso nota consejo'};
+const spanishAliases={text:'texto párrafo parrafo',h1:'título 1 titulo 1 encabezado 1',h2:'título 2 titulo 2 encabezado 2',h3:'título 3 titulo 3 encabezado 3',h4:'título 4 titulo 4 encabezado 4',quote:'cita',todo:'tareas pendiente casilla',bullet:'lista con viñetas vinetas',number:'lista numerada',code:'bloque de código codigo',callout:'aviso nota consejo',image:'imagen foto'};
 
 function context(state) {
   const selection = state.selection.main;
@@ -73,6 +78,12 @@ const menuState = StateField.define({
 function applyCommand(view,id) {
   const menu=view.state.field(menuState),command=menu.options?.find(option=>option.id===id);
   if(!menu.open || !command || view.state.readOnly) return false;
+  if(command.action) {
+    // The typed command and any list or quote marker go, so the image the app
+    // inserts has the line to itself, which is how an embed shows as a picture.
+    view.dispatch({changes:{from:menu.from,to:menu.to,insert:menu.indent},selection:{anchor:menu.from+menu.indent.length},effects:closeMenu.of(null),userEvent:'delete.slash-command'});
+    view.focus();view.state.facet(slashActions)[command.action]?.(view);return true;
+  }
   const suffix=view.state.doc.lineAt(menu.to).text.slice(menu.to-view.state.doc.lineAt(menu.to).from);
   // Wrap existing text when changing a block to code or callout.
   let insert=command.insert;
@@ -141,8 +152,8 @@ function accept(view) {
   return applyCommand(view,menu.options[menu.selected].id);
 }
 
-export function slashCommands() {return [
-  menuState,
+export function slashCommands(actions={}) {return [
+  slashActions.of(actions),menuState,
   Prec.highest(keymap.of([
     {key:'ArrowDown',run:view=>moveSelection(view,1)},
     {key:'ArrowUp',run:view=>moveSelection(view,-1)},

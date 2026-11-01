@@ -175,3 +175,25 @@ test('documents without a tab keep the earlier single-document behaviour',()=>{
  r.w.acdianSetDocument({text:'一',currentPath:'笔记.md'});assert.equal(r.get().text,'一');assert.equal(r.w.acdianUndo(),false);
  assert.deepEqual(Array.from(r.w.acdianLiveEditorTest.keptTabs()),[]);r.close();
 });
+test('the Image slash command clears its line and asks the app for an image, which goes in on lines of its own',()=>{
+ const r=setup('- ');r.view.focus();r.view.dispatch({selection:{anchor:2}});
+ for(const ch of '/图片')r.view.dispatch({changes:{from:r.view.state.selection.main.head,insert:ch},selection:{anchor:r.view.state.selection.main.head+ch.length},userEvent:'input.type'});
+ const option=r.w.document.querySelector('.cm-slash-option[data-command="image"]');assert.ok(option,'image command is offered');
+ option.click();
+ assert.equal(r.get().text,'');assert.equal(r.view.state.selection.main.head,0);
+ assert.equal(r.messages.filter(m=>m.type==='pickImage'&&m.currentPath==='笔记.md').length,1);
+ r.w.acdianInsertText('![[Attachments/a.png]]','one',true);assert.equal(r.get().text,'![[Attachments/a.png]]');
+ r.w.acdianSetDocument({text:'Hello World',currentPath:'笔记.md'});r.view.dispatch({selection:{anchor:6}});
+ r.w.acdianInsertText('![[Attachments/a.png]]\n![[Attachments/b.png]]','two',true);
+ assert.equal(r.get().text,'Hello \n![[Attachments/a.png]]\n![[Attachments/b.png]]\nWorld');
+ r.w.acdianUndo();assert.equal(r.get().text,'Hello World');
+ r.w.acdianSetDocument({text:'A\n\nB',currentPath:'笔记.md'});r.view.dispatch({selection:{anchor:4}});
+ r.w.acdianInsertText('![[Attachments/c.png]]','three',true);assert.equal(r.get().text,'A\n\nB\n![[Attachments/c.png]]');r.close();
+});
+test('pastes that carry files go to the app, while plain text pastes stay in the editor',()=>{
+ const r=setup('文字');r.view.focus();
+ const paste=(types,files)=>{const event=new r.w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(event,'clipboardData',{value:{types,files,getData:()=>'粘贴'}});r.view.contentDOM.dispatchEvent(event);return event;};
+ const withFile=paste(['Files'],[{name:'image.png',type:'image/png'}]);
+ assert.equal(withFile.defaultPrevented,true);assert.equal(r.messages.filter(m=>m.type==='paste').length,1);assert.equal(r.get().text,'文字');
+ paste(['text/plain'],[]);assert.equal(r.messages.filter(m=>m.type==='paste').length,1);r.close();
+});

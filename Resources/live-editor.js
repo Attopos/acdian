@@ -551,7 +551,7 @@ function simpleListBackspace(view) {
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
   history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,
-  slashCommands(),formatToolbar(),markdownInput(),
+  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
   pageTitle.of(pageTitleExtension()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
@@ -561,6 +561,9 @@ function extensions() {return [
     if(update.docChanged){for(const tr of update.transactions)if(tr.docChanged){applyRawChanges(tr);revision++;}lastSource=rawSource;const selection=update.state.selection.main;post({type:'change',text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:selection.anchor,selectionHead:selection.head});}
   }),
   // A plain click on a link opens it; a drag across it still selects text.
+  // A paste that carries files or a picture goes to the app, which copies them
+  // into Attachments and inserts their links; it pastes plain text otherwise.
+  EditorView.domEventHandlers({paste(event){const data=event.clipboardData;if(!metadata.editable||!data||!(data.files?.length||[...data.types].includes('Files')))return false;event.preventDefault();post({type:'paste',currentPath:metadata.currentPath});return true;}}),
   EditorView.domEventHandlers({click(event,view){const link=event.target.closest?.('[data-live-target]');if(link&&(view.state.selection.main.empty||event.metaKey||event.ctrlKey||!metadata.editable)){event.preventDefault();navigate(link.dataset.liveTarget);return true;}return false;}})
 ];}
 const view=new EditorView({state:EditorState.create({doc:'',extensions:extensions()}),parent:document.getElementById('editor')});
@@ -636,7 +639,12 @@ window.acdianSetDocument=payload=>{
   else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions()),pageTitle.reconfigure(pageTitleExtension())]});
 };
 window.acdianGetDocument=()=>{const place=scrollPlace();return{text:rawSource,currentPath:metadata.currentPath,documentID:metadata.documentID,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head,scrollPosition:place.pos,scrollOffset:place.offset};};
-window.acdianInsertText=(text,insertionID)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;view.dispatch(view.state.replaceSelection(canonical(String(text))));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
+// A block insertion, such as an image embed, gets lines of its own, as an
+// embed shows as a picture only when nothing else shares its line.
+const ownLines=(state,text)=>{const {from,to}=state.selection.main,doc=state.doc;return(from>0&&doc.sliceString(from-1,from)!=='\n'?'\n':'')+text+(to<doc.length&&doc.sliceString(to,to+1)!=='\n'?'\n':'');};
+window.acdianInsertText=(text,insertionID,block)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;const insert=canonical(String(text));view.dispatch(view.state.replaceSelection(block?ownLines(view.state,insert):insert));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
+// Files dragged in from another app land where the caret follows the pointer.
+window.acdianDropCaret=(x,y)=>{if(!metadata.editable)return false;const pos=view.posAtCoords({x,y},false);if(pos==null)return false;if(view.state.selection.main.head!==pos||!view.state.selection.main.empty)view.dispatch({selection:{anchor:pos}});if(!view.hasFocus)view.focus();return true;};
 window.acdianUndo=()=>undo(view);
 window.acdianRedo=()=>redo(view);
 window.acdianScrollTo=raw=>{
