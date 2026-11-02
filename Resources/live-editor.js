@@ -1,5 +1,5 @@
 import { EditorState, EditorSelection, StateField, Compartment, findClusterBreak } from '@codemirror/state';
-import { EditorView, Decoration, WidgetType, keymap, placeholder, drawSelection } from '@codemirror/view';
+import { EditorView, ViewPlugin, Decoration, WidgetType, keymap, placeholder, drawSelection } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
 import { syntaxTree, ensureSyntaxTree, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
@@ -290,6 +290,55 @@ function keptBlank(state,line) {
   let prev=line.number-1;while(prev>=1&&!doc.line(prev).text.trim())prev--;
   return prev>=1;
 }
+// Two Enters leave an empty line. When text is typed into a blank line, the
+// blank lines just above it would become Markdown's hidden separator, and a
+// list item, quote or table right above would take the text in as its own.
+// Either way one more newline above keeps what the writer saw: the empty
+// line stays, and the new text starts its own paragraph.
+function needsSeparatorAbove(state,number) {
+  if(number<=1)return false;
+  const above=state.doc.line(number-1);
+  if(above.text.trim())return /^\s*(?:[-+*]\s|\d+[.)]\s|>|\|)/.test(above.text)&&!literalCodeLine(state,above);
+  let n=number-1;while(n>=1&&!state.doc.line(n).text.trim())n--;
+  return n>=1&&!literalCodeLine(state,state.doc.line(n));
+}
+// The position, in the transaction's new document, where that newline goes:
+// the transaction must type text into a line that was blank.
+function typedIntoBlank(tr) {
+  if(!tr.docChanged||tr.startState.selection.ranges.length!==1)return null;
+  let found=null,count=0;
+  tr.changes.iterChanges((fromA,toA,_fromB,_toB,inserted)=>{count++;if(fromA===toA&&inserted.length&&inserted.line(1).text.trim())found=fromA;});
+  if(count!==1||found===null)return null;
+  const line=tr.startState.doc.lineAt(found);
+  if(line.text.trim()||literalCodeLine(tr.startState,line)||!needsSeparatorAbove(tr.startState,line.number))return null;
+  return tr.changes.mapPos(line.from,-1);
+}
+const blankTypingFilter=EditorState.transactionFilter.of(tr=>{
+  if(!tr.isUserEvent('input')||tr.isUserEvent('input.type.compose'))return tr;
+  const pos=typedIntoBlank(tr);
+  return pos===null?tr:[tr,{changes:{from:pos,insert:tr.newDoc.lineAt(pos).text.includes('\r')?'\r\n':'\n'},sequential:true}];
+});
+// An input method changes the line while it composes, so the newline waits
+// until the composition ends.
+const blankTypingComposition=ViewPlugin.fromClass(class {
+  constructor(view){this.view=view;this.pending=null;}
+  update(update) {
+    for(const tr of update.transactions) {
+      if(this.pending!==null)this.pending=tr.changes.mapPos(this.pending,-1);
+      if(this.pending===null&&tr.isUserEvent('input.type.compose'))this.pending=typedIntoBlank(tr);
+    }
+    if(this.pending!==null&&!update.view.composing)setTimeout(()=>this.flush(),0);
+  }
+  flush() {
+    const view=this.view,pos=this.pending;
+    if(pos===null||view.composing)return;
+    this.pending=null;
+    if(pos>view.state.doc.length)return;
+    const line=view.state.doc.lineAt(pos);
+    if(line.from!==pos||!line.text.trim()||!needsSeparatorAbove(view.state,line.number))return;
+    view.dispatch({changes:{from:pos,insert:'\n'},userEvent:'input.type'});
+  }
+},{eventHandlers:{compositionend(){setTimeout(()=>this.flush(),0);}}});
 function literalCodeLine(state,line) {
   const tree=ensureSyntaxTree(state,line.to,40)||syntaxTree(state);
   for(let node=tree.resolveInner(line.from+Math.min(line.length,1),1);node;node=node.parent) {
@@ -594,12 +643,23 @@ const boldDelimiterField=StateField.define({
 function simpleListEnter(view) {
   const range=view.state.selection.main;if(!range.empty)return false;
   if(inCode(view.state,range.head))return false;
-  const line=view.state.doc.lineAt(range.head),match=/^(\s*)([-+*]|\d+[.)])\s+(?:\[([ xX])\]\s*)?/.exec(line.text);
+  const line=view.state.doc.lineAt(range.head);
+  // Enter on an empty quote or callout line leaves the quote, like a list.
+  if(/^\s*(?:>\s?)+$/.test(line.text)&&range.head===line.to)return leaveEmptyBlock(view,line);
+  const match=/^(\s*)([-+*]|\d+[.)])\s+(?:\[([ xX])\]\s*)?/.exec(line.text);
   if(!match||range.head<line.from+match[0].length)return false;
-  if(!line.text.slice(match[0].length).trim()) {view.dispatch({changes:{from:line.from,to:line.to,insert:''},selection:{anchor:line.from},userEvent:'input'});return true;}
+  if(!line.text.slice(match[0].length).trim())return leaveEmptyBlock(view,line);
   let marker=match[2];if(/^\d/.test(marker))marker=String(parseInt(marker,10)+1)+marker.slice(-1);
   const insert='\n'+match[1]+marker+' '+(match[3]!==undefined?'[ ] ':'');
   view.dispatch(view.state.replaceSelection(insert),{scrollIntoView:true,userEvent:'input'});return true;
+}
+// The second Enter turns the empty item into an empty line. When more of the
+// block follows, a separator after it keeps that line visible once the caret
+// moves on.
+function leaveEmptyBlock(view,line) {
+  const doc=view.state.doc,next=line.number<doc.lines?doc.line(line.number+1):null;
+  view.dispatch({changes:{from:line.from,to:line.to,insert:next&&next.text.trim()?'\n':''},selection:{anchor:line.from},scrollIntoView:true,userEvent:'input'});
+  return true;
 }
 function simpleListBackspace(view) {
   const range=view.state.selection.main;if(!range.empty)return false;
@@ -610,7 +670,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,
+  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
   pageTitle.of(pageTitleExtension()),

@@ -63,14 +63,23 @@ function fenceClosed(state,fence) {
   const last=fence.node.lastChild;
   return last?.name==='CodeMark'&&state.doc.lineAt(last.from).number>state.doc.lineAt(fence.from).number;
 }
-// Enter on an empty item leaves the list, or one nesting level of it.
+// Enter on an empty item leaves the list, or one nesting level of it; Enter
+// on an empty quote or callout line leaves the quote. So two Enters always
+// end in an empty line. When more of the block follows, a separator after
+// that line keeps it visible once the caret moves on.
 function emptyItemEnter(view) {
   const {state}=view,range=state.selection.main;
   if(!range.empty||state.readOnly||state.selection.ranges.length!==1||inCode(state,range.head))return false;
-  const line=state.doc.lineAt(range.head),match=listItem.exec(line.text);
+  const line=state.doc.lineAt(range.head);
+  if(/^\s*(?:>\s?)+$/.test(line.text)&&range.head===line.to)return leaveBlock(view,line);
+  const match=listItem.exec(line.text);
   if(!match||line.text.slice(match[0].length).trim()||range.head<line.from+match[0].length)return false;
   if(match[1].length)return moveItem(view,true);
-  view.dispatch({changes:{from:line.from,to:line.to},selection:EditorSelection.cursor(line.from),userEvent:'delete',scrollIntoView:true});
+  return leaveBlock(view,line);
+}
+function leaveBlock(view,line) {
+  const doc=view.state.doc,next=line.number<doc.lines?doc.line(line.number+1):null;
+  view.dispatch({changes:{from:line.from,to:line.to,insert:next&&next.text.trim()?'\n':''},selection:EditorSelection.cursor(line.from),userEvent:'delete',scrollIntoView:true});
   return true;
 }
 // Backspace at the start of an item's text turns it into a paragraph.

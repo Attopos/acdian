@@ -224,7 +224,9 @@ test('formatting syntax can be typed without losing input or focus', async t => 
   await r.position(0);
   const source = '# A heading\n\n**Bold text** and [[Note|alias]].\n\n```js\nconst n = 1;\n```\n';
   await r.page.keyboard.type(source);
-  assert.equal((await r.get()).text, source);
+  // Two Enters leave an empty line, so the text typed after each pair gets
+  // the extra separator that keeps that line visible.
+  assert.equal((await r.get()).text, source.replace(/\n\n/g, '\n\n\n'));
   assert.equal(await r.page.evaluate(() => window.acdianEditor.hasFocus), true);
 });
 
@@ -373,7 +375,7 @@ test('typing slash at an empty block opens all insertable elements without chang
   assert.equal(await menu.locator('.cm-slash-description').count(), 0, 'the menu omits right-side descriptions from the DOM');
   assert.equal(await menu.locator('.cm-slash-footer').count(), 0, 'the menu omits the shortcut footer from the DOM');
   assert.equal(await menu.locator('[aria-selected="true"]').getAttribute('data-command'), 'text');
-  assert.equal((await r.get()).text, 'Before\n\n/\nAfter\n');
+  assert.equal((await r.get()).text, 'Before\n\n\n/\nAfter\n');
   assert.equal(await r.page.evaluate(() => window.acdianEditor.hasFocus), true);
 });
 
@@ -457,7 +459,7 @@ test('Chinese IME composition keeps slash choices inactive until the query is co
 });
 
 test('every slash choice inserts its Markdown template with an isolated undo step', async t => {
-  const prefix = 'Before\n\n', suffix = '\nAfter\n';
+  const prefix = 'Before\n\n\n', suffix = '\nAfter\n';
   const choices = [
     ['text', '', 0],
     ['h1', '# ', 2],
@@ -1338,7 +1340,7 @@ test('extra blank lines between list items stay visible after the caret leaves',
   await r.position(source.indexOf('\n\n\n')+1);
   assert.equal((await r.get()).selection.anchor,source.indexOf('\n\n\n')+1,'the caret can rest on the kept blank line');
   await r.page.keyboard.insertText('新🌸');
-  assert.equal((await r.get()).text,source.replace('\n\n\n','\n新🌸\n\n'));
+  assert.equal((await r.get()).text,source.replace('\n\n\n','\n\n新🌸\n\n'),'text typed under a list item starts its own paragraph');
   assert.equal(await r.page.locator('.cm-kept-blank-line').count(),0);
 });
 
@@ -1347,4 +1349,56 @@ test('blank lines before the first and after the last text stay hidden', async t
   const r = await editor(t,source,{fontSize:16});
   await r.position(source.indexOf('First'));
   assert.equal(await r.page.locator('.cm-kept-blank-line').count(),0);
+});
+
+async function visibleLines(page) {
+  return page.locator('.cm-line').evaluateAll(lines=>lines.filter(line=>line.getBoundingClientRect().height>3).map(line=>line.textContent));
+}
+
+test('two Enters end every kind of block in an empty line that stays visible', async t => {
+  const fixtures = [
+    ['bullet', '- A\n- B\n', 'A', '- A\n\n\n- B\n'],
+    ['numbered', '1. A\n2. B\n', 'A', '1. A\n\n\n3. B\n'],
+    ['task', '- [ ] A\n- [ ] B\n', 'A', '- [ ] A\n\n\n- [ ] B\n'],
+    ['quote', '> A\n> B\n', 'A', '> A\n\n\n> B\n'],
+    ['callout', '> [!note] T\n> A\n\nAfter\n', '> A', '> [!note] T\n> A\n\n\nAfter\n']
+  ];
+  for (const [name,source,after,expected] of fixtures) await t.test(name,async sub=>{
+    const r = await editor(sub,source,{fontSize:16});
+    await r.position(source.indexOf(after)+after.length);
+    await r.page.keyboard.press('Enter');
+    await r.page.keyboard.press('Enter');
+    assert.equal((await r.get()).text,expected);
+    await r.position(0);
+    const lines = await visibleLines(r.page);
+    assert.ok(lines.includes(''),`${name}: the empty line is still shown after the caret leaves`);
+    await r.page.keyboard.press('Meta+z');
+  });
+});
+
+test('text typed after two Enters keeps the empty line above it, also through an input method', async t => {
+  for (const ime of [false,true]) await t.test(ime?'input method':'keyboard',async sub=>{
+    const r = await editor(sub,'A\n\nB\n',{fontSize:16});
+    await r.position(1);
+    await r.page.keyboard.press('Enter');
+    await r.page.keyboard.press('Enter');
+    if (ime) {
+      await r.page.evaluate(() => document.querySelector('.cm-content').dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' })));
+      await r.page.keyboard.insertText('新🌸');
+      await r.page.evaluate(() => document.querySelector('.cm-content').dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '新🌸' })));
+      await r.page.waitForTimeout(50);
+    } else await r.page.keyboard.insertText('新🌸');
+    assert.equal((await r.get()).text,'A\n\n\n新🌸\n\nB\n');
+    assert.equal((await r.get()).selection.anchor,'A\n\n\n新🌸'.length,'the caret stays after the typed text');
+    await r.position(0);
+    assert.deepEqual(await visibleLines(r.page),['A','','新🌸','B']);
+  });
+});
+
+test('one Enter then text stays a plain new line, with no empty line added', async t => {
+  const r = await editor(t,'A\n\nB\n',{fontSize:16});
+  await r.position(1);
+  await r.page.keyboard.press('Enter');
+  await r.page.keyboard.insertText('新');
+  assert.equal((await r.get()).text,'A\n新\n\nB\n');
 });
