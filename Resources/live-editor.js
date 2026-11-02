@@ -1,5 +1,5 @@
 import { EditorState, EditorSelection, StateField, Compartment, findClusterBreak } from '@codemirror/state';
-import { EditorView, Decoration, WidgetType, keymap, placeholder, drawSelection } from '@codemirror/view';
+import { EditorView, ViewPlugin, Decoration, WidgetType, keymap, placeholder, drawSelection } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
 import { syntaxTree, ensureSyntaxTree, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
@@ -22,13 +22,36 @@ const localization = new Compartment();
 const pageTitle = new Compartment();
 // A saved page's name is the first block of the document view, so it scrolls
 // away with the text instead of staying pinned above the editor.
+// Bumped to redraw the title after a rename that did not happen.
+let titleVersion = 0;
 class PageTitleWidget extends WidgetType {
-  constructor(title) { super(); this.title = title; }
-  eq(other) { return this.title === other.title; }
-  toDOM() { const heading = document.createElement('h1'); heading.className = 'cm-page-title'; heading.textContent = this.title; return heading; }
+  constructor(title,canEdit) { super(); this.title = title; this.canEdit = canEdit; this.version = titleVersion; }
+  eq(other) { return this.title === other.title && this.canEdit === other.canEdit && this.version === other.version; }
+  // The file name shown as the title can be edited in place: Return or
+  // leaving it renames the page, and Escape puts the old name back.
+  toDOM(view) {
+    const heading = document.createElement('h1'); heading.className = 'cm-page-title'; heading.textContent = this.title;
+    if (!this.canEdit) return heading;
+    heading.contentEditable = 'plaintext-only'; heading.spellcheck = false;
+    const original = this.title, path = metadata.currentPath;
+    heading.addEventListener('keydown', event => {
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); heading.blur(); view.focus(); }
+      else if (event.key === 'Escape') { event.preventDefault(); heading.textContent = original; heading.blur(); view.focus(); }
+    });
+    heading.addEventListener('blur', () => {
+      const title = heading.textContent.replace(/\s+/g,' ').trim();
+      if (!title) { heading.textContent = original; return; }
+      if (title !== original) post({type:'renameTitle', title, currentPath:path});
+    });
+    return heading;
+  }
   ignoreEvent() { return true; }
 }
-const pageTitleExtension=()=>metadata.pageTitle?EditorView.decorations.of(Decoration.set([Decoration.widget({widget:new PageTitleWidget(metadata.pageTitle),block:true,side:-1}).range(0)])):[];
+// A page that starts with a "# " heading has its title in the text, and the
+// file name is not shown again above it.
+const leadingTitle=state=>/^#[ \t]+\S/.test(state.doc.line(1).text);
+const pageTitleExtension=()=>metadata.pageTitle?EditorView.decorations.compute(['doc'],state=>leadingTitle(state)?Decoration.none:Decoration.set([Decoration.widget({widget:new PageTitleWidget(metadata.pageTitle,metadata.editable),block:true,side:-1}).range(0)])):[];
 const localeExtensions=()=>{
   const strings=messagesForLanguage(metadata.language);
   return [editorLanguage.of(metadata.language),placeholder(strings.placeholder),EditorView.contentAttributes.of({lang:metadata.language,'aria-label':strings.editorLabel})];
@@ -68,6 +91,25 @@ function navigate(target) {
   if (target.startsWith('#')) { window.acdianScrollTo(target); return; }
   if (/^(?:https?:|mailto:)/i.test(target)) post({type:'external',target,from:metadata.currentPath});
   else if (!/^[a-z][a-z\d+.-]*:/i.test(target)) post({type:'navigate',target,from:metadata.currentPath});
+}
+
+// Width of source text in ems of the editor font, where a tab reaches the next
+// stop of four spaces. Line decorations turn this into a hanging indent, so it
+// has to be known before the line is drawn. It is measured at the current size
+// because the system font's spacing changes with size.
+const sourceEms=new Map();
+let measureContext;
+function textEms(text) {
+  const size=parseFloat(document.documentElement.style.getPropertyValue('--editor-font-size'))||16,key=size+'|'+text;
+  if(sourceEms.has(key))return sourceEms.get(key);
+  measureContext??=document.createElement('canvas').getContext('2d');
+  const expanded=text.replace(/ {0,3}\t/g,'    ');
+  if(measureContext)measureContext.font=size+'px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
+  const ems=measureContext?measureContext.measureText(expanded).width/size:expanded.length*.25;
+  sourceEms.set(key,ems);return ems;
+}
+function listLineStyle(hang,marker) {
+  return `--cm-list-hang:${hang.toFixed(3)}em`+(marker?`;--cm-list-marker:${marker.toFixed(3)}em`:'');
 }
 
 class BulletWidget extends WidgetType {
@@ -120,6 +162,11 @@ function fragment(source,state) {
   }
   return holder;
 }
+// CodeMirror measures a block widget by its border box, so a margin on it is
+// invisible to the height map and every line below lands lower than CodeMirror
+// thinks: clicks then hit the next line. The space around a block is padding on
+// a plain wrapper instead.
+function spacedBlock(holder) { const wrap=document.createElement('div'); wrap.className='cm-live-block-wrap'; wrap.append(holder); return wrap; }
 class BlockWidget extends WidgetType {
   constructor(source,from,kind,language,selected=false) { super(); Object.assign(this,{source,from,kind,language,selected}); }
   eq(other) { return this.source===other.source && this.from===other.from && this.kind===other.kind && this.language===other.language && this.selected===other.selected; }
@@ -131,7 +178,7 @@ class BlockWidget extends WidgetType {
       // A link inside the block opens on click instead of selecting the block.
       if(event.metaKey||event.ctrlKey||!metadata.editable||event.target.closest?.('a')) return;
       event.preventDefault(); view.dispatch({selection:{anchor:this.from,head:Math.min(this.from+this.source.length,view.state.doc.length)}}); view.focus();
-    }); return holder;
+    }); return spacedBlock(holder);
   }
   ignoreEvent() { return true; }
 }
@@ -152,7 +199,7 @@ function interactiveInfo(state,node) {
 class InteractiveWidget extends WidgetType {
   constructor(code,height,language) { super(); Object.assign(this,{code,height,language}); }
   eq(other) { return this.code===other.code&&this.height===other.height&&this.language===other.language; }
-  get estimatedHeight() { return (this.height||240)+36; }
+  get estimatedHeight() { return (this.height||240)+36+16; }
   toDOM(view) {
     const holder=document.createElement('div');holder.className='cm-live-block cm-block-interactive';
     const bar=document.createElement('div');bar.className='cm-interactive-bar';
@@ -172,7 +219,7 @@ class InteractiveWidget extends WidgetType {
       view.dispatch({selection:EditorSelection.cursor(target),scrollIntoView:true});view.focus();
     });
     bar.append(label,rerun,source);holder.append(bar,frame);
-    return holder;
+    return spacedBlock(holder);
   }
   ignoreEvent() { return true; }
 }
@@ -196,7 +243,7 @@ class InlineMathWidget extends WidgetType {
 class CalloutKindWidget extends WidgetType {
   constructor(kind,title) {super();Object.assign(this,{kind,title});}
   eq(other) {return this.kind===other.kind&&this.title===other.title;}
-  toDOM() {const label=document.createElement('span');label.className='cm-callout-kind';label.textContent=this.title?'✦ ':'✦ '+this.kind.toUpperCase();label.setAttribute('aria-hidden','true');return label;}
+  toDOM() {const label=document.createElement('span');label.className='cm-callout-kind'+(this.title?' cm-callout-mark':'');label.textContent=this.title?'✦ ':'✦ '+this.kind.toUpperCase();label.setAttribute('aria-hidden','true');return label;}
 }
 class HeadingHintWidget extends WidgetType {
   constructor(level) { super(); this.level = level; }
@@ -236,6 +283,67 @@ function editableBlank(state,line) {
   const selection=state.selection.main;
   return state.field(inputBlankField)===line.from||line.number===state.doc.lines&&selection.empty&&selection.head>=line.from;
 }
+// Markdown needs one blank line between blocks, and that separator stays
+// hidden. Every further blank line in a run is an empty line the writer left
+// on purpose, so it keeps the height of a line: in a run, all but the last
+// show. Runs before the first or after the last text stay hidden.
+function keptBlank(state,line) {
+  const doc=state.doc;
+  if(line.text.trim()||line.number>=doc.lines||doc.line(line.number+1).text.trim())return false;
+  let next=line.number+1;while(next<=doc.lines&&!doc.line(next).text.trim())next++;
+  if(next>doc.lines)return false;
+  let prev=line.number-1;while(prev>=1&&!doc.line(prev).text.trim())prev--;
+  return prev>=1;
+}
+// Two Enters leave an empty line. When text is typed into a blank line, the
+// blank lines just above it would become Markdown's hidden separator, and a
+// list item, quote or table right above would take the text in as its own.
+// Either way one more newline above keeps what the writer saw: the empty
+// line stays, and the new text starts its own paragraph.
+function needsSeparatorAbove(state,number) {
+  if(number<=1)return false;
+  const above=state.doc.line(number-1);
+  if(above.text.trim())return /^\s*(?:[-+*]\s|\d+[.)]\s|>|\|)/.test(above.text)&&!literalCodeLine(state,above);
+  let n=number-1;while(n>=1&&!state.doc.line(n).text.trim())n--;
+  return n>=1&&!literalCodeLine(state,state.doc.line(n));
+}
+// The position, in the transaction's new document, where that newline goes:
+// the transaction must type text into a line that was blank.
+function typedIntoBlank(tr) {
+  if(!tr.docChanged||tr.startState.selection.ranges.length!==1)return null;
+  let found=null,count=0;
+  tr.changes.iterChanges((fromA,toA,_fromB,_toB,inserted)=>{count++;if(fromA===toA&&inserted.length&&inserted.line(1).text.trim())found=fromA;});
+  if(count!==1||found===null)return null;
+  const line=tr.startState.doc.lineAt(found);
+  if(line.text.trim()||literalCodeLine(tr.startState,line)||!needsSeparatorAbove(tr.startState,line.number))return null;
+  return tr.changes.mapPos(line.from,-1);
+}
+const blankTypingFilter=EditorState.transactionFilter.of(tr=>{
+  if(!tr.isUserEvent('input')||tr.isUserEvent('input.type.compose'))return tr;
+  const pos=typedIntoBlank(tr);
+  return pos===null?tr:[tr,{changes:{from:pos,insert:tr.newDoc.lineAt(pos).text.includes('\r')?'\r\n':'\n'},sequential:true}];
+});
+// An input method changes the line while it composes, so the newline waits
+// until the composition ends.
+const blankTypingComposition=ViewPlugin.fromClass(class {
+  constructor(view){this.view=view;this.pending=null;}
+  update(update) {
+    for(const tr of update.transactions) {
+      if(this.pending!==null)this.pending=tr.changes.mapPos(this.pending,-1);
+      if(this.pending===null&&tr.isUserEvent('input.type.compose'))this.pending=typedIntoBlank(tr);
+    }
+    if(this.pending!==null&&!update.view.composing)setTimeout(()=>this.flush(),0);
+  }
+  flush() {
+    const view=this.view,pos=this.pending;
+    if(pos===null||view.composing)return;
+    this.pending=null;
+    if(pos>view.state.doc.length)return;
+    const line=view.state.doc.lineAt(pos);
+    if(line.from!==pos||!line.text.trim()||!needsSeparatorAbove(view.state,line.number))return;
+    view.dispatch({changes:{from:pos,insert:'\n'},userEvent:'input.type'});
+  }
+},{eventHandlers:{compositionend(){setTimeout(()=>this.flush(),0);}}});
 function literalCodeLine(state,line) {
   const tree=ensureSyntaxTree(state,line.to,40)||syntaxTree(state);
   for(let node=tree.resolveInner(line.from+Math.min(line.length,1),1);node;node=node.parent) {
@@ -253,11 +361,11 @@ function hiddenSourceLine(state,line) {
 const blankSelectionFilter=EditorState.transactionFilter.of(tr=>{
   if(tr.docChanged||!tr.selection||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
   const state=tr.state,range=tr.newSelection.main,line=state.doc.lineAt(range.head);
-  if(!hiddenSourceLine(state,line)&&(line.text.trim()||editableBlank(state,line)||literalCodeLine(state,line)))return tr;
+  if(!hiddenSourceLine(state,line)&&(line.text.trim()||editableBlank(state,line)||keptBlank(state,line)||literalCodeLine(state,line)))return tr;
   const direction=range.head<tr.startState.selection.main.head?-1:1;
   for(const step of [direction,-direction])for(let n=line.number+step;n>=1&&n<=state.doc.lines;n+=step) {
     const next=state.doc.line(n);
-    if(!hiddenSourceLine(state,next)&&(next.text.trim()||literalCodeLine(state,next)||editableBlank(state,next)))return [tr,{selection:EditorSelection.cursor(step>0?(visiblePrefixEnd(state,next.from)??next.from):next.to),sequential:true}];
+    if(!hiddenSourceLine(state,next)&&(next.text.trim()||literalCodeLine(state,next)||editableBlank(state,next)||keptBlank(state,next)))return [tr,{selection:EditorSelection.cursor(step>0?(visiblePrefixEnd(state,next.from)??next.from):next.to),sequential:true}];
   }
   return tr;
 });
@@ -290,9 +398,9 @@ function decorations(state) {
     if(codeRanges.some(([a,b])=>line.from>=a&&line.from<b))continue;
     if(/^>\s*\[![\w-]+\]/.test(line.text)) {
       let end=n; while(end<state.doc.lines && /^>/.test(state.doc.line(end+1).text)) end++;
-      for(let row=n;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line'+(row===n?' cm-callout-first':'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
-      const match=/^>\s*\[!([\w-]+)\][+-]?[ \t]*/.exec(line.text);
-      list.push(Decoration.widget({widget:new CalloutKindWidget(match[1],!!line.text.slice(match[0].length)),side:1}).range(line.from+match[0].length));
+      const match=/^>\s*\[!([\w-]+)\][+-]?[ \t]*/.exec(line.text),titled=!!line.text.slice(match[0].length);
+      for(let row=n;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line'+(row===n?' cm-callout-first'+(titled?' cm-callout-titled':''):'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
+      list.push(Decoration.widget({widget:new CalloutKindWidget(match[1],titled),side:1}).range(line.from+match[0].length));
       n=end;
     } else if(/^\s*\$\$\s*$/.test(line.text)) {
       let end=n+1; while(end<=state.doc.lines&&!/^\s*\$\$\s*$/.test(state.doc.line(end).text)) end++;
@@ -350,10 +458,16 @@ function decorations(state) {
     if(code)continue;
     if(quoteLines.has(n)) {
       list.push(Decoration.line({class:'cm-quote-line'}).range(line.from));
+      // The quote prefix is hidden and the list marker stays as text here.
+      const quoted=/^ {0,3}(?:>[ \t]+)+(\s*(?:[-+*]|\d+[.)])[ \t]+)/.exec(line.text);
+      if(quoted)list.push(Decoration.line({class:'cm-quote-list-line',attributes:{style:listLineStyle(textEms(quoted[1]))}}).range(line.from));
     }
     const task=/^(\s*)[-+*]\s+\[([ xX])\]\s*/.exec(line.text);
     const bullet=/^(\s*)(?:([-+*])\s+|(\d+)[.)]\s+)/.exec(line.text);
-    if(task||bullet)list.push(Decoration.line({class:'cm-list-line'}).range(line.from));
+    if(task||bullet) {
+      const marker=task?1.55:bullet[3]?Math.max(1.25,textEms(bullet[3]+'.')+.35):1.25;
+      list.push(Decoration.line({class:'cm-list-line',attributes:{style:listLineStyle(textEms((task||bullet)[1])+marker,marker)}}).range(line.from));
+    }
     if(task)list.push(Decoration.replace({widget:new TaskWidget(line.from,task[2].toLowerCase()==='x',state.facet(editorLanguage))}).range(line.from+task[1].length,line.from+task[0].length));
     else if(bullet)list.push(Decoration.replace({widget:new BulletWidget(bullet[3]?bullet[3]+'.':'•')}).range(line.from+bullet[1].length,line.from+bullet[0].length));
     const links=/(!?)\[\[([^\]\n]+)\]\]|\[([^\]\n]+)\]\(([^)\n]+)\)/g; let match;
@@ -381,7 +495,7 @@ function decorations(state) {
       // so the blank line after one keeps a gap before whatever follows.
       const prev=n>1?state.doc.line(n-1).text:'',next=n<state.doc.lines?state.doc.line(n+1).text:'';
       const gap=next.trim()&&/^\s*(?:\||```|~~~|>)/.test(prev);
-      list.push(Decoration.line({class:'cm-blank-line'+(gap?' cm-block-gap':'')+(editableBlank(state,line)?' cm-input-blank-line':'')}).range(line.from));
+      list.push(Decoration.line({class:'cm-blank-line'+(gap?' cm-block-gap':'')+(editableBlank(state,line)?' cm-input-blank-line':keptBlank(state,line)?' cm-kept-blank-line':'')}).range(line.from));
     }
   }
   // The selection is shown as a highlight on its text only. Tables mark the
@@ -534,12 +648,23 @@ const boldDelimiterField=StateField.define({
 function simpleListEnter(view) {
   const range=view.state.selection.main;if(!range.empty)return false;
   if(inCode(view.state,range.head))return false;
-  const line=view.state.doc.lineAt(range.head),match=/^(\s*)([-+*]|\d+[.)])\s+(?:\[([ xX])\]\s*)?/.exec(line.text);
+  const line=view.state.doc.lineAt(range.head);
+  // Enter on an empty quote or callout line leaves the quote, like a list.
+  if(/^\s*(?:>\s?)+$/.test(line.text)&&range.head===line.to)return leaveEmptyBlock(view,line);
+  const match=/^(\s*)([-+*]|\d+[.)])\s+(?:\[([ xX])\]\s*)?/.exec(line.text);
   if(!match||range.head<line.from+match[0].length)return false;
-  if(!line.text.slice(match[0].length).trim()) {view.dispatch({changes:{from:line.from,to:line.to,insert:''},selection:{anchor:line.from},userEvent:'input'});return true;}
+  if(!line.text.slice(match[0].length).trim())return leaveEmptyBlock(view,line);
   let marker=match[2];if(/^\d/.test(marker))marker=String(parseInt(marker,10)+1)+marker.slice(-1);
   const insert='\n'+match[1]+marker+' '+(match[3]!==undefined?'[ ] ':'');
   view.dispatch(view.state.replaceSelection(insert),{scrollIntoView:true,userEvent:'input'});return true;
+}
+// The second Enter turns the empty item into an empty line. When more of the
+// block follows, a separator after it keeps that line visible once the caret
+// moves on.
+function leaveEmptyBlock(view,line) {
+  const doc=view.state.doc,next=line.number<doc.lines?doc.line(line.number+1):null;
+  view.dispatch({changes:{from:line.from,to:line.to,insert:next&&next.text.trim()?'\n':''},selection:{anchor:line.from},scrollIntoView:true,userEvent:'input'});
+  return true;
 }
 function simpleListBackspace(view) {
   const range=view.state.selection.main;if(!range.empty)return false;
@@ -550,8 +675,8 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,
-  slashCommands(),formatToolbar(),markdownInput(),
+  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
   pageTitle.of(pageTitleExtension()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
@@ -561,6 +686,9 @@ function extensions() {return [
     if(update.docChanged){for(const tr of update.transactions)if(tr.docChanged){applyRawChanges(tr);revision++;}lastSource=rawSource;const selection=update.state.selection.main;post({type:'change',text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:selection.anchor,selectionHead:selection.head});}
   }),
   // A plain click on a link opens it; a drag across it still selects text.
+  // A paste that carries files or a picture goes to the app, which copies them
+  // into Attachments and inserts their links; it pastes plain text otherwise.
+  EditorView.domEventHandlers({paste(event){const data=event.clipboardData;if(!metadata.editable||!data||!(data.files?.length||[...data.types].includes('Files')))return false;event.preventDefault();post({type:'paste',currentPath:metadata.currentPath});return true;}}),
   EditorView.domEventHandlers({click(event,view){const link=event.target.closest?.('[data-live-target]');if(link&&(view.state.selection.main.empty||event.metaKey||event.ctrlKey||!metadata.editable)){event.preventDefault();navigate(link.dataset.liveTarget);return true;}return false;}})
 ];}
 const view=new EditorView({state:EditorState.create({doc:'',extensions:extensions()}),parent:document.getElementById('editor')});
@@ -636,7 +764,13 @@ window.acdianSetDocument=payload=>{
   else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions()),pageTitle.reconfigure(pageTitleExtension())]});
 };
 window.acdianGetDocument=()=>{const place=scrollPlace();return{text:rawSource,currentPath:metadata.currentPath,documentID:metadata.documentID,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head,scrollPosition:place.pos,scrollOffset:place.offset};};
-window.acdianInsertText=(text,insertionID)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;view.dispatch(view.state.replaceSelection(canonical(String(text))));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
+// A block insertion, such as an image embed, gets lines of its own, as an
+// embed shows as a picture only when nothing else shares its line.
+const ownLines=(state,text)=>{const {from,to}=state.selection.main,doc=state.doc;return(from>0&&doc.sliceString(from-1,from)!=='\n'?'\n':'')+text+(to<doc.length&&doc.sliceString(to,to+1)!=='\n'?'\n':'');};
+window.acdianInsertText=(text,insertionID,block)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;const insert=canonical(String(text));view.dispatch(view.state.replaceSelection(block?ownLines(view.state,insert):insert));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
+// Files dragged in from another app land where the caret follows the pointer.
+window.acdianDropCaret=(x,y)=>{if(!metadata.editable)return false;const pos=view.posAtCoords({x,y},false);if(pos==null)return false;if(view.state.selection.main.head!==pos||!view.state.selection.main.empty)view.dispatch({selection:{anchor:pos}});if(!view.hasFocus)view.focus();return true;};
+window.acdianRefreshTitle=()=>{titleVersion++;view.dispatch({effects:pageTitle.reconfigure(pageTitleExtension())});};
 window.acdianUndo=()=>undo(view);
 window.acdianRedo=()=>redo(view);
 window.acdianScrollTo=raw=>{
