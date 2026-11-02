@@ -7,7 +7,7 @@ struct TabTests {
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent("acdian-tab-tests-\(UUID().uuidString)",isDirectory:true)
         try fm.createDirectory(at:root.appendingPathComponent("Folder",isDirectory:true),withIntermediateDirectories:true)
-        for (name,body) in [("A.md","# A\n"),("B.md","# B\n"),("Folder/C.md","# C\n")] { try Data(body.utf8).write(to:root.appendingPathComponent(name)) }
+        for (name,body) in [("A.md","# A page\n"),("B.md","# B page\n"),("Folder/C.md","# C page\n")] { try Data(body.utf8).write(to:root.appendingPathComponent(name)) }
         let suite = "acdian-tab-tests-\(UUID().uuidString)"
         guard let preferences = UserDefaults(suiteName:suite) else { fatalError("Could not create isolated test preferences") }
         defer { try? fm.removeItem(at:root); preferences.removePersistentDomain(forName:suite) }
@@ -46,16 +46,16 @@ struct TabTests {
             try check(paths(model) == ["A.md","B.md"], "Opening another page keeps the previous page in its own tab")
             try await open(model,"A.md")
             try check(paths(model) == ["A.md","B.md"], "Opening a page that is already in a tab returns to that tab")
-            model.text = "# A\n\nEdited"
+            model.text = "# A page\n\nEdited"
             try await open(model,"Folder/C.md")
-            try check(try disk("A.md") == "# A\n\nEdited", "Leaving a tab saves its latest edits")
+            try check(try disk("A.md") == "# A page\n\nEdited", "Leaving a tab saves its latest edits")
             try check(paths(model) == ["A.md","B.md","Folder/C.md"], "New tabs open at the end")
 
             let b = model.tabs[1].id
             model.closeTab(b)
             try check(paths(model) == ["A.md","Folder/C.md"] && model.selected?.relativePath == "Folder/C.md", "Closing a tab in the back leaves the front page in place")
             model.selectTab(model.tabs[0].id)
-            try await eventually("Clicking a tab shows its page") { model.selected?.relativePath == "A.md" && model.text == "# A\n\nEdited" }
+            try await eventually("Clicking a tab shows its page") { model.selected?.relativePath == "A.md" && model.text == "# A page\n\nEdited" }
             model.closeCurrentTab()
             try await eventually("Closing the front tab shows the tab to its right") { paths(model) == ["Folder/C.md"] && model.selected?.relativePath == "Folder/C.md" && !model.loading }
 
@@ -102,7 +102,7 @@ struct TabTests {
         }
 
         // Kept tab text: switching back needs no disk read, and the file is checked after.
-        for (name,body) in [("Keep.md","# Keep\n\nKept body\n"),("Next.md","# Next\n")] { try Data(body.utf8).write(to:root.appendingPathComponent(name)) }
+        for (name,body) in [("Keep.md","# Keep page\n\nKept body\n"),("Next.md","# Next page\n")] { try Data(body.utf8).write(to:root.appendingPathComponent(name)) }
         do {
             let model = try await launch()
             model.refresh()
@@ -111,28 +111,28 @@ struct TabTests {
             let keepTab = model.activeTabID!
             try await open(model,"Next.md")
             model.selectTab(keepTab)
-            try check(model.selected?.relativePath == "Keep.md" && model.text == "# Keep\n\nKept body\n" && !model.loading && model.activeTabID == keepTab, "A tab comes back at once from its kept text, without waiting for the disk")
+            try check(model.selected?.relativePath == "Keep.md" && model.text == "# Keep page\n\nKept body\n" && !model.loading && model.activeTabID == keepTab, "A tab comes back at once from its kept text, without waiting for the disk")
             let shown = model.editorDocumentID
             await pause(); await pause()
-            try check(model.editorDocumentID == shown && model.text == "# Keep\n\nKept body\n", "An unchanged file leaves the shown page alone")
+            try check(model.editorDocumentID == shown && model.text == "# Keep page\n\nKept body\n", "An unchanged file leaves the shown page alone")
 
             try await open(model,"Next.md")
-            try Data("# Keep\n\nChanged by another app\n".utf8).write(to:root.appendingPathComponent("Keep.md"))
+            try Data("# Keep page\n\nChanged by another app\n".utf8).write(to:root.appendingPathComponent("Keep.md"))
             model.selectTab(keepTab)
-            try check(model.text == "# Keep\n\nKept body\n", "The kept text shows first")
-            try await eventually("A file changed while its tab was in the back shows what is on disk") { model.text == "# Keep\n\nChanged by another app\n" && model.originalText == model.text && model.editorDocumentID != shown && !model.dirty }
+            try check(model.text == "# Keep page\n\nKept body\n", "The kept text shows first")
+            try await eventually("A file changed while its tab was in the back shows what is on disk") { model.text == "# Keep page\n\nChanged by another app\n" && model.originalText == model.text && model.editorDocumentID != shown && !model.dirty }
 
             try await open(model,"Next.md")
-            try Data("# Keep\n\nChanged again, elsewhere\n".utf8).write(to:root.appendingPathComponent("Keep.md"))
+            try Data("# Keep page\n\nChanged again, elsewhere\n".utf8).write(to:root.appendingPathComponent("Keep.md"))
             model.selectTab(keepTab)
-            model.text = "# Keep\n\nTyped here at once"
-            try await eventually("A disk check never replaces edits made in the meantime") { model.text == "# Keep\n\nTyped here at once" && model.dirty }
+            model.text = "# Keep page\n\nTyped here at once"
+            try await eventually("A disk check never replaces edits made in the meantime") { model.text == "# Keep page\n\nTyped here at once" && model.dirty }
             await pause(); await pause()
-            try check(!model.save() && model.error != nil && (try disk("Keep.md")) == "# Keep\n\nChanged again, elsewhere\n", "Saving over the outside change is refused as a conflict")
+            try check(!model.save() && model.error != nil && (try disk("Keep.md")) == "# Keep page\n\nChanged again, elsewhere\n", "Saving over the outside change is refused as a conflict")
             model.error = nil
             model.text = model.originalText
             model.reload()
-            try await eventually("Reloading reads the file again") { model.text == "# Keep\n\nChanged again, elsewhere\n" && !model.dirty && !model.loading }
+            try await eventually("Reloading reads the file again") { model.text == "# Keep page\n\nChanged again, elsewhere\n" && !model.dirty && !model.loading }
 
             // The editor's place is remembered per tab and kept for a relaunch.
             var answer: ((Result<EditorSnapshot,Error>) -> Void)?
@@ -181,7 +181,7 @@ struct TabTests {
             model.query = "needle-one"
             try check(model.matches.isEmpty, "Its old text is gone from search")
             try await open(model,"Next.md")
-            model.text = "# Next\n\nsaved-needle"; try check(model.save(), "Saving a page")
+            model.text = "# Next page\n\nsaved-needle"; try check(model.save(), "Saving a page")
             model.query = "saved-needle"
             try check(model.matches.map(\.relativePath) == ["Next.md"], "A saved page is searchable at once")
             model.refresh()

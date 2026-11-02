@@ -157,16 +157,13 @@ struct ContentView: View {
     // The editor column is at most 860 wide with 58 of empty padding inside each
     // edge; the outline (220) fits when the margin left of the text holds it plus a gap.
     static let outlineFitWidth: CGFloat = 860 + 2 * (220 + 12 - 58)
-    private func outline(title fileTitle: String, floating: Bool) -> some View {
-        // A page's leading "# " heading is its title, so it is listed once, as the title.
-        let leading = model.isDraft ? nil : AppModel.leadingTitle(model.text)
-        let title = leading ?? fileTitle, skipped = leading == nil ? 0 : 1
-        return VStack(alignment:.leading,spacing:0) {
+    private func outline(title: String, floating: Bool) -> some View {
+        VStack(alignment:.leading,spacing:0) {
             Button { withAnimation(.easeInOut(duration:0.18)) { if floating { outlineFloating = false } else { model.showOutline = false } } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
             ScrollView {
                 VStack(alignment:.leading,spacing:4) {
-                    Button { model.anchor = "#"; model.activeHeading = -1 } label: { Text(title.isEmpty ? "New Page" : title).font(.system(size:13,weight:.medium)).foregroundStyle(model.activeHeading < skipped ? Color.acPink : Color.primary.opacity(0.85)).lineLimit(2).multilineTextAlignment(.leading).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
-                    ForEach(Array(model.headings.enumerated()).dropFirst(skipped),id:\.offset) { index,heading in
+                    Button { model.anchor = "#"; model.activeHeading = -1 } label: { Text(title.isEmpty ? "New Page" : title).font(.system(size:13,weight:.medium)).foregroundStyle(model.activeHeading < 0 ? Color.acPink : Color.primary.opacity(0.85)).lineLimit(2).multilineTextAlignment(.leading).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
+                    ForEach(Array(model.headings.enumerated()),id:\.offset) { index,heading in
                         Button { model.anchor = heading.title; model.activeHeading = index } label: { Text(heading.title).font(.system(size:13)).foregroundStyle(index == model.activeHeading ? Color.acPink : heading.level <= 2 ? Color.primary.opacity(0.85) : Color.secondary).lineLimit(2).multilineTextAlignment(.leading).padding(.leading,CGFloat(max(0,heading.level-1))*12).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)

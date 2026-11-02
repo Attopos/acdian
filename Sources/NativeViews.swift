@@ -199,7 +199,8 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         if type == "heading", let index = value["index"] as? Int, model.activeHeading != index { model.activeHeading = index }
         if type == "navigate", let target = value["target"] as? String { model.navigate(target) }
         if type == "external", let target = value["target"] as? String { model.external(target) }
-        if type == "titleEnded" { model.titleEditEnded() }
+        if type == "titleTyped", let title = value["title"] as? String { model.titleTyped(title) }
+        if type == "titleEnded", !model.titleEditEnded() { view.evaluateJavaScript("window.acdianRefreshTitle()",completionHandler:nil) }
         if type == "paste" { pasteAttachments() }
         if type == "pickImage" { model.importAttachment(imagesOnly:true) }
     }

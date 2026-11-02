@@ -110,91 +110,91 @@ struct SplitViewTests {
         model.closeSplit()
         try await wait(1)
         check(model.splitPath == nil && !webViews(window.contentView!).contains(split), "Closing the split leaves the open page alone")
-        // Every page has a title as a real first line, added from the file name
-        // when opening a page without one. Leaving a changed title renames the file.
-        check(AppModel.withTitle("",name:"N") == "# N\n\n" && AppModel.withTitle("\n\nQ",name:"N") == "# N\n\nQ" && AppModel.withTitle("Text\r\n",name:"N") == "# N\r\n\r\nText\r\n" && AppModel.withTitle("# \nBody",name:"N") == "# N\nBody" && AppModel.withTitle("# Kept\n",name:"N") == "# Kept\n", "A page without a title takes its file name as its first line")
+        // A page's title is its file name, in a block of its own above the text.
+        check(AppModel.withoutNameHeading("# N\n\nBody",name:"N") == "Body" && AppModel.withoutNameHeading("# N\r\n\r\nBody",name:"N") == "Body" && AppModel.withoutNameHeading("# N\n",name:"N") == "" && AppModel.withoutNameHeading("# Other\n\nBody",name:"N") == "# Other\n\nBody" && AppModel.withoutNameHeading("Plain",name:"N") == "Plain", "Only a first-line heading repeating the file name is dropped")
         try "# Title one\n\nBody one.\n".write(to:root.appendingPathComponent("T1.md"),atomically:true,encoding:.utf8)
         try "Just text, no heading.\n".write(to:root.appendingPathComponent("N.md"),atomically:true,encoding:.utf8)
-        try "\n\nBlank start.\n".write(to:root.appendingPathComponent("B2.md"),atomically:true,encoding:.utf8)
+        try "# Same\n\nBody after the same heading.\n".write(to:root.appendingPathComponent("Same.md"),atomically:true,encoding:.utf8)
         try "# Title two\n\nBody two.\n".write(to:root.appendingPathComponent("T2.md"),atomically:true,encoding:.utf8)
         model.refresh()
         for _ in 0..<500 where model.loading || model.index?.files.contains(where: { $0.relativePath == "T2.md" }) != true { try await wait(0.01) }
         let mainView = LiveEditorHost.shared.view
-        func firstLine(_ web: WKWebView) async throws -> String { try await web.evaluateJavaScript("window.acdianEditor.state.doc.line(1).text") as? String ?? "" }
-        // An offscreen window has no keyboard focus, so the page is told it does.
-        func caretInTitle(_ web: WKWebView) async throws { _ = try await web.evaluateJavaScript("(()=>{document.hasFocus=()=>true;const v=window.acdianEditor;v.contentDOM.focus();v.dispatch({selection:{anchor:v.state.doc.line(1).to}});})()") }
-        func setTitle(_ web: WKWebView, _ line: String) async throws { _ = try await web.evaluateJavaScript("(()=>{const v=window.acdianEditor,l=v.state.doc.line(1);v.dispatch({changes:{from:l.from,to:l.to,insert:\(String(reflecting:line))},userEvent:'input'});})()") }
-        func leaveTitle(_ web: WKWebView) async throws { _ = try await web.evaluateJavaScript("(()=>{const v=window.acdianEditor;v.dispatch({selection:{anchor:v.state.doc.length}});})()") ; try await wait(1) }
+        func shownTitle(_ web: WKWebView) async throws -> String { try await web.evaluateJavaScript("document.querySelector('.cm-page-title')?.textContent ?? ''") as? String ?? "" }
+        func document(_ web: WKWebView) async throws -> String { try await web.evaluateJavaScript("window.acdianEditor.state.doc.toString()") as? String ?? "" }
+        func typeTitle(_ web: WKWebView, _ title: String) async throws { _ = try await web.evaluateJavaScript("(()=>{const h=document.querySelector('.cm-page-title');h.textContent=\(String(reflecting:title));h.dispatchEvent(new InputEvent('input',{bubbles:true}));})()") ; try await wait(0.2) }
+        func endTitle(_ web: WKWebView) async throws { _ = try await web.evaluateJavaScript("document.querySelector('.cm-page-title').dispatchEvent(new FocusEvent('blur'))"); try await wait(1) }
 
         model.open(file("T1.md"))
         try await wait(2)
         model.openInSplit(file("N.md"))
         try await wait(2)
-        var line = try await firstLine(split)
-        check(line == "# N", "A page with no title shows its file name as a real first line (\(line))")
-        check(disk("N.md") == "# N\n\nJust text, no heading.\n", "The title is saved into the file (\(disk("N.md")))")
-        let splitDrawn = try await split.evaluateJavaScript("document.querySelectorAll('.cm-page-title').length") as? Int ?? -1
-        check(splitDrawn == 0, "No title is drawn apart from the text")
+        var title = try await shownTitle(split)
+        check(title == "N", "The title block shows the file name (\(title))")
+        let scrolls = try await split.evaluateJavaScript("(()=>{const d=window.acdianEditor.scrollDOM;return d.scrollHeight>d.clientHeight+1;})()") as? Bool ?? true
+        check(!scrolls, "A short page does not scroll")
+        let lined = try await split.evaluateJavaScript("(()=>{const r=document.createRange();const t=document.querySelector('.cm-page-title');r.selectNodeContents(t);return Math.abs(r.getBoundingClientRect().left-window.acdianEditor.coordsAtPos(0).left)<2;})()") as? Bool ?? false
+        check(lined, "The title lines up with the text")
+        var text = try await document(split)
+        check(text == "Just text, no heading.\n" && disk("N.md") == "Just text, no heading.\n", "Opening a page leaves its file and text alone")
+        let placed = try await split.evaluateJavaScript("(()=>{const v=window.acdianEditor,h=document.querySelector('.cm-page-title'),t=h.getBoundingClientRect(),c=v.contentDOM.getBoundingClientRect();const p=v.coordsAtPos(5);return [v.contentDOM.contains(h),t.bottom<=c.top+1,t.height>0,v.posAtCoords({x:p.left,y:(p.top+p.bottom)/2})===5,h.isContentEditable];})()") as? [Bool] ?? []
+        check(placed == [false,true,true,true,true], "The block sits above the text, outside the document, editable, and clicks in the text still land right (\(placed))")
 
-        try await caretInTitle(split)
-        try await setTitle(split,"# Plain page")
-        try await wait(1.5)
-        check(model.splitPath == "N.md" && disk("N.md").hasPrefix("# Plain page"), "While the caret is in the title the text saves and the file keeps its name")
-        try await leaveTitle(split)
-        check(model.splitPath == "Plain page.md" && disk("Plain page.md").hasPrefix("# Plain page"), "Leaving the title renames the split page (\(model.splitPath ?? "-"))")
+        try await typeTitle(split,"Plain page")
+        check(model.splitPath == "N.md", "Typing in the title does not rename yet")
+        try await endTitle(split)
+        check(model.splitPath == "Plain page.md" && disk("Plain page.md") == "Just text, no heading.\n", "Ending the title renames the split page and leaves its text alone (\(model.splitPath ?? "-"))")
         check(model.index?.files.contains(where: { $0.relativePath == "N.md" }) == false, "The sidebar drops the old name")
+        title = try await shownTitle(split)
+        check(title == "Plain page", "The block shows the new name")
 
-        for empty in ["# ",""] {
-            try await caretInTitle(split)
-            try await setTitle(split,empty)
-            try await leaveTitle(split)
-            line = try await firstLine(split)
-            check(line == "# Plain page" && model.splitPath == "Plain page.md", "An emptied title goes back to the file name (\(line))")
-        }
-        try await wait(1)
-        check(disk("Plain page.md").hasPrefix("# Plain page"), "The restored title is saved")
+        try await typeTitle(split,"   ")
+        try await endTitle(split)
+        title = try await shownTitle(split)
+        check(title == "Plain page" && model.splitPath == "Plain page.md", "An emptied title goes back to the file name (\(title))")
 
         model.error = nil
-        try await caretInTitle(split)
-        try await setTitle(split,"# T2")
-        try await leaveTitle(split)
-        check(model.splitPath == "Plain page.md" && model.error != nil, "A name another page has is refused with a message")
+        try await typeTitle(split,"T2")
+        try await endTitle(split)
+        title = try await shownTitle(split)
+        check(model.splitPath == "Plain page.md" && model.error != nil && title == "Plain page", "A name another page has is refused with a message and the old name comes back (\(title))")
         model.error = nil
 
-        model.openInSplit(file("B2.md"))
+        model.openInSplit(file("Same.md"))
         try await wait(2)
-        line = try await firstLine(split)
-        check(line == "# B2" && disk("B2.md") == "# B2\n\nBlank start.\n", "A blank first line becomes the title")
+        text = try await document(split)
+        title = try await shownTitle(split)
+        check(title == "Same" && text == "Body after the same heading.\n" && disk("Same.md") == "Body after the same heading.\n", "A heading repeating the file name moves out of the text (\(text))")
 
+        text = try await document(mainView)
+        title = try await shownTitle(mainView)
+        check(title == "T1" && text.hasPrefix("# Title one"), "A heading that says something else stays in the text")
         let mainDocument = model.editorDocumentID
-        try await caretInTitle(mainView)
-        try await setTitle(mainView,"# Renamed one")
-        try await leaveTitle(mainView)
-        check(model.currentPagePath == "Renamed one.md" && model.editorDocumentID == mainDocument, "Leaving the title renames the open page without reloading it (\(model.currentPagePath ?? "-"))")
+        try await typeTitle(mainView,"Renamed one")
+        try await endTitle(mainView)
+        check(model.currentPagePath == "Renamed one.md" && model.editorDocumentID == mainDocument, "Ending the title renames the open page without reloading it (\(model.currentPagePath ?? "-"))")
         check(model.tabs.contains(where: { $0.path == "Renamed one.md" }) && !FileManager.default.fileExists(atPath:root.appendingPathComponent("T1.md").path), "The tab follows the new name and no copy stays behind")
         _ = try await mainView.evaluateJavaScript("(()=>{const v=window.acdianEditor;v.dispatch({changes:{from:v.state.doc.length,insert:'After rename.\\n'},userEvent:'input'});})()")
         try await wait(1.5)
         check(disk("Renamed one.md").contains("After rename."), "Typing after a rename saves to the renamed file")
 
         // Going to another page ends the title edit too, with no blur in between.
-        try await caretInTitle(mainView)
-        try await setTitle(mainView,"# Left behind")
-        try await wait(0.1)
+        try await typeTitle(mainView,"Left behind")
         model.open(file("T2.md"))
         try await wait(2)
-        check(model.currentPagePath == "T2.md" && disk("Left behind.md").hasPrefix("# Left behind"), "Leaving a page with its title being edited renames it")
+        title = try await shownTitle(mainView)
+        check(model.currentPagePath == "T2.md" && disk("Left behind.md").contains("After rename.") && title == "T2", "Leaving a page with its title being edited renames it (\(title))")
 
         // A new page's title field does the same once its file exists.
         model.newPageFromEditor()
         try await wait(1)
         model.draftTitle = "Draft one"
         try await wait(1.5)
-        check(disk("Draft one.md").hasPrefix("# Draft one"), "A new page saves under its title")
+        check(FileManager.default.fileExists(atPath:root.appendingPathComponent("Draft one.md").path), "A new page saves under its title")
         model.draftTitle = "Draft two"
         try await wait(1.5)
         check(FileManager.default.fileExists(atPath:root.appendingPathComponent("Draft one.md").path), "Typing in the title field does not rename yet")
         model.draftTitleEnded()
-        check(disk("Draft two.md").hasPrefix("# Draft two") && !FileManager.default.fileExists(atPath:root.appendingPathComponent("Draft one.md").path), "Ending the title field renames the new page")
+        check(FileManager.default.fileExists(atPath:root.appendingPathComponent("Draft two.md").path) && !FileManager.default.fileExists(atPath:root.appendingPathComponent("Draft one.md").path), "Ending the title field renames the new page")
         model.draftTitle = "Draft three"
         try await wait(1.5)
         check(disk("Draft two.md").hasPrefix("# Draft three"), "A new page keeps saving to its renamed file")

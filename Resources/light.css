@@ -15,6 +15,7 @@ html.light ::-webkit-scrollbar-thumb { background: #00000026; }
 /* Editor surface and text */
 html.light .cm-editor { background: #ffffff; color: #2a2830; }
 html.light .cm-editor .cm-content { caret-color: #d93b86; }
+html.light .cm-editor .cm-page-title { color: #17161b; caret-color: #d93b86; }
 html.light .cm-editor .cm-cursor, html.light .cm-editor .cm-dropCursor { border-left-color: #d93b86; }
 html.light .cm-editor ::selection { background: #d93b862e; }
 html.light .cm-editor .cm-content ::selection { background: transparent; }

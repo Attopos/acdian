@@ -1,4 +1,4 @@
-import { EditorState, EditorSelection, StateField, StateEffect, Compartment, Transaction, findClusterBreak } from '@codemirror/state';
+import { EditorState, EditorSelection, StateField, StateEffect, Compartment, findClusterBreak } from '@codemirror/state';
 import { EditorView, ViewPlugin, Decoration, WidgetType, keymap, placeholder, drawSelection } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
@@ -19,27 +19,34 @@ const insertions = new Set();
 let rawSnapshots = new Map();
 const editability = new Compartment();
 const localization = new Compartment();
-// Every saved page starts with a "# " heading, which the app adds when it opens
-// a page without one. It is ordinary text, and it is the page's name: when the
-// caret leaves it, a changed title renames the file, and an empty one goes
-// back to the current file name.
-const validTitle=text=>/^#[ \t]+\S/.test(text);
-let titleEdit=null;
-function restoreTitle(view){
-  const first=view.state.doc.line(1),name='# '+metadata.pageTitle;
-  const blank=!first.text.trim()||/^#[ \t]*$/.test(first.text);
-  view.dispatch({changes:blank?{from:first.from,to:first.to,insert:name}:{from:0,insert:name+'\n\n'},annotations:Transaction.addToHistory.of(false)});
+// A saved page's title is its file name, in a block of its own above the text.
+// It scrolls with the page but is not part of the document, so a page always
+// has one and the file holds only the text. Return goes on to the text; leaving
+// the block renames the file, and an empty title goes back to the file name.
+const titleBlock=document.createElement('h1');
+titleBlock.className='cm-page-title';titleBlock.spellcheck=false;
+const typedTitle=()=>titleBlock.textContent.replace(/\s+/g,' ').trim();
+function showTitle(force){
+  if(force||document.activeElement!==titleBlock)titleBlock.textContent=metadata.pageTitle;
+  titleBlock.hidden=!metadata.pageTitle;
+  titleBlock.contentEditable=metadata.editable?'plaintext-only':'false';
 }
-function followTitle(update){
-  if(!metadata.pageTitle||!metadata.editable)return;
-  const {view,state}=update,first=state.doc.line(1),selection=state.selection.main;
-  const onTitle=view.hasFocus&&selection.from<=first.to;
-  if(onTitle){if(!titleEdit)titleEdit={text:first.text};return;}
-  if(!titleEdit)return;
-  const started=titleEdit.text;titleEdit=null;
-  if(!validTitle(first.text))Promise.resolve().then(()=>{if(!titleEdit&&!validTitle(view.state.doc.line(1).text))restoreTitle(view);});
-  else if(first.text!==started)post({type:'titleEnded',currentPath:metadata.currentPath});
+function intoText(){view.focus();view.dispatch({selection:{anchor:0},scrollIntoView:true});}
+function intoTitle(view){
+  const range=view.state.selection.main;
+  if(!metadata.pageTitle||!range.empty||view.coordsAtPos(range.head)?.top!==view.coordsAtPos(0)?.top)return false;
+  titleBlock.focus();
+  const caret=getSelection();caret.selectAllChildren(titleBlock);caret.collapseToEnd();
+  return true;
 }
+titleBlock.addEventListener('keydown',event=>{
+  if(event.isComposing)return;
+  if(event.key==='Enter'){event.preventDefault();intoText();}
+  else if(event.key==='Escape'){event.preventDefault();titleBlock.textContent=metadata.pageTitle;post({type:'titleTyped',title:metadata.pageTitle,currentPath:metadata.currentPath});intoText();}
+  else if(event.key==='ArrowDown'){const caret=getSelection();if(caret.isCollapsed&&caret.anchorOffset===(caret.anchorNode?.textContent.length??0)&&!event.shiftKey){event.preventDefault();intoText();}}
+});
+titleBlock.addEventListener('input',()=>post({type:'titleTyped',title:typedTitle(),currentPath:metadata.currentPath}));
+titleBlock.addEventListener('blur',()=>{if(!typedTitle())titleBlock.textContent=metadata.pageTitle;post({type:'titleEnded',currentPath:metadata.currentPath});});
 const localeExtensions=()=>{
   const strings=messagesForLanguage(metadata.language);
   return [editorLanguage.of(metadata.language),placeholder(strings.placeholder),EditorView.contentAttributes.of({lang:metadata.language,'aria-label':strings.editorLabel})];
@@ -787,11 +794,10 @@ function extensions() {return [
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
-  keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
+  keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'ArrowUp',run:intoTitle},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
   EditorView.updateListener.of(update=>{
     if(applyingExternal)return;
     if(update.docChanged){for(const tr of update.transactions)if(tr.docChanged){applyRawChanges(tr);revision++;}lastSource=rawSource;const selection=update.state.selection.main;post({type:'change',text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:selection.anchor,selectionHead:selection.head});}
-    followTitle(update);
   }),
   // A plain click on a link opens it; a drag across it still selects text.
   // A paste that carries files or a picture goes to the app, which copies them
@@ -800,6 +806,9 @@ function extensions() {return [
   EditorView.domEventHandlers({click(event,view){const link=event.target.closest?.('[data-live-target]');if(link&&(view.state.selection.main.empty||event.metaKey||event.ctrlKey||!metadata.editable)){event.preventDefault();navigate(link.dataset.liveTarget);return true;}return false;}})
 ];}
 const view=new EditorView({state:EditorState.create({doc:'',extensions:extensions()}),parent:document.getElementById('editor')});
+view.scrollDOM.insertBefore(titleBlock,view.contentDOM);
+// The text fills what the title leaves of the window, so a short page does not scroll.
+new ResizeObserver(()=>document.documentElement.style.setProperty('--page-title-height',titleBlock.offsetHeight+'px')).observe(titleBlock);
 window.acdianEditor=view;
 // One editor serves every tab. A tab put in the back keeps its whole editor
 // state (text, selection, undo history) and scroll place here; it comes back
@@ -827,7 +836,6 @@ function stashSession(tabID,path){
   for(const [id,session] of sessions){if(sessions.size<=sessionLimit&&total<=sessionTextLimit)break;if(id===tabID)continue;sessions.delete(id);total-=session.rawSource.length;}
 }
 function installDocument(text,remembered) {
-  titleEdit=null;
   const session=sessions.get(metadata.tabID);
   sessions.delete(metadata.tabID);
   applyingExternal=true;
@@ -865,6 +873,8 @@ window.acdianSetDocument=payload=>{
   if('resetToken'in payload)metadata.resetToken=payload.resetToken;
   if(Number.isFinite(payload.fontSize))document.documentElement.style.setProperty('--editor-font-size',Math.max(12,Math.min(28,payload.fontSize))+'px');
   const switched=previousDocument!==metadata.documentID;
+  showTitle(switched);
+  if(switched&&document.activeElement===titleBlock)titleBlock.blur();
   if(switched&&previousDocument)stashSession(previousTab,previousPath);
   // Tabs that were closed give up their kept state.
   if(Array.isArray(payload.openTabs))for(const id of [...sessions.keys()])if(!payload.openTabs.includes(id))sessions.delete(id);
@@ -879,6 +889,7 @@ const ownLines=(state,text)=>{const {from,to}=state.selection.main,doc=state.doc
 window.acdianInsertText=(text,insertionID,block)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;const insert=canonical(String(text));view.dispatch(view.state.replaceSelection(block?ownLines(view.state,insert):insert));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
 // Files dragged in from another app land where the caret follows the pointer.
 window.acdianDropCaret=(x,y)=>{if(!metadata.editable)return false;const pos=view.posAtCoords({x,y},false);if(pos==null)return false;if(view.state.selection.main.head!==pos||!view.state.selection.main.empty)view.dispatch({selection:{anchor:pos}});if(!view.hasFocus)view.focus();return true;};
+window.acdianRefreshTitle=()=>showTitle(true);
 window.acdianUndo=()=>undo(view);
 window.acdianRedo=()=>redo(view);
 window.acdianScrollTo=raw=>{

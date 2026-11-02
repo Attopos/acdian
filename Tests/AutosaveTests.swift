@@ -115,7 +115,7 @@ struct AutosaveTests {
             let (model,directory) = try fixture("navigate-flush",delay:0.3)
             let url = try select(model,directory)
             let otherURL = directory.appendingPathComponent("Other.md")
-            try Data("# Other\n".utf8).write(to:otherURL)
+            try Data("# Other page\n".utf8).write(to:otherURL)
             model.index = try VaultIndex(root:directory)
             guard let other = model.index?.files.first(where: { $0.relativePath == "Other.md" }) else { fatalError("Navigation target missing") }
             model.text = "# Original\r\n\r\nNative pending body"
@@ -126,9 +126,9 @@ struct AutosaveTests {
             let latest = "# Original\r\n\r\n最新中文🌸\r\n\r\nFinal keystroke\r\n"
             callback?(.success(EditorSnapshot(text:latest,currentPath:"Page.md")))
             try await eventually("Navigation opens its target after flushing the latest snapshot") { model.selected?.relativePath == "Other.md" && !model.loading }
-            try check(try disk(url) == latest && model.text == "# Other\n","Pre-navigation flush writes the newest snapshot instead of the older native bridge value")
+            try check(try disk(url) == latest && model.text == "# Other page\n","Pre-navigation flush writes the newest snapshot instead of the older native bridge value")
             await pause(0.4)
-            try check(try disk(url) == latest && disk(otherURL) == "# Other\n" && model.text == "# Other\n","A canceled old debounce cannot write into the newly opened page")
+            try check(try disk(url) == latest && disk(otherURL) == "# Other page\n" && model.text == "# Other page\n","A canceled old debounce cannot write into the newly opened page")
         }
 
         do {

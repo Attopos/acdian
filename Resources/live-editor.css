@@ -4,7 +4,10 @@ html,body { height:100%; margin:0; }
 .cm-editor { background:#111114; color:#e5e3e8; height:100vh; min-height:100vh; font-size:var(--editor-font-size); }
 .cm-editor.cm-focused { outline:none; }
 .cm-editor .cm-scroller { font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; font-size:inherit; line-height:1.7; overflow:auto; }
-.cm-editor .cm-content { max-width:860px; width:100%; margin:0 auto; padding:43px 58px 120px; caret-color:#e57bad; min-height:100vh; }
+.cm-editor .cm-scroller { flex-wrap:wrap; align-content:flex-start; }
+.cm-editor .cm-page-title { flex:0 0 100%; box-sizing:border-box; max-width:860px; margin:0 auto; padding:43px 58px 8px; font-size:2.125em; font-weight:700; line-height:1.3; letter-spacing:-.02em; color:#f5f3f7; border:0; outline:none; caret-color:#e57bad; cursor:text; user-select:text; -webkit-user-select:text; word-break:break-word; }
+.cm-editor .cm-page-title[hidden] { display:none; }
+.cm-editor .cm-content { max-width:860px; width:100%; margin:0 auto; padding:43px 58px 120px; caret-color:#e57bad; min-height:calc(100vh - var(--page-title-height,0px)); }
 .draft-page .cm-editor .cm-content { padding-top:12px; }
 .cm-editor .cm-line { margin:0!important; padding:0; min-height:1.7em; }
 /* Each document line ends with a paragraph gap larger than the wrapped-line
@@ -79,8 +82,8 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-interactive-frame { display:block; width:100%; height:240px; border:0; background:transparent; color-scheme:normal; }
 .cm-editor .cm-activeLine { background:none; }
 .cm-editor .cm-tooltip { background:#202026; border-color:#ffffff14; color:#e5e3e8; }
-@media(max-width:700px){.cm-editor .cm-content{padding:30px 28px 90px;}.cm-editor .cm-heading-1{font-size:1.875em;}}
-@media(max-width:450px){.cm-editor .cm-content{padding:24px 19px 80px;}}
+@media(max-width:700px){.cm-editor .cm-page-title{padding:30px 28px 8px;}.cm-editor .cm-content{padding:30px 28px 90px;}.cm-editor .cm-heading-1{font-size:1.875em;}}
+@media(max-width:450px){.cm-editor .cm-page-title{padding:24px 19px 8px;}.cm-editor .cm-content{padding:24px 19px 80px;}}
 .cm-editor .cm-heading span { text-decoration:none; }
 .cm-editor .cm-quote-line { border-left:3px solid var(--pink); padding-left:calc(1.25em - 3px); color:#b6abbc; }
 .cm-editor .cm-callout-line { border-left:3px solid #d93b8670; padding:2px 14px 2px calc(1.25em - 3px); background:#d93b8608; color:#cfc7d2; }

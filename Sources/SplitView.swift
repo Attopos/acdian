@@ -201,7 +201,8 @@ struct SplitMarkdownEditor: NSViewRepresentable {
             model.splitEdited(text,documentID:id)
         }
         if type == "external", let target = value["target"] as? String { model.external(target) }
-        if type == "titleEnded" { model.splitTitleEditEnded() }
+        if type == "titleTyped", let title = value["title"] as? String { model.splitTitleTyped(title) }
+        if type == "titleEnded", !model.splitTitleEditEnded() { view.evaluateJavaScript("window.acdianRefreshTitle()",completionHandler:nil) }
         // Links followed in the split page open there too.
         if type == "navigate", let target = value["target"] as? String {
             if target.hasPrefix("#") { scroll(to:String(target.dropFirst())); return }

@@ -210,7 +210,7 @@ struct ModuleTests {
         try Data("x".utf8).write(to:outside.appendingPathComponent("Pack/inner.txt"))
         app.importFiles([outside.appendingPathComponent("Lesson.md"),outside.appendingPathComponent("Pack")],to:PageDropTarget(folder:"Teaching",anchor:"Other.md",after:false))
         try await eventually("Dropped files are copied in") { app.index?.files.contains { $0.relativePath == "Teaching/Pack/inner.txt" } == true }
-        try check(fm.fileExists(atPath:root.appendingPathComponent("Teaching/Lesson 2.md").path) && (try? String(contentsOf:root.appendingPathComponent("Teaching/Lesson.md"),encoding:.utf8))?.contains("Lesson") == true,"A dropped file with a taken name gets a number and leaves the existing page alone")
+        try check(fm.fileExists(atPath:root.appendingPathComponent("Teaching/Lesson 2.md").path) && (try? String(contentsOf:root.appendingPathComponent("Teaching/Lesson.md"),encoding:.utf8))?.contains("alpha") == true,"A dropped file with a taken name gets a number and leaves the existing page alone")
         try check(fm.fileExists(atPath:outside.appendingPathComponent("Lesson.md").path),"The original file stays where it was")
         let teaching = PageOrganizer.loadOrder(root:root)["Teaching"] ?? []
         try check(teaching.firstIndex(of:"Lesson 2.md").map { $0 + 2 == teaching.firstIndex(of:"Other.md") } == true,"Dropped items land where they were dropped")

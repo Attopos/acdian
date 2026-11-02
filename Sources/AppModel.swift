@@ -95,8 +95,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         didSet { if !oldValue.sameBytes(text) { textFacts = nil; scheduleAutosave() } }
     }
     @Published var originalText = ""
-    // The title the open page had when opened or last renamed.
-    private var openTitle: String?
+    // A new name typed in the page's title block and not yet applied.
+    private var typedTitle: String?
     @Published private(set) var isDraft = false
     @Published var draftTitle = "" {
         didSet { if oldValue != draftTitle && isDraft { scheduleAutosave() } }
@@ -742,11 +742,10 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private func install(_ entry: VaultEntry, content: String, fragment: String, tab: UUID?) {
         showInTab(tab,path:entry.relativePath)
         followModule(to:entry.relativePath)
-        let titled = Self.titled(content,entry)
-        selected = entry; text = titled; originalText = content; openTitle = Self.leadingTitle(titled); clearDraftState(); anchor = fragment
+        selected = entry; text = Self.body(content,entry); originalText = content; typedTitle = nil; clearDraftState(); anchor = fragment
         pdfPage = fragment.hasPrefix("page=") ? (Int(fragment.dropFirst(5)) ?? 1) : (activeTabID.flatMap { tabMemory[$0]?.pdfPage } ?? 1)
         pdfPageCount = 0; insertion = nil; loading = false; status = entry.relativePath; editorDocumentID = UUID()
-        // A title just added is saved like any other edit.
+        // A heading just dropped is saved like any other edit.
         if dirty { scheduleAutosave() }
     }
     private func keepFrontText(_ text: String, stamp: FileStamp?) {
@@ -767,7 +766,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 self.tabMemory[tab]?.text = disk; self.tabMemory[tab]?.stamp = current
                 guard !disk.sameBytes(kept), self.editorDocumentID == documentID, self.activeTabID == tab,
                       self.selected?.relativePath == entry.relativePath, !self.dirty else { return }
-                self.originalText = disk; self.text = Self.titled(disk,entry); self.openTitle = Self.leadingTitle(self.text); self.status = entry.relativePath; self.editorDocumentID = UUID()
+                self.originalText = disk; self.text = Self.body(disk,entry); self.status = entry.relativePath; self.editorDocumentID = UUID()
                 if self.dirty { self.scheduleAutosave() }
             }
         }
@@ -1387,7 +1386,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     @Published var splitFocused = false
     private(set) var splitText = ""
     private var splitOriginal = ""
-    private var splitOpenTitle: String?
+    private var splitTypedTitle: String?
     private var splitSaveTask: Task<Void,Never>?
     static let textExtensions: Set<String> = ["txt","json","csv","css","js","yaml","yml","canvas","xml","html","log"]
     var splitDirty: Bool { splitEntry?.ext == "md" && !splitLoading && !splitText.sameBytes(splitOriginal) }
@@ -1397,7 +1396,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard selected != nil, !showingTrash, !showingMarket else { open(entry); return }
         guard entry.relativePath != currentPagePath, saveSplit() else { return }
         splitTitleEditEnded()
-        splitSaveTask?.cancel(); splitSaveTask = nil
+        splitSaveTask?.cancel(); splitSaveTask = nil; splitTypedTitle = nil
         splitPath = entry.relativePath; splitEntry = entry; splitText = ""; splitOriginal = ""; splitFocused = true
         let request = UUID(); splitDocumentID = request
         guard entry.ext == "md" || Self.textExtensions.contains(entry.ext) else { splitLoading = false; return }
@@ -1410,7 +1409,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 guard self.splitDocumentID == request else { return }
                 switch result {
                 case .success(let content):
-                    self.splitText = Self.titled(content,entry); self.splitOriginal = content; self.splitOpenTitle = Self.leadingTitle(self.splitText); self.splitLoading = false
+                    self.splitText = Self.body(content,entry); self.splitOriginal = content; self.splitLoading = false
                     if self.splitDirty { self.scheduleSplitSave() }
                 case .failure(let failure): self.splitLoading = false; self.error = self.localizedError(failure); self.closeSplit()
                 }
@@ -1465,35 +1464,41 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let title = line.dropFirst(2).trimmingCharacters(in:.whitespaces)
         return title.isEmpty ? nil : title
     }
-    /// Every Markdown page has a title. A page without one takes its file
-    /// name as a real first line, on a blank first line if it has one.
-    static func withTitle(_ text: String, name: String) -> String {
-        guard leadingTitle(text) == nil else { return text }
-        let first = text.prefix { !$0.isNewline }, trimmed = first.trimmingCharacters(in:.whitespaces)
-        if trimmed.isEmpty || trimmed == "#" { return "# \(name)" + (text.isEmpty ? "\n\n" : text.dropFirst(first.count)) }
-        let lineBreak = text.contains("\r\n") ? "\r\n" : text.contains("\r") ? "\r" : "\n"
-        return "# \(name)" + lineBreak + lineBreak + text
+    /// A page's title is its file name, shown in a block of its own above the
+    /// text. A first-line heading that only repeats the name is dropped from
+    /// the text; one that says something else stays there as a heading.
+    static func withoutNameHeading(_ text: String, name: String) -> String {
+        guard leadingTitle(text) == name else { return text }
+        var rest = Substring(text).drop { !$0.isNewline }
+        for _ in 0..<2 where rest.first?.isNewline == true { rest = rest.dropFirst() }
+        return String(rest)
     }
-    private static func titled(_ text: String, _ entry: VaultEntry) -> String {
-        entry.ext == "md" ? withTitle(text,name:entry.url.deletingPathExtension().lastPathComponent) : text
+    private static func body(_ text: String, _ entry: VaultEntry) -> String {
+        entry.ext == "md" ? withoutNameHeading(text,name:entry.url.deletingPathExtension().lastPathComponent) : text
     }
-    /// Editing the title has ended: the caret left it, or the page is being
-    /// left. A changed title renames the file, and the sidebar and tabs follow;
-    /// the editor stays on the page. A name another page has is refused.
-    func titleEditEnded() {
-        if isDraft { draftTitleEnded(); return }
-        guard let entry = selected, let started = openTitle, let title = Self.leadingTitle(text), title != started, save() else { return }
-        openTitle = title
-        if let renamed = renamePage(entry,title:title,reporting:true) { selected = renamed }
+    func titleTyped(_ title: String) { typedTitle = title }
+    func splitTitleTyped(_ title: String) { splitTypedTitle = title }
+    /// Editing the title block has ended: it lost the keyboard, or the page is
+    /// being left. A new name renames the file, and the sidebar and tabs follow;
+    /// the editor stays on the page. Returns false when the page keeps its old
+    /// name, so the block shows it again.
+    @discardableResult func titleEditEnded() -> Bool {
+        if isDraft { draftTitleEnded(); return true }
+        guard let title = typedTitle else { return true }
+        typedTitle = nil
+        guard let entry = selected, save(), let renamed = renamePage(entry,title:title,reporting:true) else { return false }
+        selected = renamed
+        return true
     }
-    func splitTitleEditEnded() {
-        guard let entry = splitEntry, let started = splitOpenTitle, let title = Self.leadingTitle(splitText), title != started, saveSplit() else { return }
-        splitOpenTitle = title
-        if let renamed = renamePage(entry,title:title,reporting:true) { splitEntry = renamed }
+    @discardableResult func splitTitleEditEnded() -> Bool {
+        guard let title = splitTypedTitle else { return true }
+        splitTypedTitle = nil
+        guard let entry = splitEntry, saveSplit(), let renamed = renamePage(entry,title:title,reporting:true) else { return false }
+        splitEntry = renamed
+        return true
     }
     func draftTitleEnded() {
-        guard isDraft, let file = draftFile, save(), let title = Optional(draftTitle.trimmingCharacters(in:.whitespacesAndNewlines)), !title.isEmpty,
-              let renamed = renamePage(file,title:title,reporting:true) else { return }
+        guard isDraft, let file = draftFile, save(), let renamed = renamePage(file,title:draftTitle,reporting:true) else { return }
         draftFile = renamed
     }
     /// Saves the open page before going to another, and finishes its title.
@@ -1503,7 +1508,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         return true
     }
     private func renamePage(_ entry: VaultEntry, title: String, reporting: Bool = false) -> VaultEntry? {
-        guard entry.ext == "md", let root = index?.root else { return nil }
+        guard entry.ext == "md", let root = index?.root, !title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return nil }
         let name = Self.draftFilenameBase(title) + ".md"
         guard name != entry.name else { return nil }
         let newPath: String
