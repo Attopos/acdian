@@ -1,4 +1,4 @@
-import { EditorState, EditorSelection, StateField, Compartment, findClusterBreak } from '@codemirror/state';
+import { EditorState, EditorSelection, StateField, StateEffect, Compartment, findClusterBreak } from '@codemirror/state';
 import { EditorView, ViewPlugin, Decoration, WidgetType, keymap, placeholder, drawSelection } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
@@ -69,6 +69,13 @@ function rawOffset(source, pos) {
   return index;
 }
 function applyRawChanges(transaction) {
+  // A note with plain \n line breaks is its own raw text: no offsets to
+  // translate and no snapshots to keep, so typing costs the same in any length.
+  if(!rawSource.includes('\r')&&lineBreak==='\n'){
+    let result='',end=0;
+    transaction.changes.iterChanges((from,to,_newFrom,_newTo,inserted)=>{result+=rawSource.slice(end,from)+inserted.toString();end=to;});
+    rawSource=result+rawSource.slice(end);return;
+  }
   const snapshot=rawSnapshots.get(transaction.newDoc.toString());
   if((transaction.isUserEvent('undo')||transaction.isUserEvent('redo'))&&snapshot!==undefined){rawSource=snapshot;return;}
   const source = rawSource; let result = '', end = 0;
@@ -169,15 +176,23 @@ function fragment(source,state) {
 function spacedBlock(holder) { const wrap=document.createElement('div'); wrap.className='cm-live-block-wrap'; wrap.append(holder); return wrap; }
 class BlockWidget extends WidgetType {
   constructor(source,from,kind,language,selected=false) { super(); Object.assign(this,{source,from,kind,language,selected}); }
-  eq(other) { return this.source===other.source && this.from===other.from && this.kind===other.kind && this.language===other.language && this.selected===other.selected; }
+  // The position is read from the DOM when needed, so text typed above the
+  // block moves it without redrawing it.
+  eq(other) { return this.source===other.source && this.kind===other.kind && this.language===other.language && this.selected===other.selected; }
   toDOM(view) {
     const holder=document.createElement('div'); holder.className='cm-live-block cm-block-'+this.kind+(this.selected?' cm-block-selected':'');
-    if(this.kind==='math') { const math=document.createElement('div'); try { katex.render(this.source.trim().replace(/^\$\$\s*|\s*\$\$$/g,''),math,{displayMode:true,throwOnError:false,trust:false}); } catch {math.textContent=this.source;} holder.append(math); }
+    if(this.kind==='math') {
+      // Formulas written back to back, $$a$$$$b$$, are separate display formulas.
+      for(const tex of this.source.trim().replace(/^\$\$\s*|\s*\$\$$/g,'').split(/\s*\$\$\s*\$\$\s*/)) {
+        const math=document.createElement('div'); try { katex.render(tex,math,{displayMode:true,throwOnError:false,trust:false}); } catch {math.textContent=tex;} holder.append(math);
+      }
+    }
     else holder.append(fragment(this.source,view.state));
     holder.addEventListener('mousedown',event=>{
       // A link inside the block opens on click instead of selecting the block.
       if(event.metaKey||event.ctrlKey||!metadata.editable||event.target.closest?.('a')) return;
-      event.preventDefault(); view.dispatch({selection:{anchor:this.from,head:Math.min(this.from+this.source.length,view.state.doc.length)}}); view.focus();
+      const from=view.posAtDOM(holder);
+      event.preventDefault(); view.dispatch({selection:{anchor:from,head:Math.min(from+this.source.length,view.state.doc.length)}}); view.focus();
     }); return spacedBlock(holder);
   }
   ignoreEvent() { return true; }
@@ -267,14 +282,65 @@ class DividerWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
+// Stops at the first text, so a long note costs nothing here.
+function blankDocument(doc) { for(const iter=doc.iter();!iter.next().done;)if(iter.value.trim())return false; return true; }
+
+// A long note is decorated only near the screen. Line and inline decorations
+// (lists, headings, bold, links, blank lines) cost time for every line they
+// cover, so they are built for the window around the viewport and around the
+// caret; blocks that change height (formulas, images, interactive blocks) are
+// found in the whole note, so the scroll height and jumps stay right far away.
+const WINDOW_LINES=300, WINDOW_SLACK=100, CARET_LINES=60;
+const setWindow=StateEffect.define();
+const windowField=StateField.define({
+  create:state=>({from:0,to:state.doc.line(Math.min(state.doc.lines,2*WINDOW_LINES)).to}),
+  update(value,tr) {
+    for(const effect of tr.effects)if(effect.is(setWindow))return effect.value;
+    return tr.docChanged?{from:tr.changes.mapPos(value.from,-1),to:tr.changes.mapPos(value.to,1)}:value;
+  }
+});
+// The ranges to decorate: the window, plus the lines around each selection
+// end, each widened to whole top-level blocks so a list, quote or table is
+// never cut in half; overlapping ranges are merged.
+function decorationRanges(state) {
+  const doc=state.doc,tree=syntaxTree(state),ranges=[];
+  const around=pos=>{const n=doc.lineAt(pos).number;return [doc.line(Math.max(1,n-CARET_LINES)).from,doc.line(Math.min(doc.lines,n+CARET_LINES)).to];};
+  const window=state.field(windowField,false);
+  ranges.push(window?[Math.min(window.from,doc.length),Math.min(window.to,doc.length)]:[0,doc.length]);
+  for(const range of state.selection.ranges){ranges.push(around(range.head));if(range.anchor!==range.head)ranges.push(around(range.anchor));}
+  const topLevel=(pos,side)=>{let node=tree.resolve(pos,side);while(node.parent&&node.parent.parent)node=node.parent;return node.parent?node:null;};
+  for(const range of ranges){const first=topLevel(range[0],1),last=topLevel(range[1],-1);if(first)range[0]=Math.min(range[0],doc.lineAt(first.from).from);if(last)range[1]=Math.max(range[1],doc.lineAt(last.to).to);}
+  ranges.sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  for(const range of ranges){const top=merged.at(-1);if(top&&range[0]<=top[1]+1)top[1]=Math.max(top[1],range[1]);else merged.push([...range]);}
+  return merged;
+}
+// After the viewport moves near the edge of the window, a new window is set
+// around it. It goes out in a microtask, before the next paint.
+const windowTracker=ViewPlugin.fromClass(class {
+  constructor(view){this.view=view;this.queued=false;this.schedule();}
+  update(update){if(update.viewportChanged||update.docChanged)this.schedule();}
+  schedule() {
+    if(this.queued)return;this.queued=true;
+    queueMicrotask(()=>{
+      this.queued=false;const view=this.view,doc=view.state.doc,current=view.state.field(windowField,false);
+      if(!current||!view.dom.isConnected)return;
+      const first=doc.lineAt(Math.min(view.viewport.from,doc.length)).number,last=doc.lineAt(Math.min(view.viewport.to,doc.length)).number;
+      if(current.from<=doc.line(Math.max(1,first-WINDOW_SLACK)).from&&current.to>=doc.line(Math.min(doc.lines,last+WINDOW_SLACK)).to)return;
+      view.dispatch({effects:setWindow.of({from:doc.line(Math.max(1,first-WINDOW_LINES)).from,to:doc.line(Math.min(doc.lines,last+WINDOW_LINES)).to})});
+    });
+  }
+});
+const inRanges=(ranges,from,to=from)=>ranges.some(([a,b])=>from<=b&&to>=a);
+
 // Markdown's separator lines have no visual paragraph of their own. A newly
 // created empty paragraph remains available for typing until the caret leaves.
 const inputBlankField=StateField.define({
-  create:state=>state.doc.toString().trim()?null:state.doc.lineAt(state.selection.main.head).from,
+  create:state=>blankDocument(state.doc)?state.doc.lineAt(state.selection.main.head).from:null,
   update(value,tr) {
     const range=tr.state.selection.main,line=tr.state.doc.lineAt(range.head);
     if(!range.empty||line.text.trim())return null;
-    if(tr.docChanged||!tr.state.doc.toString().trim())return line.from;
+    if(tr.docChanged||blankDocument(tr.state.doc))return line.from;
     const mapped=value===null?null:tr.changes.mapPos(value,1);
     return mapped===line.from?mapped:null;
   }
@@ -318,10 +384,17 @@ function typedIntoBlank(tr) {
   if(line.text.trim()||literalCodeLine(tr.startState,line)||!needsSeparatorAbove(tr.startState,line.number))return null;
   return tr.changes.mapPos(line.from,-1);
 }
+// The newlines that set typed text apart: one above it, and one below it too
+// when the next block follows right away, so the text does not run into it.
+function separatorChanges(doc,pos) {
+  const line=doc.lineAt(pos),newline=line.text.includes('\r')?'\r\n':'\n',changes=[{from:pos,insert:newline}];
+  if(line.number<doc.lines&&doc.line(line.number+1).text.trim())changes.push({from:line.to-(line.text.endsWith('\r')?1:0),insert:newline});
+  return changes;
+}
 const blankTypingFilter=EditorState.transactionFilter.of(tr=>{
   if(!tr.isUserEvent('input')||tr.isUserEvent('input.type.compose'))return tr;
   const pos=typedIntoBlank(tr);
-  return pos===null?tr:[tr,{changes:{from:pos,insert:tr.newDoc.lineAt(pos).text.includes('\r')?'\r\n':'\n'},sequential:true}];
+  return pos===null?tr:[tr,{changes:separatorChanges(tr.newDoc,pos),sequential:true}];
 });
 // An input method changes the line while it composes, so the newline waits
 // until the composition ends.
@@ -341,7 +414,7 @@ const blankTypingComposition=ViewPlugin.fromClass(class {
     if(pos>view.state.doc.length)return;
     const line=view.state.doc.lineAt(pos);
     if(line.from!==pos||!line.text.trim()||!needsSeparatorAbove(view.state,line.number))return;
-    view.dispatch({changes:{from:pos,insert:'\n'},userEvent:'input.type'});
+    view.dispatch({changes:separatorChanges(view.state.doc,pos),userEvent:'input.type'});
   }
 },{eventHandlers:{compositionend(){setTimeout(()=>this.flush(),0);}}});
 function literalCodeLine(state,line) {
@@ -370,16 +443,33 @@ const blankSelectionFilter=EditorState.transactionFilter.of(tr=>{
   return tr;
 });
 
-function decorations(state) {
+const containerNodes=new Set(['Document','BulletList','OrderedList','ListItem','Blockquote']);
+// Block widgets of the last build, by position, so a block whose text a
+// change did not touch keeps its widget without reading its text again.
+const blockWidgets=new WeakMap();
+function reusableBlocks(value,tr) {
+  const previous=value&&blockWidgets.get(value),reuse=new Map();
+  if(!previous)return reuse;
+  for(const block of previous) {
+    if(tr&&tr.docChanged){if(tr.changes.touchesRange(block.from,block.to))continue;reuse.set(tr.changes.mapPos(block.from,1)+':'+tr.changes.mapPos(block.to,-1),block.widget);}
+    else reuse.set(block.from+':'+block.to,block.widget);
+  }
+  return reuse;
+}
+function decorations(state,reuse=new Map(),blocks=[]) {
   const list=[], covered=[],quoteLines=new Set(),codeRanges=[],inlineCodeRanges=[],tableRanges=[];
   const tree=ensureSyntaxTree(state,state.doc.length,40)||syntaxTree(state);
-  const interactive=[];
-  tree.iterate({enter(node){if(node.name==='FencedCode'||node.name==='CodeBlock'){codeRanges.push([node.from,node.to]);if(node.name==='FencedCode')interactive.push(node.node);return false;}if(node.name==='InlineCode')inlineCodeRanges.push([node.from,node.to]);}});
+  const interactive=[],ranges=decorationRanges(state);
+  // Code blocks in the whole note: only containers are entered, so this
+  // touches each block once, not every word.
+  tree.iterate({enter(node){if(node.name==='FencedCode'||node.name==='CodeBlock'){codeRanges.push([node.from,node.to]);if(node.name==='FencedCode')interactive.push(node.node);return false;}return containerNodes.has(node.name);}});
+  for(const [from,to] of ranges)tree.iterate({from,to,enter(node){if(node.name==='FencedCode'||node.name==='CodeBlock')return false;if(node.name==='InlineCode')inlineCodeRanges.push([node.from,node.to]);}});
   const addBlock=(from,to,kind)=>{
     if(from===to) return false;
     // A block inside a selection is marked, so its content can be highlighted like text.
-    const selected=state.selection.ranges.some(range=>!range.empty&&range.from<to&&range.to>from);
-    list.push(Decoration.replace({widget:new BlockWidget(state.doc.sliceString(from,to),from,kind,state.facet(editorLanguage),selected),block:true}).range(from,to)); covered.push([from,to]); return true;
+    const selected=state.selection.ranges.some(range=>!range.empty&&range.from<to&&range.to>from),language=state.facet(editorLanguage),old=reuse.get(from+':'+to);
+    const widget=old instanceof BlockWidget&&old.kind===kind&&old.selected===selected&&old.language===language?old:new BlockWidget(state.doc.sliceString(from,to),from,kind,language,selected);
+    list.push(Decoration.replace({widget,block:true}).range(from,to)); covered.push([from,to]); blocks.push({from,to,widget}); return true;
   };
   // A closed interactive block runs unless the caret is inside it, where its source shows.
   for(const node of interactive) {
@@ -388,16 +478,23 @@ function decorations(state) {
     if(!(close?.name==='CodeMark'&&state.doc.lineAt(close.from).number===last.number&&last.number>first.number))continue;
     const from=first.from,to=last.to;
     if(metadata.editable&&state.selection.ranges.some(range=>range.head>from&&range.head<to||range.anchor>from&&range.anchor<to))continue;
-    const code=first.number+1<last.number?state.doc.sliceString(state.doc.line(first.number+1).from,state.doc.line(last.number-1).to):'';
-    list.push(Decoration.replace({widget:new InteractiveWidget(code,info.height,state.facet(editorLanguage)),block:true}).range(from,to));covered.push([from,to]);
+    const language=state.facet(editorLanguage),old=reuse.get(from+':'+to);
+    const widget=old instanceof InteractiveWidget&&old.height===info.height&&old.language===language?old:
+      new InteractiveWidget(first.number+1<last.number?state.doc.sliceString(state.doc.line(first.number+1).from,state.doc.line(last.number-1).to):'',info.height,language);
+    list.push(Decoration.replace({widget,block:true}).range(from,to));covered.push([from,to]);blocks.push({from,to,widget});
   }
   // Rendering is independent of selection. Textual blocks stay in the main
-  // editor, and non-text widgets remain rendered when selected.
+  // editor, and non-text widgets remain rendered when selected. Formulas and
+  // images are found in the whole note; callouts only in the decorated ranges.
+  let code=0;
   for(let n=1;n<=state.doc.lines;n++) {
     const line=state.doc.line(n);
-    if(codeRanges.some(([a,b])=>line.from>=a&&line.from<b))continue;
+    while(code<codeRanges.length&&codeRanges[code][1]<=line.from)code++;
+    if(code<codeRanges.length&&line.from>=codeRanges[code][0])continue;
+    if(!/^\s*[$!>]/.test(line.text))continue;
     if(/^>\s*\[![\w-]+\]/.test(line.text)) {
       let end=n; while(end<state.doc.lines && /^>/.test(state.doc.line(end+1).text)) end++;
+      if(!inRanges(ranges,line.from,state.doc.line(end).to)){n=end;continue;}
       const match=/^>\s*\[!([\w-]+)\][+-]?[ \t]*/.exec(line.text),titled=!!line.text.slice(match[0].length);
       for(let row=n;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line'+(row===n?' cm-callout-first'+(titled?' cm-callout-titled':''):'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
       list.push(Decoration.widget({widget:new CalloutKindWidget(match[1],titled),side:1}).range(line.from+match[0].length));
@@ -408,8 +505,9 @@ function decorations(state) {
     } else if(/^\s*\$\$(?!\s*\$\$\s*$).+\$\$\s*$/.test(line.text)) addBlock(line.from,line.to,'math');
     else if(/^\s*(?:!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\))\s*$/.test(line.text)) addBlock(line.from,line.to,'image');
   }
-  const within=(from,to)=>covered.some(([a,b])=>from>=a&&to<=b);
-  tree.iterate({enter(node){
+  covered.sort((a,b)=>a[0]-b[0]);
+  const within=(from,to)=>{let lo=0,hi=covered.length-1;while(lo<=hi){const mid=(lo+hi)>>1;if(covered[mid][0]>from)hi=mid-1;else{if(to<=covered[mid][1])return true;lo=mid+1;}}return false;};
+  for(const [rangeFrom,rangeTo] of ranges)tree.iterate({from:rangeFrom,to:rangeTo,enter(node){
     if(within(node.from,node.to)) return false;
     const name=node.name;
     if(name==='Blockquote') {
@@ -425,7 +523,7 @@ function decorations(state) {
       list.push(Decoration.line({class:'cm-divider-line'+(selected?' cm-divider-selected':'')}).range(line.from));
       list.push(Decoration.mark({class:'cm-divider-syntax'}).range(line.from,line.to));
       list.push(Decoration.widget({widget:new DividerWidget(line.from,line.to,state.facet(editorLanguage)),side:-1}).range(line.from));
-      covered.push([line.from,line.to]);return false;
+      covered.push([line.from,line.to]);covered.sort((a,b)=>a[0]-b[0]);return false;
     }
     if(name==='Table') {list.push(...tableDecorations(state,node.node));tableRanges.push([node.from,node.to]);}
     if(/^ATXHeading[1-6]$/.test(name)) {
@@ -451,7 +549,7 @@ function decorations(state) {
       return false;
     }
   }});
-  for(let n=1;n<=state.doc.lines;n++) {
+  for(const [rangeFrom,rangeTo] of ranges)for(let n=state.doc.lineAt(rangeFrom).number,end=state.doc.lineAt(rangeTo).number;n<=end;n++) {
     const line=state.doc.line(n); if(within(line.from,line.to))continue;
     const insideCode=tree.resolveInner(line.from+Math.min(line.length,1),1); let code=false;
     for(let node=insideCode;node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')code=true;
@@ -510,9 +608,9 @@ function decorations(state) {
     }
     if(from<range.to)list.push(Decoration.mark({class:'cm-selected-text'}).range(from,range.to));
   }
-  return Decoration.set(list,true);
+  const set=Decoration.set(list,true);blockWidgets.set(set,blocks);return set;
 }
-const liveField=StateField.define({create:decorations,update(value,tr){return tr.docChanged||tr.selection||tr.startState.field(inputBlankField)!==tr.state.field(inputBlankField)||tr.startState.facet(editorLanguage)!==tr.state.facet(editorLanguage)||syntaxTree(tr.startState)!==syntaxTree(tr.state)?decorations(tr.state):value;},provide:field=>[EditorView.decorations.from(field),EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>value.spec.block===true}))]});
+const liveField=StateField.define({create:state=>decorations(state),update(value,tr){return tr.docChanged||tr.selection||tr.startState.field(windowField)!==tr.state.field(windowField)||tr.startState.field(inputBlankField)!==tr.state.field(inputBlankField)||tr.startState.facet(editorLanguage)!==tr.state.facet(editorLanguage)||syntaxTree(tr.startState)!==syntaxTree(tr.state)?decorations(tr.state,reusableBlocks(value,tr)):value;},provide:field=>[EditorView.decorations.from(field),EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>value.spec.block===true}))]});
 // The caret is hidden while the selection rests on a divider, which shows as selected instead.
 const dividerCaret=EditorView.editorAttributes.compute(['selection',liveField],state=>{
   if(!state.selection.ranges.every(range=>range.empty))return {};
@@ -521,10 +619,13 @@ const dividerCaret=EditorView.editorAttributes.compute(['selection',liveField],s
   return divider?{class:'cm-caret-hidden'}:{};
 });
 
-function boldDelimiters(state) {
+// Which ranges each set of delimiters covers, so a caret moving within them
+// does not rebuild the set.
+const boldCoverage=new WeakMap();
+function boldDelimiters(state,windows=decorationRanges(state)) {
   const ranges=[],tree=ensureSyntaxTree(state,state.doc.length,40)||syntaxTree(state),code=[],inline=[];
   const add=(from,to,extra={})=>{if(to>from)ranges.push(Decoration.mark({class:'cm-format-delimiter'+(extra.bold?' cm-live-bold-delimiter':''),...extra}).range(from,to));};
-  tree.iterate({enter(node){
+  for(const [windowFrom,windowTo] of windows)tree.iterate({from:windowFrom,to:windowTo,enter(node){
     if(node.name==='FencedCode'||node.name==='CodeBlock') {
       code.push([node.from,node.to]);
       if(node.name==='FencedCode') {
@@ -550,7 +651,7 @@ function boldDelimiters(state) {
     const spec={bold:node.name==='StrongEmphasis',boldFrom:node.from,boldTo:node.to,bodyFrom:first.to,bodyTo:last.from};
     add(first.from,first.to,spec);add(last.from,last.to,spec);
   }});
-  for(let n=1;n<=state.doc.lines;n++) {
+  for(const [windowFrom,windowTo] of windows)for(let n=state.doc.lineAt(windowFrom).number,end=state.doc.lineAt(windowTo).number;n<=end;n++) {
     const line=state.doc.line(n);
     if(code.some(([a,b])=>line.from>=a&&line.from<b))continue;
     const callout=/^>\s*\[![\w-]+\][+-]?[ \t]*/.exec(line.text),quote=/^ {0,3}(?:>[ \t]+)+/.exec(line.text);
@@ -569,7 +670,7 @@ function boldDelimiters(state) {
       const spec={boldFrom:from,boldTo:to,bodyFrom:from+2,bodyTo:to-2};add(from,from+2,spec);add(to-2,to,spec);
     }
   }
-  return Decoration.set(ranges,true);
+  const set=Decoration.set(ranges,true);boldCoverage.set(set,windows);return set;
 }
 function removeBlockPrefix(view) {
   const {state}=view,range=state.selection.main;
@@ -637,7 +738,11 @@ function deleteAroundBold(view,forward) {
 }
 const boldDelimiterField=StateField.define({
   create:boldDelimiters,
-  update(value,tr){return tr.docChanged||syntaxTree(tr.startState)!==syntaxTree(tr.state)?boldDelimiters(tr.state):value;},
+  update(value,tr){
+    if(tr.docChanged||syntaxTree(tr.startState)!==syntaxTree(tr.state)||tr.startState.field(windowField)!==tr.state.field(windowField))return boldDelimiters(tr.state);
+    const covered=boldCoverage.get(value)||[];
+    return tr.selection&&tr.state.selection.ranges.some(range=>!covered.some(([a,b])=>range.from>=a&&range.to<=b))?boldDelimiters(tr.state):value;
+  },
   provide:field=>[
     EditorView.decorations.from(field),
     EditorView.atomicRanges.of(view=>view.state.field(field)),
@@ -666,6 +771,21 @@ function leaveEmptyBlock(view,line) {
   view.dispatch({changes:{from:line.from,to:line.to,insert:next&&next.text.trim()?'\n':''},selection:{anchor:line.from},scrollIntoView:true,userEvent:'input'});
   return true;
 }
+// Enter on an empty line right above Markdown's hidden separator moves onto
+// that separator instead of adding a line: the separator becomes the new empty
+// line, so two Enters after a paragraph leave one empty line, not two, once
+// the caret moves on. The document keeps the same text; the change only marks
+// the line as the one being typed into.
+function separatorEnter(view) {
+  const {state}=view,range=state.selection.main;
+  if(!range.empty||state.selection.ranges.length!==1||inCode(state,range.head))return false;
+  const line=state.doc.lineAt(range.head);
+  if(line.text.trim()||line.number+1>=state.doc.lines)return false;
+  const next=state.doc.line(line.number+1);
+  if(next.text.trim()||!state.doc.line(line.number+2).text.trim()||literalCodeLine(state,state.doc.line(line.number+2)))return false;
+  view.dispatch({changes:[{from:line.from,insert:state.doc.sliceString(next.from,next.to+1)},{from:next.from,to:next.to+1}],selection:{anchor:line.from+next.length+1},scrollIntoView:true,userEvent:'input'});
+  return true;
+}
 function simpleListBackspace(view) {
   const range=view.state.selection.main;if(!range.empty)return false;
   if(inCode(view.state,range.head))return false;
@@ -675,12 +795,12 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),windowField,windowTracker,boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
   pageTitle.of(pageTitleExtension()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
-  keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'Enter',run:simpleListEnter},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
+  keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
   EditorView.updateListener.of(update=>{
     if(applyingExternal)return;
     if(update.docChanged){for(const tr of update.transactions)if(tr.docChanged){applyRawChanges(tr);revision++;}lastSource=rawSource;const selection=update.state.selection.main;post({type:'change',text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:selection.anchor,selectionHead:selection.head});}

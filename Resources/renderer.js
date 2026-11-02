@@ -75,7 +75,8 @@
     {
       name: 'mathBlock', level: 'block', start: src => src.indexOf('$$'),
       tokenizer(src) {
-        const match = /^\$\$[ \t]*\n?([\s\S]+?)\n?\$\$(?:[ \t]*\n|$)/.exec(src);
+        // A formula may be followed directly by the next one: $$a$$$$b$$.
+        const match = /^\$\$[ \t]*\n?([\s\S]+?)\n?\$\$(?:[ \t]*\n|$|(?=\$\$))/.exec(src);
         if (match) return { type: 'mathBlock', raw: match[0], text: match[1] };
       }, renderer(token) { return renderMath(token.text, true); }
     },

@@ -1425,3 +1425,52 @@ test('clicks below rendered blocks land on the clicked line', async t => {
     assert.equal(clicked, line.number, `click on “${line.text}”`);
   }
 });
+
+test('display formulas written back to back on one line render one by one', async t => {
+  const { page } = await editor(t, 'Before\n\n$$T\\leftrightarrow A $$$$C\\leftrightarrow G  $$$$G\\leftrightarrow C$$\n\nAfter\n');
+  await page.waitForTimeout(200);
+  const math = await page.evaluate(() => ({ displays: document.querySelectorAll('.cm-block-math .katex-display').length, errors: document.querySelectorAll('.cm-block-math .katex-error').length }));
+  assert.deepEqual(math, { displays: 3, errors: 0 });
+});
+
+test('two Enters between paragraphs leave one empty line, not two', async t => {
+  for (const [name, source, expected, shown] of [
+    ['paragraphs', 'A\n\nB\n', 'A\n\n\nB\n', ['A', '', 'B']],
+    ['paragraph before a list', 'A\n\n- B\n', 'A\n\n\n- B\n', ['A', '', '•B']]
+  ]) await t.test(name, async sub => {
+    const r = await editor(sub, source, { fontSize: 16 });
+    await r.position(1);
+    await r.page.keyboard.press('Enter');
+    await r.page.keyboard.press('Enter');
+    assert.equal((await r.get()).text, expected);
+    assert.equal((await r.get()).selection.anchor, 3, 'the caret is on the new empty line');
+    await r.position(0);
+    assert.deepEqual(await visibleLines(r.page), shown);
+  });
+});
+
+test('a long note far from the top renders and takes clicks like the top does', async t => {
+  const section = index => `## Section ${index}\n\nSome **bold** text and a [link](https://example.com).\n\n$$\nx_${index}^2\n$$\n\n- item ${index} one\n- item ${index} two\n\n`;
+  const source = Array.from({ length: 400 }, (_, index) => section(index)).join('');
+  const { page } = await editor(t, source);
+  const raw = await page.evaluate(async () => {
+    const scroller = window.acdianEditor.scrollDOM;
+    scroller.scrollTop = scroller.scrollHeight * 0.9;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return [...document.querySelectorAll('.cm-content > .cm-line')].filter(line => {
+      const rect = line.getBoundingClientRect();
+      return rect.bottom > 0 && rect.top < innerHeight && (/^(?:- |\$\$)/.test(line.textContent) || /^## /.test(line.textContent) && !line.classList.contains('cm-heading'));
+    }).length;
+  });
+  assert.equal(raw, 0, 'lines far down are decorated in the first frames after the jump');
+  const target = await page.evaluate(() => {
+    const view = window.acdianEditor;
+    const line = [...view.contentDOM.querySelectorAll('.cm-list-line')].find(element => { const rect = element.getBoundingClientRect(); return rect.top > 100 && rect.bottom < innerHeight - 100; });
+    const rect = line.getBoundingClientRect();
+    return { x: rect.left + rect.width * 0.3, y: rect.top + rect.height / 2, line: view.state.doc.lineAt(view.posAtDOM(line, 0)).number };
+  });
+  await page.mouse.click(target.x, target.y);
+  assert.equal(await page.evaluate(() => window.acdianEditor.state.doc.lineAt(window.acdianEditor.state.selection.main.head).number), target.line);
+  await page.keyboard.insertText('Z');
+  assert.ok((await page.evaluate(() => window.acdianGetDocument().text)).split('\n')[target.line - 1].includes('Z'));
+});
