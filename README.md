@@ -36,7 +36,9 @@ ACdian 自动准备本地页面的保存位置，打开后即可使用，无需�
 
 安装 Xcode Command Line Tools 后，在本目录执行 `./build.sh`。
 不需要网络，渲染依赖与字体均已包含，许可证在 `Resources/vendor`。
-产物写入本目录的 `dist`（可用 `ACDIAN_OUTPUT_DIR` 指定），临时签名的构建缓存位于 `/private/tmp/acdian-build-<UID>`。
+压缩包写入本目录的 `dist`（可用 `ACDIAN_OUTPUT_DIR` 指定），可直接打开的 `ACdian.app` 位于 `/private/tmp/acdian-build-<UID>`，每次构建都会覆盖。
+
+安装到本机请执行 `./install.sh`：构建后退出正在运行的 ACdian，用新版替换 `/Applications/ACdian.app`，再重新打开。本机只保留这一份，不留旧版本和备份；旧版本可从 git 重新构建。
 
 ## 模块
 
