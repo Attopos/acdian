@@ -170,7 +170,7 @@ struct ContentView: View {
                         Button { model.anchor = heading.title; model.activeHeading = index } label: { Text(heading.title).font(.system(size:13)).foregroundStyle(index == model.activeHeading ? Color.acPink : heading.level <= 2 ? Color.primary.opacity(0.85) : Color.secondary).lineLimit(2).multilineTextAlignment(.leading).padding(.leading,CGFloat(max(0,heading.level-1))*12).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)
-            }
+            }.scrollIndicators(.never) // .hidden still shows when the system always shows scroll bars.
         }.padding(.leading,24).padding(.trailing,8).padding(.top,43).padding(.bottom,floating ? 16 : 0).frame(width:220,alignment:.topLeading)
         .background { if floating { RoundedRectangle(cornerRadius:10).fill(Color.canvas).shadow(color:.black.opacity(0.25),radius:16,y:6).padding(.top,30).padding(.leading,10) } }
         .frame(maxHeight:.infinity,alignment:.top)
