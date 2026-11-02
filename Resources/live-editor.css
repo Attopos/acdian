@@ -3,10 +3,10 @@ html,body { height:100%; margin:0; }
 #editor { min-height:100%; }
 .cm-editor { background:#111114; color:#e5e3e8; height:100vh; min-height:100vh; font-size:var(--editor-font-size); }
 .cm-editor.cm-focused { outline:none; }
-.cm-editor .cm-scroller { font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; font-size:inherit; line-height:1.6; overflow:auto; }
+.cm-editor .cm-scroller { font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; font-size:inherit; line-height:1.7; overflow:auto; }
 .cm-editor .cm-content { max-width:860px; width:100%; margin:0 auto; padding:43px 58px 120px; caret-color:#e57bad; min-height:100vh; }
 .draft-page .cm-editor .cm-content { padding-top:12px; }
-.cm-editor .cm-line { margin:0!important; padding:0; min-height:1.6em; }
+.cm-editor .cm-line { margin:0!important; padding:0; min-height:1.7em; }
 /* Each document line ends with a paragraph gap larger than the wrapped-line
    spacing. List items, quotes and callouts stay closer; code, tables, blank
    lines, dividers and headings keep their own spacing. */
@@ -14,7 +14,7 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-content > .cm-line.cm-list-line, .cm-editor .cm-content > .cm-line.cm-quote-line:not(.cm-callout-line) { padding-bottom:calc(var(--editor-font-size) * .15); }
 .cm-editor .cm-blank-line { height:0!important; min-height:0!important; line-height:0!important; padding:0!important; font-size:0!important; }
 .cm-editor .cm-blank-line.cm-block-gap { height:calc(var(--editor-font-size) * .9)!important; }
-.cm-editor .cm-blank-line.cm-input-blank-line { height:auto!important; min-height:1.6em!important; line-height:1.6!important; font-size:inherit!important; }
+.cm-editor .cm-blank-line.cm-input-blank-line { height:auto!important; min-height:1.7em!important; line-height:1.7!important; font-size:inherit!important; }
 /* Reader image spacing must not expand CodeMirror's zero-width caret buffers. */
 .cm-editor .cm-widgetBuffer { margin:0!important; padding:0!important; border:0!important; border-radius:0; cursor:text; }
 .cm-editor .cm-cursor,.cm-editor .cm-dropCursor { border-left-color:#e57bad; }
@@ -57,7 +57,7 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-task-widget { display:inline-flex; align-items:center; width:1.55em; vertical-align:middle; }
 .cm-editor .cm-task-widget input { accent-color:#d93b86; margin:0 6px 0 2px; width:14px; height:14px; cursor:pointer; }
 .cm-editor .cm-live-link { color:#e67dae; background:#d93b860b; border-radius:3px; text-decoration:underline; text-decoration-color:#d93b8645; text-underline-offset:4px; cursor:text; }
-.cm-editor .cm-code-line { font-family:"SFMono-Regular",Menlo,monospace; font-size:.85em; line-height:1.65; padding-left:16px; padding-right:16px; background:#19191e; }
+.cm-editor .cm-code-line { font-family:"SFMono-Regular",Menlo,monospace; font-size:.85em; line-height:1.75; padding-left:16px; padding-right:16px; background:#19191e; }
 .cm-editor .cm-code-first { border-radius:8px 8px 0 0; padding-top:8px; }
 .cm-editor .cm-code-last { border-radius:0 0 8px 8px; padding-bottom:8px; }
 .cm-editor .cm-code-first.cm-code-last { border-radius:8px; }
@@ -83,15 +83,19 @@ html,body { height:100%; margin:0; }
 @media(max-width:700px){.cm-editor .cm-content{padding:30px 28px 90px;}.cm-editor .cm-heading-1{font-size:1.875em;}}
 @media(max-width:450px){.cm-editor .cm-content{padding:24px 19px 80px;}}
 .cm-editor .cm-heading span { text-decoration:none; }
-.cm-editor .cm-quote-line { border-left:3px solid var(--pink); padding-left:14px; color:#b6abbc; }
-.cm-editor .cm-callout-line { border-left:3px solid #d93b8670; padding:2px 14px; background:#d93b8608; color:#cfc7d2; }
-.cm-editor .cm-quote-list-line { padding-left:calc(14px + var(--cm-list-hang)); text-indent:calc(var(--cm-list-hang) * -1); }
+.cm-editor .cm-quote-line { border-left:3px solid var(--pink); padding-left:calc(1.25em - 3px); color:#b6abbc; }
+.cm-editor .cm-callout-line { border-left:3px solid #d93b8670; padding:2px 14px 2px calc(1.25em - 3px); background:#d93b8608; color:#cfc7d2; }
+.cm-editor .cm-quote-list-line { padding-left:calc(1.25em - 3px + var(--cm-list-hang)); text-indent:calc(var(--cm-list-hang) * -1); }
 .cm-editor .cm-callout-first { border-radius:7px 7px 0 0; padding-top:8px; font-weight:600; }
 .cm-editor .cm-callout-last { border-radius:0 0 7px 7px; padding-bottom:8px; }
 .cm-editor .cm-callout-first.cm-callout-last { border-radius:7px; }
+/* A long callout title wraps under its text, not under the mark. */
+.cm-editor .cm-callout-titled { padding-left:calc(1.25em - 3px + 1.2em); text-indent:-1.2em; }
+.cm-editor .cm-callout-titled * { text-indent:0; }
 .cm-editor .cm-callout-kind { margin-right:.55em; color:#e57bad; font-size:.85em; font-weight:650; white-space:nowrap; }
+.cm-editor .cm-callout-mark { display:inline-block; width:calc(1.2em / .85); margin-right:0; }
 .cm-editor .cm-table-row { display:block; white-space:nowrap; min-height:0; padding:0; border:1px solid #ffffff18; border-top:0; line-height:0; background-image:linear-gradient(to right,transparent calc(100% - 1px),#ffffff18 calc(100% - 1px)); background-size:calc(100% / var(--table-columns)) 100%; background-repeat:repeat-x; }
-.cm-editor .cm-table-cell { display:inline-block; box-sizing:border-box; width:calc(100% / var(--table-columns)); vertical-align:top; padding:6px 10px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.6; }
+.cm-editor .cm-table-cell { display:inline-block; box-sizing:border-box; width:calc(100% / var(--table-columns)); vertical-align:top; padding:6px 10px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; }
 .cm-editor .cm-table-header { border-top:1px solid #ffffff18; border-radius:6px 6px 0 0; background-color:#151519; font-weight:600; }
 .cm-editor .cm-table-row ::selection { background:transparent; }
 .cm-editor .cm-table-header span { text-decoration:none; }
@@ -109,7 +113,7 @@ html,body { height:100%; margin:0; }
 .cm-slash-empty { color:#a49da8; padding:18px 10px; font-size:13px; }
 .cm-editor .cm-divider-line { position:relative; }
 .cm-editor .cm-divider-syntax { opacity:0; }
-.cm-editor .cm-live-divider { position:absolute; inset:0; display:flex; align-items:center; min-height:1.6em; cursor:text; }
+.cm-editor .cm-live-divider { position:absolute; inset:0; display:flex; align-items:center; min-height:1.7em; cursor:text; }
 .cm-editor .cm-live-divider hr { width:100%; margin:0; border:0; border-top:1px solid #ffffff29; }
 .cm-editor .cm-tooltip.cm-format-toolbar { border:1px solid #ffffff24; border-radius:9px; background:#252428; box-shadow:0 10px 32px #0006; font:13px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; color:#e5e3e8; }
 .cm-format-buttons { display:flex; align-items:center; gap:2px; padding:4px; }

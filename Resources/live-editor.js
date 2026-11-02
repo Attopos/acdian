@@ -238,7 +238,7 @@ class InlineMathWidget extends WidgetType {
 class CalloutKindWidget extends WidgetType {
   constructor(kind,title) {super();Object.assign(this,{kind,title});}
   eq(other) {return this.kind===other.kind&&this.title===other.title;}
-  toDOM() {const label=document.createElement('span');label.className='cm-callout-kind';label.textContent=this.title?'✦ ':'✦ '+this.kind.toUpperCase();label.setAttribute('aria-hidden','true');return label;}
+  toDOM() {const label=document.createElement('span');label.className='cm-callout-kind'+(this.title?' cm-callout-mark':'');label.textContent=this.title?'✦ ':'✦ '+this.kind.toUpperCase();label.setAttribute('aria-hidden','true');return label;}
 }
 class HeadingHintWidget extends WidgetType {
   constructor(level) { super(); this.level = level; }
@@ -332,9 +332,9 @@ function decorations(state) {
     if(codeRanges.some(([a,b])=>line.from>=a&&line.from<b))continue;
     if(/^>\s*\[![\w-]+\]/.test(line.text)) {
       let end=n; while(end<state.doc.lines && /^>/.test(state.doc.line(end+1).text)) end++;
-      for(let row=n;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line'+(row===n?' cm-callout-first':'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
-      const match=/^>\s*\[!([\w-]+)\][+-]?[ \t]*/.exec(line.text);
-      list.push(Decoration.widget({widget:new CalloutKindWidget(match[1],!!line.text.slice(match[0].length)),side:1}).range(line.from+match[0].length));
+      const match=/^>\s*\[!([\w-]+)\][+-]?[ \t]*/.exec(line.text),titled=!!line.text.slice(match[0].length);
+      for(let row=n;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line'+(row===n?' cm-callout-first'+(titled?' cm-callout-titled':''):'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
+      list.push(Decoration.widget({widget:new CalloutKindWidget(match[1],titled),side:1}).range(line.from+match[0].length));
       n=end;
     } else if(/^\s*\$\$\s*$/.test(line.text)) {
       let end=n+1; while(end<=state.doc.lines&&!/^\s*\$\$\s*$/.test(state.doc.line(end).text)) end++;

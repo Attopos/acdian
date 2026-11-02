@@ -797,8 +797,8 @@ test('Enter uses compact line spacing and preserves normal Markdown newlines', a
     const style = getComputedStyle(document.querySelector('.cm-scroller'));
     return { font: parseFloat(style.fontSize), lineHeight: parseFloat(style.lineHeight), distance: lines[1].getBoundingClientRect().top - lines[0].getBoundingClientRect().top };
   });
-  assert.ok(Math.abs(layout.lineHeight / layout.font - 1.6) < 0.02);
-  assert.ok(layout.distance >= 25 && layout.distance <= 27, 'adjacent 16px lines stay close to the 25.6px line height');
+  assert.ok(Math.abs(layout.lineHeight / layout.font - 1.7) < 0.02);
+  assert.ok(layout.distance >= 27 && layout.distance <= 29, 'adjacent 16px lines stay close to the 27.2px line height');
 });
 
 test('every active rich format keeps syntax hidden for carets, raw-marker positions and spanning selections', async t => {
@@ -914,7 +914,7 @@ test('heading, blank-line and divider geometry is compact and unchanged by activ
   assert.ok(before.blanks.length >= 8);
   for (const height of before.blanks) assert.ok(Math.abs(height) <= 0.5,'separator blank lines have zero visual height');
   for (const gap of before.headingGaps) assert.ok(Math.abs(gap) <= 0.5,'separator blank lines add no visual gap after headings');
-  assert.ok(before.divider >= 25 && before.divider <= 27,'a divider occupies one ordinary line without extra padding');
+  assert.ok(before.divider >= 27 && before.divider <= 29,'a divider occupies one ordinary line without extra padding');
   assert.ok(Math.abs(before.dividerGap) <= 0.5,'separator blank lines add no visual gap after a divider');
   for (const margins of before.bufferMargins) assert.deepEqual(margins,['0px','0px','0px','0px'],'internal caret buffers must not inherit reader-image margins');
   await r.position(0,source.length);
@@ -960,7 +960,7 @@ test('Enter creates a writable normal-height paragraph while existing separators
   const input = r.page.locator('.cm-input-blank-line');
   assert.equal(await input.count(),1,'only the newly created paragraph has a visible input line');
   const height = await input.evaluate(line=>line.getBoundingClientRect().height);
-  assert.ok(height>=25&&height<=27,'the active empty paragraph retains the normal 25.6px body line height');
+  assert.ok(height>=27&&height<=29,'the active empty paragraph retains the normal 27.2px body line height');
   const separators = await r.page.locator('.cm-blank-line:not(.cm-input-blank-line)').evaluateAll(lines=>lines.map(line=>line.getBoundingClientRect().height));
   assert.ok(separators.length>0);
   for (const separator of separators) assert.ok(Math.abs(separator)<=0.5);
@@ -1008,7 +1008,7 @@ test('an all-whitespace note starts with one visible writable input line and pre
       const input = r.page.locator('.cm-input-blank-line');
       assert.equal(await input.count(),1,'a whitespace-only note always exposes its current input line');
       const height = await input.evaluate(line=>line.getBoundingClientRect().height);
-      assert.ok(height>=25&&height<=27,'the input line has the normal body line height');
+      assert.ok(height>=27&&height<=29,'the input line has the normal body line height');
     };
     const before = await r.get();
     await assertInput();
@@ -1246,5 +1246,48 @@ test('caret movement and list marker editing still work on a hanging list line',
   await r.page.keyboard.press('Backspace');
   assert.equal((await r.get()).text, `${text}\n`, 'Backspace at the start of the text removes the marker');
   await r.page.keyboard.press('Meta+z');
+  assert.equal((await r.get()).text, source);
+});
+
+test('quotes and callouts wrap inside the text column, aligned under their text and with list text', async t => {
+  const long = '这是一段足够长的文字，用来观察换行以后续行是否对齐，右边界是否和正文相同。'.repeat(4);
+  const source = [long, '', `> 引用${long}`, '', `> 外层`, `> > 嵌套${long}`, '', `> **加粗${long}** 和 \`code\` 和 [链接](https://example.com)`, '', `> - 引用列表${long}`, '', `> [!note] 提示标题${long}`, `> 提示正文${long}`, `> 2. 提示编号${long}`, '', `- 普通列表${long}`, ''].join('\n');
+  const r = await editor(t, source);
+  for (const width of [1100, 700, 420]) {
+    await r.page.setViewportSize({ width, height: 3000 });
+    await r.page.waitForTimeout(100);
+    const result = await r.page.evaluate(() => {
+      const content = document.querySelector('.cm-content'), style = getComputedStyle(content), box = content.getBoundingClientRect();
+      const right = box.right - parseFloat(style.paddingRight);
+      const rows = [...document.querySelectorAll('.cm-line')].filter(line => line.textContent.includes('这是一段')).map(line => {
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        const glyphs = [];
+        for (let node; (node = walker.nextNode());) {
+          if (node.parentElement.closest('.cm-list-bullet,.cm-callout-kind')) continue;
+          for (let i = 0; i < node.length; i++) {
+            if (/\s/.test(node.data[i])) continue;
+            const range = document.createRange();
+            range.setStart(node, i);
+            range.setEnd(node, i + 1);
+            const rect = [...range.getClientRects()].filter(item => item.width > 0.5).pop();
+            if (rect) glyphs.push({ char: node.data[i], left: rect.left, right: rect.right, middle: rect.top + rect.height / 2 });
+          }
+        }
+        const first = glyphs.find(glyph => /[引外嵌加提普这]/.test(glyph.char));
+        const others = glyphs.filter(glyph => Math.abs(glyph.middle - first.middle) > 8);
+        return { className: line.className, first: first.left, wrapped: Math.min(...others.map(glyph => glyph.left)), right: Math.max(...glyphs.map(glyph => glyph.right)), box: line.getBoundingClientRect().right };
+      });
+      return { right, rows, scroll: document.querySelector('.cm-scroller').scrollWidth - document.querySelector('.cm-scroller').clientWidth };
+    });
+    assert.equal(result.scroll, 0, `no sideways scrolling at ${width}px`);
+    for (const row of result.rows) {
+      assert.ok(row.right <= result.right + 0.5, `${row.className} text stays in the column at ${width}px: ${row.right} > ${result.right}`);
+      assert.ok(row.box <= result.right + 0.5, `${row.className} box stays in the column at ${width}px`);
+      assert.ok(Math.abs(row.first - row.wrapped) < 1, `${row.className} wraps under its text at ${width}px: ${row.first} -> ${row.wrapped}`);
+    }
+    const plain = result.rows.find(row => /cm-quote-line/.test(row.className) && !/cm-callout|cm-quote-list/.test(row.className));
+    const list = result.rows.find(row => /cm-list-line/.test(row.className));
+    assert.ok(Math.abs(plain.first - list.first) < 1, `quote text starts where list text starts at ${width}px`);
+  }
   assert.equal((await r.get()).text, source);
 });
