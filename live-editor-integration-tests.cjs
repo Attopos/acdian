@@ -1197,3 +1197,54 @@ test('changing language refreshes an open slash menu without resetting its query
   await r.page.keyboard.press('Meta+z');
   assert.equal((await r.get()).text, '/');
 });
+
+test('wrapped list lines start under the item text, at every indent and marker', async t => {
+  const long = '这是一段足够长的文字，用来观察换行以后续行是否和第一行文字的开头对齐。'.repeat(4);
+  // Leading tabs are left out: Chromium places their stops about 2px off, WebKit (the app) does not.
+  const source = [`- ${long}`, `  - ${long}`, `    - ${long}`, '', `1. ${long}`, `10. ${long}`, '', `- [ ] ${long}`, `  - [x] ${long}`, '', `> - ${long}`, '', '> [!note] 提示', `> 2. ${long}`, ''].join('\n');
+  const r = await editor(t, source);
+  const rows = await r.page.locator('.cm-list-line, .cm-quote-list-line').evaluateAll(lines => lines.map(line => {
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+    let longest = null;
+    for (let node; (node = walker.nextNode());) if (!longest || node.length > longest.length) longest = node;
+    const range = document.createRange();
+    // Quote markers stay as text, so the node can begin with a marker or a space.
+    range.setStart(longest, longest.textContent.indexOf('这'));
+    range.setEnd(longest, longest.length);
+    const rects = [...range.getClientRects()];
+    return { first: rects[0].left, wrapped: rects[1]?.left, count: rects.length, lineLeft: line.getBoundingClientRect().left };
+  }));
+  assert.equal(rows.length, 9);
+  for (const row of rows) {
+    assert.ok(row.count > 1, 'the fixture wraps');
+    assert.ok(Math.abs(row.first - row.wrapped) < 1, `wrapped line at ${row.wrapped}, text at ${row.first}`);
+    assert.ok(row.wrapped > row.lineLeft + 10, 'wrapped lines are indented');
+  }
+  const markerRows = await r.page.locator('.cm-list-bullet').evaluateAll(markers => markers.map(marker => marker.getClientRects().length === 1 && marker.getBoundingClientRect().height < 40));
+  assert.ok(markerRows.every(Boolean), 'markers stay on one line');
+  assert.equal((await r.get()).text, source);
+});
+
+test('caret movement and list marker editing still work on a hanging list line', async t => {
+  const text = '这是一段足够长的文字，用来观察换行以后的光标。'.repeat(6), source = `- ${text}\n`;
+  const r = await editor(t, source);
+  const wrappedRowStart = await r.page.evaluate(() => {
+    const view = window.acdianEditor, line = view.state.doc.line(1), top = view.coordsAtPos(line.from + 3).top;
+    for (let pos = line.from + 3; pos <= line.to; pos++) if (view.coordsAtPos(pos, 1).top > top + 5) return pos;
+    return null;
+  });
+  assert.ok(wrappedRowStart);
+  await r.position(wrappedRowStart + 4);
+  await r.page.keyboard.press('Meta+ArrowLeft');
+  assert.equal((await r.get()).selection.head, wrappedRowStart, 'line start stops at the wrapped row');
+  const geometry = await r.page.evaluate(pos => {
+    const view = window.acdianEditor;
+    return { row: view.coordsAtPos(pos, 1).left, text: view.coordsAtPos(2, 1).left };
+  }, wrappedRowStart);
+  assert.ok(Math.abs(geometry.row - geometry.text) < 1, 'the caret is drawn at the hanging indent');
+  await r.position(2);
+  await r.page.keyboard.press('Backspace');
+  assert.equal((await r.get()).text, `${text}\n`, 'Backspace at the start of the text removes the marker');
+  await r.page.keyboard.press('Meta+z');
+  assert.equal((await r.get()).text, source);
+});

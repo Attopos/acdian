@@ -48,6 +48,9 @@ li > ul, li > ol { margin: 8px 0; }
 ul:has(> li > input[type="checkbox"]) { list-style: none; padding-left: 6px; }
 input[type="checkbox"] { accent-color: var(--pink); width: 14px; height: 14px; margin: 0 9px 0 0; vertical-align: -1px; opacity: .95; }
 li:has(> input:checked) { color: var(--muted); }
+/* Wrapped lines start under the text: checkbox, its margin and the space after it. */
+li:has(> input[type="checkbox"]) { padding-left: calc(26px + .27em); text-indent: calc(-23px - .27em); }
+li:has(> input[type="checkbox"]) > * { text-indent: 0; }
 del { color: var(--muted); }
 blockquote { margin: 24px 0; padding: 4px 0 4px 20px; color: #aaa5af; border-left: 3px solid #d93b8670; }
 blockquote > :last-child { margin-bottom: 0; }

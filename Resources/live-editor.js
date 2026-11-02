@@ -93,6 +93,25 @@ function navigate(target) {
   else if (!/^[a-z][a-z\d+.-]*:/i.test(target)) post({type:'navigate',target,from:metadata.currentPath});
 }
 
+// Width of source text in ems of the editor font, where a tab reaches the next
+// stop of four spaces. Line decorations turn this into a hanging indent, so it
+// has to be known before the line is drawn. It is measured at the current size
+// because the system font's spacing changes with size.
+const sourceEms=new Map();
+let measureContext;
+function textEms(text) {
+  const size=parseFloat(document.documentElement.style.getPropertyValue('--editor-font-size'))||16,key=size+'|'+text;
+  if(sourceEms.has(key))return sourceEms.get(key);
+  measureContext??=document.createElement('canvas').getContext('2d');
+  const expanded=text.replace(/ {0,3}\t/g,'    ');
+  if(measureContext)measureContext.font=size+'px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
+  const ems=measureContext?measureContext.measureText(expanded).width/size:expanded.length*.25;
+  sourceEms.set(key,ems);return ems;
+}
+function listLineStyle(hang,marker) {
+  return `--cm-list-hang:${hang.toFixed(3)}em`+(marker?`;--cm-list-marker:${marker.toFixed(3)}em`:'');
+}
+
 class BulletWidget extends WidgetType {
   constructor(label) { super(); this.label = label; }
   eq(other) { return this.label === other.label; }
@@ -373,10 +392,16 @@ function decorations(state) {
     if(code)continue;
     if(quoteLines.has(n)) {
       list.push(Decoration.line({class:'cm-quote-line'}).range(line.from));
+      // The quote prefix is hidden and the list marker stays as text here.
+      const quoted=/^ {0,3}(?:>[ \t]+)+(\s*(?:[-+*]|\d+[.)])[ \t]+)/.exec(line.text);
+      if(quoted)list.push(Decoration.line({class:'cm-quote-list-line',attributes:{style:listLineStyle(textEms(quoted[1]))}}).range(line.from));
     }
     const task=/^(\s*)[-+*]\s+\[([ xX])\]\s*/.exec(line.text);
     const bullet=/^(\s*)(?:([-+*])\s+|(\d+)[.)]\s+)/.exec(line.text);
-    if(task||bullet)list.push(Decoration.line({class:'cm-list-line'}).range(line.from));
+    if(task||bullet) {
+      const marker=task?1.55:bullet[3]?Math.max(1.25,textEms(bullet[3]+'.')+.35):1.25;
+      list.push(Decoration.line({class:'cm-list-line',attributes:{style:listLineStyle(textEms((task||bullet)[1])+marker,marker)}}).range(line.from));
+    }
     if(task)list.push(Decoration.replace({widget:new TaskWidget(line.from,task[2].toLowerCase()==='x',state.facet(editorLanguage))}).range(line.from+task[1].length,line.from+task[0].length));
     else if(bullet)list.push(Decoration.replace({widget:new BulletWidget(bullet[3]?bullet[3]+'.':'•')}).range(line.from+bullet[1].length,line.from+bullet[0].length));
     const links=/(!?)\[\[([^\]\n]+)\]\]|\[([^\]\n]+)\]\(([^)\n]+)\)/g; let match;

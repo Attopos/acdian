@@ -63,6 +63,15 @@ test('typing star-space immediately produces a bullet, Enter continues/exits, Ba
  r.w.acdianLiveEditorTest.simpleListEnter(r.view);assert.equal(r.get().text,'* 第一项\n');
  r.w.acdianInsertText('- ');r.w.acdianLiveEditorTest.simpleListBackspace(r.view);assert.equal(r.get().text,'* 第一项\n');r.close();
 });
+test('list lines carry a hanging indent that follows their indent and marker, without changing the source',()=>{
+ const source='- 项目\n    - 嵌套\n100. 编号\n- [ ] 待办\n> - 引用\n',r=setup(source);
+ const lines=[...r.w.document.querySelectorAll('.cm-line')],hang=line=>parseFloat(line.style.getPropertyValue('--cm-list-hang'));
+ assert.deepEqual(lines.slice(0,4).map(line=>line.classList.contains('cm-list-line')),[true,true,true,true]);
+ assert.equal(hang(lines[0]),1.25);assert.ok(hang(lines[1])>hang(lines[0]));assert.ok(hang(lines[2])>1.25);assert.equal(hang(lines[3]),1.55);
+ assert.equal(lines[2].style.getPropertyValue('--cm-list-marker'),lines[2].style.getPropertyValue('--cm-list-hang'));
+ assert.ok(lines[4].classList.contains('cm-quote-list-line'));assert.ok(hang(lines[4])>0);
+ assert.equal(r.get().text,source);r.close();
+});
 test('typing three dashes and space immediately renders a divider without changing Markdown',()=>{
  const r=setup();for(const text of ['-','-','-',' '])r.w.acdianInsertText(text);
  assert.equal(r.get().text,'--- ');assert.equal(r.view.state.selection.main.head,4);
