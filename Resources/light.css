@@ -21,7 +21,6 @@ html.light .cm-editor .cm-content ::selection { background: transparent; }
 html.light .cm-editor .cm-block-selected .katex-display > .katex, html.light .cm-editor .cm-block-selected img { background: #d93b8638; }
 html.light .cm-editor .cm-placeholder { color: #a8a3ae; }
 html.light .cm-editor .cm-heading { color: #17161b; }
-html.light .cm-editor .cm-page-title { color: #17161b; }
 html.light .cm-editor .cm-heading-hint { color: #b4afba; }
 html.light { --divider-selected: #d93b8640; }
 html.light .cm-editor .cm-live-strong { color: #17161b; }

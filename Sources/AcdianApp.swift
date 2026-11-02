@@ -69,7 +69,8 @@ import AppKit
             guard let self else { return }
             model.withEditorSnapshot({
                 self.closePending = false
-                guard let sender, model.saveBeforeLeaving(), model.saveSplit() else { return }
+                guard let sender, model.leavePage(), model.saveSplit() else { return }
+                model.splitTitleEditEnded()
                 self.lastWindowCloseApproved = NSApp.windows.filter { $0.isVisible && $0.canBecomeMain }.count <= 1
                 self.closeApproved = true; sender.performClose(nil); self.closeApproved = false
             },onFailure:{ self.closePending = false })
@@ -85,7 +86,9 @@ import AppKit
             guard let self else { NSApp.reply(toApplicationShouldTerminate:false); return }
             model.withEditorSnapshot({
                 self.terminationPending = false
-                NSApp.reply(toApplicationShouldTerminate:model.saveBeforeLeaving() && model.saveSplit())
+                let saved = model.leavePage() && model.saveSplit()
+                if saved { model.splitTitleEditEnded() }
+                NSApp.reply(toApplicationShouldTerminate:saved)
             },onFailure:{
                 self.terminationPending = false
                 NSApp.reply(toApplicationShouldTerminate:false)

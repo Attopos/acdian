@@ -245,6 +245,7 @@ struct DraftTitleView: View {
             .accessibilityLabel("New Page")
             .accessibilityIdentifier("draftTitle")
             .onSubmit { titleFocused = false; model.editorFocus?() }
+            .onChange(of:titleFocused) { _,focused in if !focused { model.draftTitleEnded() } }
             .padding(.horizontal,58).padding(.top,43).padding(.bottom,8)
             .frame(maxWidth:860,alignment:.leading)
             .frame(maxWidth:.infinity)

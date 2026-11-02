@@ -95,6 +95,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         didSet { if !oldValue.sameBytes(text) { textFacts = nil; scheduleAutosave() } }
     }
     @Published var originalText = ""
+    // The title the open page had when opened or last renamed.
+    private var openTitle: String?
     @Published private(set) var isDraft = false
     @Published var draftTitle = "" {
         didSet { if oldValue != draftTitle && isDraft { scheduleAutosave() } }
@@ -371,7 +373,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard ensurePageStorage() else { return }
         openID = UUID()
         withEditorSnapshot {
-            guard self.saveBeforeLeaving() else { return }
+            guard self.leavePage() else { return }
             self.clearOpenDocument(); self.showingTrash = true
             self.refreshTrash(); self.statusValue = .ready
         }
@@ -704,7 +706,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         else { withEditorSnapshot { self.openAfterSnapshot(entry,fragment:fragment,skipConfirmation:false,fromDisk:fromDisk,inPlace:inPlace) } }
     }
     private func openAfterSnapshot(_ entry: VaultEntry, fragment: String, skipConfirmation: Bool, fromDisk: Bool, inPlace: Bool = false) {
-        guard skipConfirmation || saveBeforeLeaving() else { return }
+        guard skipConfirmation || leavePage() else { return }
         // A page shown beside the open one moves into the main editor.
         if entry.relativePath == splitPath { guard closeSplit() else { return } }
         showingTrash = false; showingMarket = false
@@ -740,9 +742,12 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private func install(_ entry: VaultEntry, content: String, fragment: String, tab: UUID?) {
         showInTab(tab,path:entry.relativePath)
         followModule(to:entry.relativePath)
-        selected = entry; text = content; originalText = content; clearDraftState(); anchor = fragment
+        let titled = Self.titled(content,entry)
+        selected = entry; text = titled; originalText = content; openTitle = Self.leadingTitle(titled); clearDraftState(); anchor = fragment
         pdfPage = fragment.hasPrefix("page=") ? (Int(fragment.dropFirst(5)) ?? 1) : (activeTabID.flatMap { tabMemory[$0]?.pdfPage } ?? 1)
         pdfPageCount = 0; insertion = nil; loading = false; status = entry.relativePath; editorDocumentID = UUID()
+        // A title just added is saved like any other edit.
+        if dirty { scheduleAutosave() }
     }
     private func keepFrontText(_ text: String, stamp: FileStamp?) {
         guard let tab = activeTabID else { return }
@@ -762,7 +767,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 self.tabMemory[tab]?.text = disk; self.tabMemory[tab]?.stamp = current
                 guard !disk.sameBytes(kept), self.editorDocumentID == documentID, self.activeTabID == tab,
                       self.selected?.relativePath == entry.relativePath, !self.dirty else { return }
-                self.originalText = disk; self.text = disk; self.status = entry.relativePath; self.editorDocumentID = UUID()
+                self.originalText = disk; self.text = Self.titled(disk,entry); self.openTitle = Self.leadingTitle(self.text); self.status = entry.relativePath; self.editorDocumentID = UUID()
+                if self.dirty { self.scheduleAutosave() }
             }
         }
     }
@@ -773,7 +779,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func goHome() {
         openID = UUID()
         withEditorSnapshot {
-            guard self.saveBeforeLeaving() else { return }
+            guard self.leavePage() else { return }
             self.clearOpenDocument(); self.showingTrash = false; self.showingMarket = false; self.statusValue = .ready
             self.activeModuleID = nil; self.query = ""
         }
@@ -848,7 +854,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard id == activeTabID, selected != nil else { tabs.remove(at:i); return }
         openID = UUID()
         withEditorSnapshot {
-            guard self.saveBeforeLeaving(), let i = self.tabs.firstIndex(where: { $0.id == id }) else { return }
+            guard self.leavePage(), let i = self.tabs.firstIndex(where: { $0.id == id }) else { return }
             self.tabs.remove(at:i); self.activeTabID = nil
             self.clearOpenDocument(); self.statusValue = .ready
             self.selectTab(near:i)
@@ -867,10 +873,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         do {
             try VaultFileIO.saveMarkdown(text,at:selected.url,expectedContent:originalText,allowedRoot:index?.root)
             attachmentsChanged(from:originalText,to:text,page:selected.relativePath)
-            let before = originalText
             originalText = text; searchSaved(selected.id,text); keepFrontText(text,stamp:nil); statusValue = .saved(Date()); lastAutosaveError = nil
-            // The editor stays on the page; only the path under it changes.
-            if let renamed = renameToTitle(selected,from:before,to:text) { self.selected = renamed }
             return true
         } catch { reportSaveFailure(error,automatically:automatically); return false }
     }
@@ -907,7 +910,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard ensurePageStorage() else { return }
         openID = UUID()
         withEditorSnapshot {
-            guard self.saveBeforeLeaving(), let root = self.index?.root else { return }
+            guard self.leavePage(), let root = self.index?.root else { return }
             let tab = reused ?? (self.isDraft && self.draftFile == nil ? self.activeTabID : nil)
             self.clearDraftState()
             self.draftFolder = self.activeModule?.kind == .pages ? self.activeModule!.folder : ""
@@ -1263,7 +1266,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard ensurePageStorage() else { return }
         openID = UUID()
         withEditorSnapshot {
-            guard self.saveBeforeLeaving() else { return }
+            guard self.leavePage() else { return }
             self.clearOpenDocument(); self.showingMarket = true; self.statusValue = .ready
         }
     }
@@ -1384,6 +1387,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     @Published var splitFocused = false
     private(set) var splitText = ""
     private var splitOriginal = ""
+    private var splitOpenTitle: String?
     private var splitSaveTask: Task<Void,Never>?
     static let textExtensions: Set<String> = ["txt","json","csv","css","js","yaml","yml","canvas","xml","html","log"]
     var splitDirty: Bool { splitEntry?.ext == "md" && !splitLoading && !splitText.sameBytes(splitOriginal) }
@@ -1392,6 +1396,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         // With no page open there is nothing to show it beside.
         guard selected != nil, !showingTrash, !showingMarket else { open(entry); return }
         guard entry.relativePath != currentPagePath, saveSplit() else { return }
+        splitTitleEditEnded()
         splitSaveTask?.cancel(); splitSaveTask = nil
         splitPath = entry.relativePath; splitEntry = entry; splitText = ""; splitOriginal = ""; splitFocused = true
         let request = UUID(); splitDocumentID = request
@@ -1404,7 +1409,9 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             DispatchQueue.main.async {
                 guard self.splitDocumentID == request else { return }
                 switch result {
-                case .success(let content): self.splitText = content; self.splitOriginal = content; self.splitLoading = false
+                case .success(let content):
+                    self.splitText = Self.titled(content,entry); self.splitOriginal = content; self.splitOpenTitle = Self.leadingTitle(self.splitText); self.splitLoading = false
+                    if self.splitDirty { self.scheduleSplitSave() }
                 case .failure(let failure): self.splitLoading = false; self.error = self.localizedError(failure); self.closeSplit()
                 }
             }
@@ -1413,6 +1420,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// Closes the split page, saving it first. Unsaved edits that fail to save keep it open.
     @discardableResult func closeSplit() -> Bool {
         guard saveSplit() else { return false }
+        splitTitleEditEnded()
         splitPath = nil; splitEntry = nil; splitText = ""; splitOriginal = ""; splitLoading = false; splitDocumentID = UUID(); splitFocused = false
         return true
     }
@@ -1427,8 +1435,11 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func splitEdited(_ text: String, documentID: UUID) {
         guard documentID == splitDocumentID, !splitLoading, !splitText.sameBytes(text) else { return }
         splitText = text
+        scheduleSplitSave()
+    }
+    private func scheduleSplitSave() {
         splitSaveTask?.cancel()
-        let delay = UInt64(autosaveDelay * 1_000_000_000)
+        let delay = UInt64(autosaveDelay * 1_000_000_000), documentID = splitDocumentID
         splitSaveTask = Task { @MainActor [weak self] in
             do { try await Task.sleep(nanoseconds:delay) } catch { return }
             guard let self, !Task.isCancelled, self.splitDocumentID == documentID else { return }
@@ -1442,9 +1453,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         do {
             try VaultFileIO.saveMarkdown(splitText,at:entry.url,expectedContent:splitOriginal,allowedRoot:index?.root)
             attachmentsChanged(from:splitOriginal,to:splitText,page:entry.relativePath)
-            let before = splitOriginal
             splitOriginal = splitText; searchSaved(entry.id,splitText); lastAutosaveError = nil
-            if let renamed = renameToTitle(entry,from:before,to:splitText) { splitEntry = renamed }
             return true
         } catch { reportSaveFailure(error,automatically:automatically); return false }
     }
@@ -1456,26 +1465,41 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let title = line.dropFirst(2).trimmingCharacters(in:.whitespaces)
         return title.isEmpty ? nil : title
     }
-    /// After a save that changed a page's title, renames its file to match,
-    /// as renaming it in the sidebar would. A name another page already has
-    /// is left alone. Returns the page at its new path.
-    private func renameToTitle(_ entry: VaultEntry, from old: String, to new: String) -> VaultEntry? {
-        guard let title = Self.leadingTitle(new), title != Self.leadingTitle(old) else { return nil }
-        return renamePage(entry,title:title)
+    /// Every Markdown page has a title. A page without one takes its file
+    /// name as a real first line, on a blank first line if it has one.
+    static func withTitle(_ text: String, name: String) -> String {
+        guard leadingTitle(text) == nil else { return text }
+        let first = text.prefix { !$0.isNewline }, trimmed = first.trimmingCharacters(in:.whitespaces)
+        if trimmed.isEmpty || trimmed == "#" { return "# \(name)" + (text.isEmpty ? "\n\n" : text.dropFirst(first.count)) }
+        let lineBreak = text.contains("\r\n") ? "\r\n" : text.contains("\r") ? "\r" : "\n"
+        return "# \(name)" + lineBreak + lineBreak + text
     }
-    /// A page with no heading on top shows its file name as its title, and
-    /// editing that title in the page renames the file. The edit is saved first.
-    /// Returns false when the page keeps its old name, so the title shows it again.
-    @discardableResult func renameFromTitle(_ path: String, to title: String) -> Bool {
-        let title = title.trimmingCharacters(in:.whitespacesAndNewlines)
-        guard !title.isEmpty else { return false }
-        if path == splitPath, let entry = splitEntry {
-            guard saveSplit(), let renamed = renamePage(entry,title:title,reporting:true) else { return false }
-            splitEntry = renamed
-        } else if path == currentPagePath, !isDraft, let entry = selected {
-            guard saveBeforeLeaving(), let renamed = renamePage(entry,title:title,reporting:true) else { return false }
-            selected = renamed
-        } else { return false }
+    private static func titled(_ text: String, _ entry: VaultEntry) -> String {
+        entry.ext == "md" ? withTitle(text,name:entry.url.deletingPathExtension().lastPathComponent) : text
+    }
+    /// Editing the title has ended: the caret left it, or the page is being
+    /// left. A changed title renames the file, and the sidebar and tabs follow;
+    /// the editor stays on the page. A name another page has is refused.
+    func titleEditEnded() {
+        if isDraft { draftTitleEnded(); return }
+        guard let entry = selected, let started = openTitle, let title = Self.leadingTitle(text), title != started, save() else { return }
+        openTitle = title
+        if let renamed = renamePage(entry,title:title,reporting:true) { selected = renamed }
+    }
+    func splitTitleEditEnded() {
+        guard let entry = splitEntry, let started = splitOpenTitle, let title = Self.leadingTitle(splitText), title != started, saveSplit() else { return }
+        splitOpenTitle = title
+        if let renamed = renamePage(entry,title:title,reporting:true) { splitEntry = renamed }
+    }
+    func draftTitleEnded() {
+        guard isDraft, let file = draftFile, save(), let title = Optional(draftTitle.trimmingCharacters(in:.whitespacesAndNewlines)), !title.isEmpty,
+              let renamed = renamePage(file,title:title,reporting:true) else { return }
+        draftFile = renamed
+    }
+    /// Saves the open page before going to another, and finishes its title.
+    @discardableResult func leavePage() -> Bool {
+        guard saveBeforeLeaving() else { return false }
+        titleEditEnded()
         return true
     }
     private func renamePage(_ entry: VaultEntry, title: String, reporting: Bool = false) -> VaultEntry? {

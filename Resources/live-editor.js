@@ -1,4 +1,4 @@
-import { EditorState, EditorSelection, StateField, StateEffect, Compartment, findClusterBreak } from '@codemirror/state';
+import { EditorState, EditorSelection, StateField, StateEffect, Compartment, Transaction, findClusterBreak } from '@codemirror/state';
 import { EditorView, ViewPlugin, Decoration, WidgetType, keymap, placeholder, drawSelection } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
@@ -19,39 +19,27 @@ const insertions = new Set();
 let rawSnapshots = new Map();
 const editability = new Compartment();
 const localization = new Compartment();
-const pageTitle = new Compartment();
-// A saved page's name is the first block of the document view, so it scrolls
-// away with the text instead of staying pinned above the editor.
-// Bumped to redraw the title after a rename that did not happen.
-let titleVersion = 0;
-class PageTitleWidget extends WidgetType {
-  constructor(title,canEdit) { super(); this.title = title; this.canEdit = canEdit; this.version = titleVersion; }
-  eq(other) { return this.title === other.title && this.canEdit === other.canEdit && this.version === other.version; }
-  // The file name shown as the title can be edited in place: Return or
-  // leaving it renames the page, and Escape puts the old name back.
-  toDOM(view) {
-    const heading = document.createElement('h1'); heading.className = 'cm-page-title'; heading.textContent = this.title;
-    if (!this.canEdit) return heading;
-    heading.contentEditable = 'plaintext-only'; heading.spellcheck = false;
-    const original = this.title, path = metadata.currentPath;
-    heading.addEventListener('keydown', event => {
-      if (event.isComposing) return;
-      if (event.key === 'Enter') { event.preventDefault(); heading.blur(); view.focus(); }
-      else if (event.key === 'Escape') { event.preventDefault(); heading.textContent = original; heading.blur(); view.focus(); }
-    });
-    heading.addEventListener('blur', () => {
-      const title = heading.textContent.replace(/\s+/g,' ').trim();
-      if (!title) { heading.textContent = original; return; }
-      if (title !== original) post({type:'renameTitle', title, currentPath:path});
-    });
-    return heading;
-  }
-  ignoreEvent() { return true; }
+// Every saved page starts with a "# " heading, which the app adds when it opens
+// a page without one. It is ordinary text, and it is the page's name: when the
+// caret leaves it, a changed title renames the file, and an empty one goes
+// back to the current file name.
+const validTitle=text=>/^#[ \t]+\S/.test(text);
+let titleEdit=null;
+function restoreTitle(view){
+  const first=view.state.doc.line(1),name='# '+metadata.pageTitle;
+  const blank=!first.text.trim()||/^#[ \t]*$/.test(first.text);
+  view.dispatch({changes:blank?{from:first.from,to:first.to,insert:name}:{from:0,insert:name+'\n\n'},annotations:Transaction.addToHistory.of(false)});
 }
-// A page that starts with a "# " heading has its title in the text, and the
-// file name is not shown again above it.
-const leadingTitle=state=>/^#[ \t]+\S/.test(state.doc.line(1).text);
-const pageTitleExtension=()=>metadata.pageTitle?EditorView.decorations.compute(['doc'],state=>leadingTitle(state)?Decoration.none:Decoration.set([Decoration.widget({widget:new PageTitleWidget(metadata.pageTitle,metadata.editable),block:true,side:-1}).range(0)])):[];
+function followTitle(update){
+  if(!metadata.pageTitle||!metadata.editable)return;
+  const {view,state}=update,first=state.doc.line(1),selection=state.selection.main;
+  const onTitle=view.hasFocus&&selection.from<=first.to;
+  if(onTitle){if(!titleEdit)titleEdit={text:first.text};return;}
+  if(!titleEdit)return;
+  const started=titleEdit.text;titleEdit=null;
+  if(!validTitle(first.text))Promise.resolve().then(()=>{if(!titleEdit&&!validTitle(view.state.doc.line(1).text))restoreTitle(view);});
+  else if(first.text!==started)post({type:'titleEnded',currentPath:metadata.currentPath});
+}
 const localeExtensions=()=>{
   const strings=messagesForLanguage(metadata.language);
   return [editorLanguage.of(metadata.language),placeholder(strings.placeholder),EditorView.contentAttributes.of({lang:metadata.language,'aria-label':strings.editorLabel})];
@@ -798,12 +786,12 @@ function extensions() {return [
   history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),windowField,windowTracker,boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
-  pageTitle.of(pageTitleExtension()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
   keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
   EditorView.updateListener.of(update=>{
     if(applyingExternal)return;
     if(update.docChanged){for(const tr of update.transactions)if(tr.docChanged){applyRawChanges(tr);revision++;}lastSource=rawSource;const selection=update.state.selection.main;post({type:'change',text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:selection.anchor,selectionHead:selection.head});}
+    followTitle(update);
   }),
   // A plain click on a link opens it; a drag across it still selects text.
   // A paste that carries files or a picture goes to the app, which copies them
@@ -830,7 +818,7 @@ function scrollTo(place){
   return snapshot.type.of(new snapshot.value.constructor(EditorSelection.cursor(Math.max(0,Math.min(place.pos,view.state.doc.length))),'start','start',place.offset,0,true));
 }
 // What the editor's compartments were last configured from.
-const editorSettings=()=>JSON.stringify([metadata.editable,metadata.language,metadata.pageTitle]);
+const editorSettings=()=>JSON.stringify([metadata.editable,metadata.language]);
 function stashSession(tabID,path){
   if(!tabID)return;
   sessions.delete(tabID);
@@ -839,6 +827,7 @@ function stashSession(tabID,path){
   for(const [id,session] of sessions){if(sessions.size<=sessionLimit&&total<=sessionTextLimit)break;if(id===tabID)continue;sessions.delete(id);total-=session.rawSource.length;}
 }
 function installDocument(text,remembered) {
+  titleEdit=null;
   const session=sessions.get(metadata.tabID);
   sessions.delete(metadata.tabID);
   applyingExternal=true;
@@ -846,7 +835,7 @@ function installDocument(text,remembered) {
     ({rawSource,lineBreak,rawSnapshots}=session);
     view.setState(session.state);
     // Reconfiguring costs a few milliseconds on a long page, so it is skipped when nothing changed.
-    const reconfigure=session.settings===editorSettings()?[]:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions()),pageTitle.reconfigure(pageTitleExtension())];
+    const reconfigure=session.settings===editorSettings()?[]:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions())];
     view.dispatch({effects:[...reconfigure,scrollTo(session.scroll)].flat()});
   } else {
     rawSource=text;lineBreak=rawSource.includes('\r\n')?'\r\n':rawSource.includes('\r')?'\r':'\n';rawSnapshots=new Map([[canonical(rawSource),rawSource]]);
@@ -881,7 +870,7 @@ window.acdianSetDocument=payload=>{
   if(Array.isArray(payload.openTabs))for(const id of [...sessions.keys()])if(!payload.openTabs.includes(id))sessions.delete(id);
   const hasText=typeof payload.text==='string';
   if(hasText&&(switched||payload.text!==rawSource||previousPath!==metadata.currentPath||previousToken!==metadata.resetToken))installDocument(payload.text,switched?payload.view:null);
-  else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions()),pageTitle.reconfigure(pageTitleExtension())]});
+  else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions())]});
 };
 window.acdianGetDocument=()=>{const place=scrollPlace();return{text:rawSource,currentPath:metadata.currentPath,documentID:metadata.documentID,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head,scrollPosition:place.pos,scrollOffset:place.offset};};
 // A block insertion, such as an image embed, gets lines of its own, as an
@@ -890,7 +879,6 @@ const ownLines=(state,text)=>{const {from,to}=state.selection.main,doc=state.doc
 window.acdianInsertText=(text,insertionID,block)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;const insert=canonical(String(text));view.dispatch(view.state.replaceSelection(block?ownLines(view.state,insert):insert));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
 // Files dragged in from another app land where the caret follows the pointer.
 window.acdianDropCaret=(x,y)=>{if(!metadata.editable)return false;const pos=view.posAtCoords({x,y},false);if(pos==null)return false;if(view.state.selection.main.head!==pos||!view.state.selection.main.empty)view.dispatch({selection:{anchor:pos}});if(!view.hasFocus)view.focus();return true;};
-window.acdianRefreshTitle=()=>{titleVersion++;view.dispatch({effects:pageTitle.reconfigure(pageTitleExtension())});};
 window.acdianUndo=()=>undo(view);
 window.acdianRedo=()=>redo(view);
 window.acdianScrollTo=raw=>{
