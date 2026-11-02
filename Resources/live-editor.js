@@ -278,6 +278,18 @@ function editableBlank(state,line) {
   const selection=state.selection.main;
   return state.field(inputBlankField)===line.from||line.number===state.doc.lines&&selection.empty&&selection.head>=line.from;
 }
+// Markdown needs one blank line between blocks, and that separator stays
+// hidden. Every further blank line in a run is an empty line the writer left
+// on purpose, so it keeps the height of a line: in a run, all but the last
+// show. Runs before the first or after the last text stay hidden.
+function keptBlank(state,line) {
+  const doc=state.doc;
+  if(line.text.trim()||line.number>=doc.lines||doc.line(line.number+1).text.trim())return false;
+  let next=line.number+1;while(next<=doc.lines&&!doc.line(next).text.trim())next++;
+  if(next>doc.lines)return false;
+  let prev=line.number-1;while(prev>=1&&!doc.line(prev).text.trim())prev--;
+  return prev>=1;
+}
 function literalCodeLine(state,line) {
   const tree=ensureSyntaxTree(state,line.to,40)||syntaxTree(state);
   for(let node=tree.resolveInner(line.from+Math.min(line.length,1),1);node;node=node.parent) {
@@ -295,11 +307,11 @@ function hiddenSourceLine(state,line) {
 const blankSelectionFilter=EditorState.transactionFilter.of(tr=>{
   if(tr.docChanged||!tr.selection||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
   const state=tr.state,range=tr.newSelection.main,line=state.doc.lineAt(range.head);
-  if(!hiddenSourceLine(state,line)&&(line.text.trim()||editableBlank(state,line)||literalCodeLine(state,line)))return tr;
+  if(!hiddenSourceLine(state,line)&&(line.text.trim()||editableBlank(state,line)||keptBlank(state,line)||literalCodeLine(state,line)))return tr;
   const direction=range.head<tr.startState.selection.main.head?-1:1;
   for(const step of [direction,-direction])for(let n=line.number+step;n>=1&&n<=state.doc.lines;n+=step) {
     const next=state.doc.line(n);
-    if(!hiddenSourceLine(state,next)&&(next.text.trim()||literalCodeLine(state,next)||editableBlank(state,next)))return [tr,{selection:EditorSelection.cursor(step>0?(visiblePrefixEnd(state,next.from)??next.from):next.to),sequential:true}];
+    if(!hiddenSourceLine(state,next)&&(next.text.trim()||literalCodeLine(state,next)||editableBlank(state,next)||keptBlank(state,next)))return [tr,{selection:EditorSelection.cursor(step>0?(visiblePrefixEnd(state,next.from)??next.from):next.to),sequential:true}];
   }
   return tr;
 });
@@ -429,7 +441,7 @@ function decorations(state) {
       // so the blank line after one keeps a gap before whatever follows.
       const prev=n>1?state.doc.line(n-1).text:'',next=n<state.doc.lines?state.doc.line(n+1).text:'';
       const gap=next.trim()&&/^\s*(?:\||```|~~~|>)/.test(prev);
-      list.push(Decoration.line({class:'cm-blank-line'+(gap?' cm-block-gap':'')+(editableBlank(state,line)?' cm-input-blank-line':'')}).range(line.from));
+      list.push(Decoration.line({class:'cm-blank-line'+(gap?' cm-block-gap':'')+(editableBlank(state,line)?' cm-input-blank-line':keptBlank(state,line)?' cm-kept-blank-line':'')}).range(line.from));
     }
   }
   // The selection is shown as a highlight on its text only. Tables mark the

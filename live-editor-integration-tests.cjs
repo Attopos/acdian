@@ -1323,3 +1323,28 @@ test('emphasis in quotes and callouts keeps the text color, in both appearances'
   }
   assert.equal((await r.get()).text, source);
 });
+
+test('extra blank lines between list items stay visible after the caret leaves', async t => {
+  const source = '- 酸：强 / 弱\n\n\n- 碱：强 / 弱\n- 盐\n\nAfter\n';
+  const r = await editor(t,source,{fontSize:16});
+  await r.position(source.indexOf('After'));
+  const kept = r.page.locator('.cm-kept-blank-line');
+  assert.equal(await kept.count(),1,'the blank line left between two list items is kept');
+  const height = await kept.evaluate(line=>line.getBoundingClientRect().height);
+  assert.ok(height>=27&&height<=29,'the kept blank line has the normal body line height');
+  const separators = await r.page.locator('.cm-blank-line:not(.cm-kept-blank-line):not(.cm-input-blank-line)').evaluateAll(lines=>lines.map(line=>line.getBoundingClientRect().height));
+  assert.equal(separators.length,3,'the separators, including the final line, stay');
+  for (const separator of separators) assert.ok(Math.abs(separator)<=0.5,'single separators keep zero height');
+  await r.position(source.indexOf('\n\n\n')+1);
+  assert.equal((await r.get()).selection.anchor,source.indexOf('\n\n\n')+1,'the caret can rest on the kept blank line');
+  await r.page.keyboard.insertText('新🌸');
+  assert.equal((await r.get()).text,source.replace('\n\n\n','\n新🌸\n\n'));
+  assert.equal(await r.page.locator('.cm-kept-blank-line').count(),0);
+});
+
+test('blank lines before the first and after the last text stay hidden', async t => {
+  const source = '\n\nFirst\n\nLast\n\n\n';
+  const r = await editor(t,source,{fontSize:16});
+  await r.position(source.indexOf('First'));
+  assert.equal(await r.page.locator('.cm-kept-blank-line').count(),0);
+});
