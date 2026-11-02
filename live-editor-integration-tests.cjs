@@ -1402,3 +1402,26 @@ test('one Enter then text stays a plain new line, with no empty line added', asy
   await r.page.keyboard.insertText('新');
   assert.equal((await r.get()).text,'A\n新\n\nB\n');
 });
+
+test('clicks below rendered blocks land on the clicked line', async t => {
+  const blocks = ['$$\na^2+b^2=c^2\n$$', '```acdian-interactive\n<p>demo</p>\n```', '| A | B |\n| - | - |\n| 1 | 2 |'];
+  const source = '# Blocks\n\n' + blocks.map((block, index) => `${block}\n\n- short ${index} one\n- short ${index} two\n- short ${index} three\n`).join('\n');
+  const { page } = await editor(t, source);
+  await page.waitForTimeout(300);
+  const lines = source.split('\n').map((text, index) => ({ text, number: index + 1 })).filter(line => /short \d/.test(line.text));
+  assert.equal(lines.length, 9);
+  for (const line of lines) {
+    // Where the line really is on screen, read from the DOM rather than from CodeMirror's height map.
+    const target = await page.evaluate(async number => {
+      const view = window.acdianEditor, from = view.state.doc.line(number).from;
+      const lineElement = () => { let element = view.domAtPos(from + 3).node; while (element && !element.classList?.contains('cm-line')) element = element.parentNode; return element; };
+      lineElement().scrollIntoView({ block: 'center' });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const rect = lineElement().getBoundingClientRect();
+      return { x: rect.left + rect.width * 0.4, y: rect.top + rect.height / 2 };
+    }, line.number);
+    await page.mouse.click(target.x, target.y);
+    const clicked = await page.evaluate(() => window.acdianEditor.state.doc.lineAt(window.acdianEditor.state.selection.main.head).number);
+    assert.equal(clicked, line.number, `click on “${line.text}”`);
+  }
+});

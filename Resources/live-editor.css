@@ -62,7 +62,8 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-code-last { border-radius:0 0 8px 8px; padding-bottom:8px; }
 .cm-editor .cm-code-first.cm-code-last { border-radius:8px; }
 .cm-editor .cm-code-fence { height:0!important; min-height:0!important; padding:0!important; border:0!important; font-size:0!important; line-height:0!important; }
-.cm-editor .cm-live-block { margin:6px 0 10px; max-width:100%; cursor:text; overflow:auto; }
+.cm-editor .cm-live-block-wrap { padding:6px 0 10px; }
+.cm-editor .cm-live-block { margin:0; max-width:100%; cursor:text; overflow:auto; }
 .cm-editor .cm-live-block .markdown-body { font-size:inherit; }
 .cm-editor .cm-live-block p:last-child { margin-bottom:0; }
 .cm-editor .cm-live-block img { max-width:100%; border-radius:8px; margin:6px auto; }

@@ -162,6 +162,11 @@ function fragment(source,state) {
   }
   return holder;
 }
+// CodeMirror measures a block widget by its border box, so a margin on it is
+// invisible to the height map and every line below lands lower than CodeMirror
+// thinks: clicks then hit the next line. The space around a block is padding on
+// a plain wrapper instead.
+function spacedBlock(holder) { const wrap=document.createElement('div'); wrap.className='cm-live-block-wrap'; wrap.append(holder); return wrap; }
 class BlockWidget extends WidgetType {
   constructor(source,from,kind,language,selected=false) { super(); Object.assign(this,{source,from,kind,language,selected}); }
   eq(other) { return this.source===other.source && this.from===other.from && this.kind===other.kind && this.language===other.language && this.selected===other.selected; }
@@ -173,7 +178,7 @@ class BlockWidget extends WidgetType {
       // A link inside the block opens on click instead of selecting the block.
       if(event.metaKey||event.ctrlKey||!metadata.editable||event.target.closest?.('a')) return;
       event.preventDefault(); view.dispatch({selection:{anchor:this.from,head:Math.min(this.from+this.source.length,view.state.doc.length)}}); view.focus();
-    }); return holder;
+    }); return spacedBlock(holder);
   }
   ignoreEvent() { return true; }
 }
@@ -194,7 +199,7 @@ function interactiveInfo(state,node) {
 class InteractiveWidget extends WidgetType {
   constructor(code,height,language) { super(); Object.assign(this,{code,height,language}); }
   eq(other) { return this.code===other.code&&this.height===other.height&&this.language===other.language; }
-  get estimatedHeight() { return (this.height||240)+36; }
+  get estimatedHeight() { return (this.height||240)+36+16; }
   toDOM(view) {
     const holder=document.createElement('div');holder.className='cm-live-block cm-block-interactive';
     const bar=document.createElement('div');bar.className='cm-interactive-bar';
@@ -214,7 +219,7 @@ class InteractiveWidget extends WidgetType {
       view.dispatch({selection:EditorSelection.cursor(target),scrollIntoView:true});view.focus();
     });
     bar.append(label,rerun,source);holder.append(bar,frame);
-    return holder;
+    return spacedBlock(holder);
   }
   ignoreEvent() { return true; }
 }
