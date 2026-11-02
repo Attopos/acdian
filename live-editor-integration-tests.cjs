@@ -1203,6 +1203,9 @@ test('wrapped list lines start under the item text, at every indent and marker',
   // Leading tabs are left out: Chromium places their stops about 2px off, WebKit (the app) does not.
   const source = [`- ${long}`, `  - ${long}`, `    - ${long}`, '', `1. ${long}`, `10. ${long}`, '', `- [ ] ${long}`, `  - [x] ${long}`, '', `> - ${long}`, '', '> [!note] 提示', `> 2. ${long}`, ''].join('\n');
   const r = await editor(t, source);
+  // Only lines near the viewport are drawn, so make room for all of them.
+  await r.page.setViewportSize({ width: 1100, height: 3000 });
+  await r.page.waitForFunction(() => document.querySelectorAll('.cm-list-line, .cm-quote-list-line').length === 9);
   const rows = await r.page.locator('.cm-list-line, .cm-quote-list-line').evaluateAll(lines => lines.map(line => {
     const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
     let longest = null;
@@ -1255,6 +1258,7 @@ test('quotes and callouts wrap inside the text column, aligned under their text 
   const r = await editor(t, source);
   for (const width of [1100, 700, 420]) {
     await r.page.setViewportSize({ width, height: 3000 });
+    await r.page.waitForFunction(() => document.querySelectorAll('.cm-list-line, .cm-quote-list-line').length === 3);
     await r.page.waitForTimeout(100);
     const result = await r.page.evaluate(() => {
       const content = document.querySelector('.cm-content'), style = getComputedStyle(content), box = content.getBoundingClientRect();
@@ -1288,6 +1292,34 @@ test('quotes and callouts wrap inside the text column, aligned under their text 
     const plain = result.rows.find(row => /cm-quote-line/.test(row.className) && !/cm-callout|cm-quote-list/.test(row.className));
     const list = result.rows.find(row => /cm-list-line/.test(row.className));
     assert.ok(Math.abs(plain.first - list.first) < 1, `quote text starts where list text starts at ${width}px`);
+  }
+  assert.equal((await r.get()).text, source);
+});
+
+test('emphasis in quotes and callouts keeps the text color, in both appearances', async t => {
+  const source = ['> 引用 **加粗** *斜体* ~~删除~~ ==高亮== [链接](https://example.com)', '', '> [!note] 标题', '> 正文 **加粗** *斜体* ~~删除~~ ==高亮== [链接](https://example.com)', '', '段落 **加粗**', ''].join('\n');
+  const r = await editor(t, source);
+  for (const appearance of ['dark', 'light']) {
+    await r.page.evaluate(value => window.acdianSetDocument({ appearance: value }), appearance);
+    const result = await r.page.evaluate(() => {
+      const color = element => getComputedStyle(element).color;
+      const lines = [...document.querySelectorAll('.cm-quote-line,.cm-callout-line')].filter(line => line.querySelector('.cm-live-strong'));
+      const paragraph = [...document.querySelectorAll('.cm-line')].find(line => line.textContent.startsWith('段落'));
+      return {
+        lines: lines.map(line => ({
+          text: color(line),
+          parts: ['.cm-live-strong', '.cm-live-em', '.cm-live-strike', '.cm-live-highlight'].map(selector => color(line.querySelector(selector))),
+          link: color(line.querySelector('.cm-live-link'))
+        })),
+        paragraph: { text: color(paragraph), strong: color(paragraph.querySelector('.cm-live-strong')) }
+      };
+    });
+    assert.equal(result.lines.length, 2);
+    for (const line of result.lines) {
+      for (const part of line.parts) assert.equal(part, line.text, `${appearance} emphasis matches the quote text`);
+      assert.notEqual(line.link, line.text, `${appearance} links keep their own color`);
+    }
+    assert.notEqual(result.paragraph.strong, result.paragraph.text, `${appearance} ordinary paragraphs keep their bold color`);
   }
   assert.equal((await r.get()).text, source);
 });

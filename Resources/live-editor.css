@@ -86,6 +86,9 @@ html,body { height:100%; margin:0; }
 .cm-editor .cm-quote-line { border-left:3px solid var(--pink); padding-left:calc(1.25em - 3px); color:#b6abbc; }
 .cm-editor .cm-callout-line { border-left:3px solid #d93b8670; padding:2px 14px 2px calc(1.25em - 3px); background:#d93b8608; color:#cfc7d2; }
 .cm-editor .cm-quote-list-line { padding-left:calc(1.25em - 3px + var(--cm-list-hang)); text-indent:calc(var(--cm-list-hang) * -1); }
+/* Emphasis keeps the quote's own color and only changes weight or style. Strong
+   enough to win over the html.light rules in light.css. */
+.cm-editor .cm-content :is(.cm-quote-line,.cm-callout-line) :is(.cm-live-strong,.cm-live-em,.cm-live-strike,.cm-live-highlight) { color:inherit; }
 .cm-editor .cm-callout-first { border-radius:7px 7px 0 0; padding-top:8px; font-weight:600; }
 .cm-editor .cm-callout-last { border-radius:0 0 7px 7px; padding-bottom:8px; }
 .cm-editor .cm-callout-first.cm-callout-last { border-radius:7px; }

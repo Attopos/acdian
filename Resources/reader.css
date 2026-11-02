@@ -54,6 +54,8 @@ li:has(> input[type="checkbox"]) > * { text-indent: 0; }
 del { color: var(--muted); }
 blockquote { margin: 24px 0; padding: 4px 0 4px 20px; color: #aaa5af; border-left: 3px solid #d93b8670; }
 blockquote > :last-child { margin-bottom: 0; }
+/* Emphasis keeps the quote's own color. Strong enough to win over light.css. */
+:root :is(blockquote, .callout) :is(strong, em, del, mark) { color: inherit; }
 blockquote blockquote { margin-bottom: 5px; }
 mark { background: #d93b8627; color: #f6d2e3; border-radius: 3px; padding: 1px 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 code, kbd, pre, samp { font-family: var(--code-font); }
