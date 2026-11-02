@@ -157,3 +157,13 @@ test('consecutive renders clear per-note state, handle empty notes and malformed
   assert.equal(r.document.querySelectorAll('h1')[1].id, '同名-1');
   r.close();
 });
+
+test('display formulas written back to back render one by one', () => {
+  const r = reader();
+  r.render('$$A\\leftrightarrow U$$\n\n$$T\\leftrightarrow A $$$$C\\leftrightarrow G  $$$$G\\leftrightarrow C$$\n\n之后的文字。');
+  assert.equal(r.document.querySelectorAll('.katex-display').length, 4);
+  assert.equal(r.document.querySelectorAll('.katex-error').length, 0);
+  assert.ok(!r.document.body.textContent.includes('$$'));
+  assert.equal(r.document.querySelector('p').textContent, '之后的文字。');
+  r.close();
+});
