@@ -142,3 +142,56 @@ html,body { height:100%; margin:0; }
 .cm-format-option[aria-checked="true"] { color:#f3a6c9; }
 .cm-format-option .cm-slash-icon { flex-basis:24px; font-size:15px; }
 .cm-editor.cm-caret-hidden .cm-cursor { display:none!important; }
+/* Inline HTML */
+.cm-editor .cm-html-u,.cm-editor .cm-html-ins { text-decoration:underline; text-underline-offset:2px; }
+.cm-editor .cm-html-s,.cm-editor .cm-html-del { text-decoration:line-through; }
+.cm-editor .cm-html-b,.cm-editor .cm-html-strong { font-weight:700; }
+.cm-editor .cm-html-i,.cm-editor .cm-html-em { font-style:italic; }
+.cm-editor .cm-html-small { font-size:.85em; }
+.cm-editor .cm-html-mark { background:#d93b8640; border-radius:2px; }
+.cm-editor .cm-html-sub { vertical-align:sub; font-size:.75em; }
+.cm-editor .cm-html-sup { vertical-align:super; font-size:.75em; }
+.cm-editor .cm-html-kbd { padding:1px 5px; border:1px solid #ffffff30; border-bottom-width:2px; border-radius:4px; font-size:.85em; }
+/* Code */
+.cm-editor .cm-tok-keyword { color:#f28fbd; }
+.cm-editor .cm-tok-string { color:#a5d6a7; }
+.cm-editor .cm-tok-comment { color:#7d7686; font-style:italic; }
+.cm-editor .cm-tok-number { color:#f2b57a; }
+.cm-editor .cm-tok-function { color:#8cc4f5; }
+.cm-editor .cm-tok-type { color:#d3b3f5; }
+.cm-editor .cm-tok-property { color:#9fd8e0; }
+.cm-editor .cm-tok-tag { color:#7fc8a0; }
+.cm-editor .cm-tok-plain { color:inherit; }
+.cm-editor .cm-code-first { position:relative; }
+.cm-editor .cm-code-tools { position:absolute; top:4px; right:8px; display:inline-flex; gap:8px; align-items:center; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; font-size:11px; line-height:18px; color:#8d8695; user-select:none; -webkit-user-select:none; z-index:1; }
+.cm-editor .cm-code-tools button { border:0; padding:0 6px; border-radius:4px; background:#ffffff14; color:inherit; font:inherit; cursor:pointer; }
+.cm-editor .cm-code-tools button:hover { background:#ffffff26; color:#e5e3e8; }
+/* Mermaid and HTML blocks */
+.cm-editor .cm-mermaid { display:flex; justify-content:center; min-height:40px; overflow-x:auto; }
+.cm-editor .cm-mermaid svg { max-width:100%; height:auto; }
+.cm-editor .cm-mermaid-error { display:block; white-space:pre-wrap; font-family:ui-monospace,Menlo,monospace; font-size:.85em; color:#e57373; }
+.cm-editor .cm-block-html details { border:1px solid #ffffff1c; border-radius:7px; padding:8px 14px; }
+.cm-editor .cm-block-html summary { cursor:pointer; font-weight:600; }
+.cm-editor .cm-block-html details[open] summary { margin-bottom:6px; }
+.cm-editor .cm-block-html table { display:table; border-collapse:collapse; width:100%; }
+.cm-editor .cm-block-html th,.cm-editor .cm-block-html td { border:1px solid #ffffff24; padding:6px 10px; text-align:left; vertical-align:top; }
+.cm-editor .cm-image-caption { margin-top:6px; text-align:center; font-size:.85em; color:#8d8695; }
+/* Callout colours */
+.cm-editor .cm-callout-line { --callout:#d93b86; --callout-text:#e57bad; border-left-color:color-mix(in srgb,var(--callout) 50%,transparent); background:color-mix(in srgb,var(--callout) 9%,transparent); }
+.cm-editor .cm-callout-info { --callout:#4c9be8; --callout-text:#7db8f0; }
+.cm-editor .cm-callout-tip { --callout:#3fae6b; --callout-text:#6fcb93; }
+.cm-editor .cm-callout-warning { --callout:#e0943a; --callout-text:#f0b26a; }
+.cm-editor .cm-callout-danger { --callout:#e0524d; --callout-text:#f08a86; }
+.cm-editor .cm-callout-question { --callout:#9b6fe0; --callout-text:#bb9ef0; }
+.cm-editor .cm-callout-quote { --callout:#8d8695; --callout-text:#aaa4b0; }
+.cm-editor .cm-callout-kind { color:var(--callout-text,#e57bad); }
+/* Folding */
+.cm-editor .cm-heading,.cm-editor .cm-callout-first { position:relative; }
+.cm-editor .cm-fold-toggle { position:absolute; left:-1.35em; width:1.2em; text-align:center; font-size:14px; line-height:inherit; font-weight:400; letter-spacing:0; color:#8d8695; cursor:pointer; opacity:0; user-select:none; -webkit-user-select:none; transition:transform .12s; text-indent:0; }
+.cm-editor .cm-line:hover > .cm-fold-toggle,.cm-editor .cm-fold-closed { opacity:1; }
+.cm-editor .cm-fold-closed { transform:rotate(-90deg); }
+.cm-editor .cm-foldPlaceholder { background:transparent; border:0; color:#8d8695; padding:0 4px; }
+/* Footnotes */
+.cm-editor .cm-footnote-mark { color:#e57bad; cursor:pointer; font-size:.75em; padding:0 1px; }
+.cm-editor .cm-footnote-note { font-size:.9em; color:#aaa4b0; }
+.cm-editor .cm-footnote-note * { color:inherit; }

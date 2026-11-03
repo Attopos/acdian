@@ -157,6 +157,15 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm
 .build/split-tests/split-tests
 ```
 
+富文本渲染验证（跨行公式、不配对的 $$、行内 HTML、代码高亮、Mermaid、HTML 块、Callout、折叠、脚注；离屏窗口，临时页面；传一篇笔记的路径则只报告它的公式和错误）：
+
+```sh
+sed 's/^@main struct AcdianApp/struct AcdianApp/' Sources/AcdianApp.swift > .build/AcdianApp-nomain.swift
+mkdir -p .build/rich-tests && cp -R Resources/. .build/rich-tests/
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm64-apple-macos14.0 $(ls Sources/*.swift | grep -v AcdianApp) .build/AcdianApp-nomain.swift Tests/RichTextTests.swift -o .build/rich-tests/rich-tests
+.build/rich-tests/rich-tests
+```
+
 模块与附件清理验证：
 
 ```sh

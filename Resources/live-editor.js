@@ -9,6 +9,7 @@ import { formatToolbar } from './format-toolbar.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
+import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -137,7 +138,7 @@ class TaskWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-function fragment(source,state) {
+function fragment(source,state,html=false) {
   const holder = document.createElement('div'); holder.className = 'markdown-body cm-rendered-content';
   let prepared = source.replace(/!\[\[([^\]\n]+)\]\]/g, (_,value) => {
     const [target,alias] = value.split('|');
@@ -147,12 +148,24 @@ function fragment(source,state) {
   }).replace(/\[\[([^\]\n]+)\]\]/g, (_,value) => {
     const [target,alias] = value.split('|'); return `<a data-live-target="${escapeHTML(target)}">${escapeHTML(alias||target)}</a>`;
   });
-  holder.innerHTML = DOMPurify.sanitize(marked.parse(prepared,{gfm:true}), {USE_PROFILES:{html:true},FORBID_TAGS:['script','style','iframe','object','embed','form','input'],FORBID_ATTR:['style','srcset'],ALLOW_DATA_ATTR:true});
+  // In an HTML block Markdown and formulas still work inside the tags.
+  if(html) prepared = prepared
+    .replace(/(?<!\\)\$\$([\s\S]+?)\$\$|(?<![\\$\d])\$(?![\s$])([^$\n]+?)(?<![\s\\])\$(?![$\d])/g,(_,display,inline)=>`<span data-tex="${escapeHTML(display??inline)}"${display===undefined?'':' data-display="1"'}></span>`)
+    .replace(/(<\/summary>)[ \t]*\n?/gi,'$1\n\n').replace(/\n?[ \t]*(<\/details>)/gi,'\n\n$1');
+  holder.innerHTML = DOMPurify.sanitize(marked.parse(prepared,{gfm:true}), {USE_PROFILES:{html:true},FORBID_TAGS:['script','style','iframe','object','embed','form','input'],FORBID_ATTR:html?['srcset']:['style','srcset'],ALLOW_DATA_ATTR:true});
+  if(html) {
+    holder.querySelectorAll('[style]').forEach(element => { const style=safeBlockStyle(element.getAttribute('style')); if(style)element.setAttribute('style',style); else element.removeAttribute('style'); });
+    holder.querySelectorAll('[data-tex]').forEach(element => { try { katex.render(element.dataset.tex,element,{displayMode:!!element.dataset.display,throwOnError:false,trust:false}); } catch { element.textContent=element.dataset.tex; } });
+  }
   holder.querySelectorAll('img').forEach(image => {
     const target = image.dataset.liveResource || image.getAttribute('src') || '';
     if(/\.pdf(?:#|$)/i.test(target)){const link=document.createElement('a');link.dataset.liveTarget=target;link.textContent='PDF · '+(image.alt||target.split('/').pop())+' ↗';image.replaceWith(link);return;}
     const url = resourceURL(target); image.removeAttribute('src');
-    if (url) { image.src = url; image.loading = 'lazy'; }
+    if (url) {
+      image.src = url; image.loading = 'lazy';
+      // Text given with a picture is its caption.
+      if (image.alt && !html) { const caption=document.createElement('div'); caption.className='cm-image-caption'; caption.textContent=image.alt; image.after(caption); }
+    }
     else image.replaceWith(document.createTextNode(image.alt));
   });
   holder.querySelectorAll('a').forEach(link => { const target = link.dataset.liveTarget || link.getAttribute('href'); link.href='#'; link.title=uiText(state,'openLinkShort'); link.addEventListener('click',event=>{event.preventDefault(); navigate(target||'');}); });
@@ -182,10 +195,15 @@ class BlockWidget extends WidgetType {
         const math=document.createElement('div'); try { katex.render(tex,math,{displayMode:true,throwOnError:false,trust:false}); } catch {math.textContent=tex;} holder.append(math);
       }
     }
-    else holder.append(fragment(this.source,view.state));
+    else holder.append(fragment(this.source,view.state,this.kind==='html'));
+    if(this.kind!=='image') {
+      holder.title=uiText(view.state,'doubleClickEdit');
+      holder.addEventListener('dblclick',event=>{ if(!metadata.editable)return; event.preventDefault(); view.dispatch({selection:{anchor:view.posAtDOM(holder)+1}}); view.focus(); });
+    }
     holder.addEventListener('mousedown',event=>{
-      // A link inside the block opens on click instead of selecting the block.
-      if(event.metaKey||event.ctrlKey||!metadata.editable||event.target.closest?.('a')) return;
+      // A link inside the block opens on click instead of selecting the block,
+      // and a folding block keeps its place when opened or closed.
+      if(event.metaKey||event.ctrlKey||!metadata.editable||event.target.closest?.('a,details')) return;
       const from=view.posAtDOM(holder);
       event.preventDefault(); view.dispatch({selection:{anchor:from,head:Math.min(from+this.source.length,view.state.doc.length)}}); view.focus();
     }); return spacedBlock(holder);
@@ -244,6 +262,54 @@ window.addEventListener('message',event=>{
 });
 new MutationObserver(()=>{const theme=currentAppearance();for(const frame of interactiveFrames())frame.contentWindow?.postMessage({type:'acdian-interactive:theme',theme},'*');}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
 
+// The last line of the HTML block that starts on line n, or 0 if none does. The
+// tags are matched up, so a block may hold blank lines and Markdown.
+function htmlBlockEnd(doc,n) {
+  const text=doc.line(n).text;
+  if(/^\s*<img\b[^<>]*>\s*$/i.test(text))return n;
+  const name=/^\s*<(details|table|div|center|figure|aside|section|dl)\b/i.exec(text)?.[1];
+  if(!name)return 0;
+  const tag=new RegExp('<(/?)'+name+'\\b[^<>]*>','gi');
+  let depth=0;
+  for(let end=n;end<=doc.lines;end++) {
+    for(const match of doc.line(end).text.matchAll(tag))depth+=match[1]?-1:1;
+    if(depth<=0)return end;
+  }
+  return 0;
+}
+const calloutGroups={info:['info','todo','abstract','summary','tldr'],tip:['tip','hint','important','success','check','done'],warning:['warning','caution','attention'],danger:['danger','error','bug','failure','fail','missing'],question:['question','help','faq'],quote:['quote','cite','example']};
+const calloutIcons={note:'✦',info:'ℹ︎',tip:'✓',warning:'!',danger:'✕',question:'?',quote:'❝'};
+const calloutGroup=kind=>Object.keys(calloutGroups).find(group=>calloutGroups[group].includes(kind.toLowerCase()))||'note';
+// The last line of the display formula that starts on line n, or 0 if none does.
+// The closing $$ may share a line with the formula, on either side, and formulas
+// may follow each other on one line. A formula never spans a blank line, so a
+// stray $$ stays plain text instead of swallowing the page down to the next one.
+function mathBlockEnd(doc,n) {
+  const marks=text=>[...text.matchAll(/(?<!\\)\$\$/g)].map(match=>match.index);
+  const first=doc.line(n).text,at=marks(first);
+  for(let i=1;i+1<at.length;i+=2)if(first.slice(at[i]+2,at[i+1]).trim())return 0;
+  if(at.length%2===0)return first.slice(at[at.length-1]+2).trim()||!first.slice(at[0]+2,at[1]).trim()?0:n;
+  for(let end=n+1;end<=doc.lines;end++) {
+    const text=doc.line(end).text,close=marks(text);
+    if(!text.trim())return 0;
+    if(close.length)return close.length===1&&!text.slice(close[0]+2).trim()?end:0;
+  }
+  return 0;
+}
+class FootnoteWidget extends WidgetType {
+  constructor(label) { super(); this.label=label; }
+  eq(other) { return this.label===other.label; }
+  toDOM(view) {
+    const mark=document.createElement('sup'); mark.className='cm-footnote-mark'; mark.textContent=this.label;
+    mark.addEventListener('mousedown',event=>{
+      event.preventDefault();
+      const key='[^'+this.label+']:';
+      for(let n=1;n<=view.state.doc.lines;n++){const line=view.state.doc.line(n);if(line.text.startsWith(key)){view.dispatch({selection:{anchor:line.to},scrollIntoView:true});view.focus();return;}}
+    });
+    return mark;
+  }
+  ignoreEvent() { return true; }
+}
 class InlineMathWidget extends WidgetType {
   constructor(tex) { super(); this.tex=tex; }
   eq(other) { return other.tex===this.tex; }
@@ -253,7 +319,7 @@ class InlineMathWidget extends WidgetType {
 class CalloutKindWidget extends WidgetType {
   constructor(kind,title) {super();Object.assign(this,{kind,title});}
   eq(other) {return this.kind===other.kind&&this.title===other.title;}
-  toDOM() {const label=document.createElement('span');label.className='cm-callout-kind'+(this.title?' cm-callout-mark':'');label.textContent=this.title?'✦ ':'✦ '+this.kind.toUpperCase();label.setAttribute('aria-hidden','true');return label;}
+  toDOM() {const label=document.createElement('span');label.className='cm-callout-kind'+(this.title?' cm-callout-mark':'');const icon=calloutIcons[calloutGroup(this.kind)]+' ';label.textContent=this.title?icon:icon+this.kind.toUpperCase();label.setAttribute('aria-hidden','true');return label;}
 }
 class HeadingHintWidget extends WidgetType {
   constructor(level) { super(); this.level = level; }
@@ -461,6 +527,8 @@ function decorations(state,reuse=new Map(),blocks=[]) {
   for(const [from,to] of ranges)tree.iterate({from,to,enter(node){if(node.name==='FencedCode'||node.name==='CodeBlock')return false;if(node.name==='InlineCode')inlineCodeRanges.push([node.from,node.to]);}});
   const addBlock=(from,to,kind)=>{
     if(from===to) return false;
+    // Formulas and HTML blocks show their source while the caret is inside.
+    if(kind!=='image'&&metadata.editable&&state.selection.ranges.some(range=>range.empty&&range.head>from&&range.head<to)) return false;
     // A block inside a selection is marked, so its content can be highlighted like text.
     const selected=state.selection.ranges.some(range=>!range.empty&&range.from<to&&range.to>from),language=state.facet(editorLanguage),old=reuse.get(from+':'+to);
     const widget=old instanceof BlockWidget&&old.kind===kind&&old.selected===selected&&old.language===language?old:new BlockWidget(state.doc.sliceString(from,to),from,kind,language,selected);
@@ -468,6 +536,17 @@ function decorations(state,reuse=new Map(),blocks=[]) {
   };
   // A closed interactive block runs unless the caret is inside it, where its source shows.
   for(const node of interactive) {
+    const firstLine=state.doc.lineAt(node.from);
+    if(/^\s*(?:`{3,}|~{3,})\s*mermaid\s*$/i.test(firstLine.text)) {
+      const lastLine=state.doc.lineAt(node.to),closing=node.lastChild;
+      if(closing?.name!=='CodeMark'||state.doc.lineAt(closing.from).number!==lastLine.number||lastLine.number<=firstLine.number)continue;
+      const from=firstLine.from,to=lastLine.to;
+      if(metadata.editable&&state.selection.ranges.some(range=>range.head>from&&range.head<to||range.anchor>from&&range.anchor<to))continue;
+      const language=state.facet(editorLanguage),old=reuse.get(from+':'+to);
+      const widget=old instanceof MermaidWidget&&old.language===language?old:new MermaidWidget(firstLine.number+1<lastLine.number?state.doc.sliceString(state.doc.line(firstLine.number+1).from,state.doc.line(lastLine.number-1).to):'',language);
+      list.push(Decoration.replace({widget,block:true}).range(from,to));covered.push([from,to]);blocks.push({from,to,widget});
+      continue;
+    }
     const info=interactiveInfo(state,node);if(!info)continue;
     const first=state.doc.lineAt(node.from),last=state.doc.lineAt(node.to),close=node.lastChild;
     if(!(close?.name==='CodeMark'&&state.doc.lineAt(close.from).number===last.number&&last.number>first.number))continue;
@@ -486,19 +565,21 @@ function decorations(state,reuse=new Map(),blocks=[]) {
     const line=state.doc.line(n);
     while(code<codeRanges.length&&codeRanges[code][1]<=line.from)code++;
     if(code<codeRanges.length&&line.from>=codeRanges[code][0])continue;
-    if(!/^\s*[$!>]/.test(line.text))continue;
+    if(!/^\s*[$!><]/.test(line.text))continue;
     if(/^>\s*\[![\w-]+\]/.test(line.text)) {
       let end=n; while(end<state.doc.lines && /^>/.test(state.doc.line(end+1).text)) end++;
       if(!inRanges(ranges,line.from,state.doc.line(end).to)){n=end;continue;}
-      const match=/^>\s*\[!([\w-]+)\][+-]?[ \t]*/.exec(line.text),titled=!!line.text.slice(match[0].length);
-      for(let row=n;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line'+(row===n?' cm-callout-first'+(titled?' cm-callout-titled':''):'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
+      const match=/^>\s*\[!([\w-]+)\][+-]?[ \t]*/.exec(line.text),titled=!!line.text.slice(match[0].length),group=calloutGroup(match[1]);
+      for(let row=n;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line cm-callout-'+group+(row===n?' cm-callout-first'+(titled?' cm-callout-titled':''):'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
       list.push(Decoration.widget({widget:new CalloutKindWidget(match[1],titled),side:1}).range(line.from+match[0].length));
       n=end;
-    } else if(/^\s*\$\$\s*$/.test(line.text)) {
-      let end=n+1; while(end<=state.doc.lines&&!/^\s*\$\$\s*$/.test(state.doc.line(end).text)) end++;
-      if(end<=state.doc.lines) {addBlock(line.from,state.doc.line(end).to,'math');n=end;}
-    } else if(/^\s*\$\$(?!\s*\$\$\s*$).+\$\$\s*$/.test(line.text)) addBlock(line.from,line.to,'math');
-    else if(/^\s*(?:!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\))\s*$/.test(line.text)) addBlock(line.from,line.to,'image');
+    } else if(/^\s*\$\$/.test(line.text)) {
+      const end=mathBlockEnd(state.doc,n);
+      if(end) {addBlock(line.from,state.doc.line(end).to,'math');n=end;}
+    } else if(/^\s*</.test(line.text)) {
+      const end=htmlBlockEnd(state.doc,n);
+      if(end) {addBlock(line.from,state.doc.line(end).to,'html');n=end;}
+    } else if(/^\s*(?:!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\))\s*$/.test(line.text)) addBlock(line.from,line.to,'image');
   }
   covered.sort((a,b)=>a[0]-b[0]);
   const within=(from,to)=>{let lo=0,hi=covered.length-1;while(lo<=hi){const mid=(lo+hi)>>1;if(covered[mid][0]>from)hi=mid-1;else{if(to<=covered[mid][1])return true;lo=mid+1;}}return false;};
@@ -541,6 +622,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       const first=state.doc.lineAt(node.from).number,last=state.doc.lineAt(node.to).number;
       const closed=node.node.lastChild?.name==='CodeMark'&&state.doc.lineAt(node.node.lastChild.from).number===last&&last>first;
       for(let n=first;n<=last;n++)list.push(Decoration.line({class:n===first||closed&&n===last?'cm-code-fence':'cm-code-line'+(n===first+1?' cm-code-first':'')+(n===(closed?last-1:last)?' cm-code-last':'')}).range(state.doc.line(n).from));
+      if(first+1<=(closed?last-1:last))list.push(codeTools(/^\s*(?:`{3,}|~{3,})\s*([^\s`]*)/.exec(state.doc.line(first).text)?.[1]||'').range(state.doc.line(first+1).from));
       return false;
     }
   }});
@@ -582,6 +664,27 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       if(inlineCodeRanges.some(([a,b])=>from<b&&to>a))continue;
       if(metadata.editable&&state.selection.ranges.some(range=>range.to>=from&&range.from<=to))continue;
       list.push(Decoration.replace({widget:new InlineMathWidget(match[1])}).range(from,to));
+    }
+    const touching=(from,to)=>metadata.editable&&state.selection.ranges.some(range=>range.to>=from&&range.from<=to);
+    const inCodeSpan=(from,to)=>inlineCodeRanges.some(([a,b])=>from<b&&to>a);
+    inlineHTML(line.text,line.from,touching,inCodeSpan,list);
+    // A footnote mark shows as a small number that goes to its note.
+    if(line.text.includes('[^')) {
+      const note=/^\[\^[^\]\s]+\]:\s/.exec(line.text);
+      if(note)list.push(Decoration.line({class:'cm-footnote-note'}).range(line.from));
+      for(const mark of line.text.matchAll(/\[\^([^\]\s]+)\]/g)) {
+        const from=line.from+mark.index,to=from+mark[0].length;
+        if(inCodeSpan(from,to)||touching(from,to)||(note&&mark.index===0))continue;
+        list.push(Decoration.replace({widget:new FootnoteWidget(mark[1])}).range(from,to));
+      }
+    }
+    // $$…$$ inside a line of text is a formula too, set in the line.
+    const textMath=/(?<![\\$])\$\$(?![$\s])((?:\\.|[^$\\\n])+?)\$\$(?!\$)/g;
+    while((match=textMath.exec(line.text))) {
+      const from=line.from+match.index,to=from+match[0].length;
+      if(inlineCodeRanges.some(([a,b])=>from<b&&to>a))continue;
+      if(metadata.editable&&state.selection.ranges.some(range=>range.to>=from&&range.from<=to))continue;
+      list.push(Decoration.replace({widget:new InlineMathWidget(match[1].trim())}).range(from,to));
     }
     if(!line.text.trim()) {
       // Tables, code blocks, quotes and callouts end without a paragraph gap,
@@ -790,7 +893,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM}),syntaxHighlighting(defaultHighlightStyle),windowField,windowTracker,boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  history(),drawSelection(),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
@@ -807,6 +910,7 @@ function extensions() {return [
 ];}
 const view=new EditorView({state:EditorState.create({doc:'',extensions:extensions()}),parent:document.getElementById('editor')});
 view.scrollDOM.insertBefore(titleBlock,view.contentDOM);
+configureRichText({post,uiText});
 // The text fills what the title leaves of the window, so a short page does not scroll.
 new ResizeObserver(()=>document.documentElement.style.setProperty('--page-title-height',titleBlock.offsetHeight+'px')).observe(titleBlock);
 window.acdianEditor=view;
@@ -848,6 +952,7 @@ function installDocument(text,remembered) {
   } else {
     rawSource=text;lineBreak=rawSource.includes('\r\n')?'\r\n':rawSource.includes('\r')?'\r':'\n';rawSnapshots=new Map([[canonical(rawSource),rawSource]]);
     view.setState(EditorState.create({doc:canonical(rawSource),extensions:extensions()}));
+    const folded=startFolded(view.state);if(folded.length)view.dispatch({effects:folded});
     // A tab whose editor state was not kept still returns to its last place.
     const place=session&&session.path===metadata.currentPath?{anchor:session.state.selection.main.anchor,head:session.state.selection.main.head,scroll:session.scroll}:remembered;
     const length=view.state.doc.length,clamp=value=>Number.isFinite(value)?Math.max(0,Math.min(value,length)):0;
