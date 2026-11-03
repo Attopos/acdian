@@ -95,7 +95,7 @@ final class FakeDrag: NSObject, NSDraggingInfo {
         let pasted = stored().first ?? ""
         check(pasted.hasPrefix("Pasted image ") && (try? Data(contentsOf:attachments.appendingPathComponent(pasted))) == png,"the picture is saved in Attachments: \(stored())")
         check(await waitFor(5) { (await js("[...document.querySelectorAll('.cm-content img')].some(i=>i.complete&&i.naturalWidth===40)") as? Bool) == true },"the editor shows the pasted picture")
-        check(model.text.hasSuffix("End\n![[Attachments/\(pasted)]]"),"the link goes at the caret: \(model.text.debugDescription)")
+        check(model.text.hasSuffix("End\n![[Attachments/\(pasted)]]\n"),"the link goes at the caret: \(model.text.debugDescription)")
 
         // A file copied in Finder.
         general.clearContents(); general.writeObjects([photo as NSURL])

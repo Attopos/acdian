@@ -191,13 +191,13 @@ test('the Image slash command clears its line and asks the app for an image, whi
  option.click();
  assert.equal(r.get().text,'');assert.equal(r.view.state.selection.main.head,0);
  assert.equal(r.messages.filter(m=>m.type==='pickImage'&&m.currentPath==='笔记.md').length,1);
- r.w.acdianInsertText('![[Attachments/a.png]]','one',true);assert.equal(r.get().text,'![[Attachments/a.png]]');
+ r.w.acdianInsertText('![[Attachments/a.png]]','one',true);assert.equal(r.get().text,'![[Attachments/a.png]]\n');assert.equal(r.view.state.selection.main.head,r.view.state.doc.length);
  r.w.acdianSetDocument({text:'Hello World',currentPath:'笔记.md'});r.view.dispatch({selection:{anchor:6}});
  r.w.acdianInsertText('![[Attachments/a.png]]\n![[Attachments/b.png]]','two',true);
  assert.equal(r.get().text,'Hello \n![[Attachments/a.png]]\n![[Attachments/b.png]]\nWorld');
  r.w.acdianUndo();assert.equal(r.get().text,'Hello World');
  r.w.acdianSetDocument({text:'A\n\nB',currentPath:'笔记.md'});r.view.dispatch({selection:{anchor:4}});
- r.w.acdianInsertText('![[Attachments/c.png]]','three',true);assert.equal(r.get().text,'A\n\nB\n![[Attachments/c.png]]');r.close();
+ r.w.acdianInsertText('![[Attachments/c.png]]','three',true);assert.equal(r.get().text,'A\n\nB\n![[Attachments/c.png]]\n');r.close();
 });
 test('pastes that carry files go to the app, while plain text pastes stay in the editor',()=>{
  const r=setup('文字');r.view.focus();

@@ -168,7 +168,51 @@ struct RichTextTests {
         let under = try await text(".cm-content .cm-line").contains { $0.contains("Under the section") }
         let next = try await text(".cm-content .cm-line").contains { $0.contains("Next") }
         try await check(!under && next, "A heading's arrow folds its section (under \(under), next \(next))")
-        print("Rich text: formulas across lines, stray marks, inline HTML, code, Mermaid, HTML blocks, callouts, folding and footnotes passed")
+        // Pictures, from a Retina screenshot pasted in to resizing it.
+        let picture = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:800,pixelsHigh:400,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+        picture.size = NSSize(width:400,height:200)
+        let pictureData = picture.representation(using:.png,properties:[:])!
+        try write("Pictures.md","Top\n\nBelow\n")
+        try FileManager.default.createDirectory(at:root.appendingPathComponent("Attachments"),withIntermediateDirectories:true)
+        try pictureData.write(to:root.appendingPathComponent("Attachments/plain.png"))
+        try write("Inline.md","Intro\n\nIn a line ![[Attachments/plain.png|30]] here\n\n- list ![[Attachments/plain.png|20]]\n\n![[Attachments/nothing.png]]\n\n![[Attachments/plain.png|caption words|100]]\n")
+        model.refresh()
+        for _ in 0..<500 where model.loading || model.index?.files.contains(where: { $0.relativePath == "Inline.md" }) != true { try await wait(0.01) }
+        try await open("Pictures.md")
+        _ = try await js("(()=>{const v=window.acdianEditor;v.dispatch({selection:{anchor:v.state.doc.toString().indexOf('Below')}});})()",as:Bool.self)
+        model.insertImage(pictureData,ext:"png")
+        try await wait(1.5)
+        try await check(model.text.contains("|400]]\nBelow"), "A Retina screenshot goes in at its width on screen, on its own line (\(model.text))")
+        let caret = try await js("(()=>{const v=window.acdianEditor;return v.state.doc.lineAt(v.state.selection.main.head).text;})()",as:String.self)
+        try await check(caret == "Below", "The caret goes on below the picture (\(caret ?? "nil"))")
+        let shownWidth = try await js("document.querySelector('.cm-block-image img').getBoundingClientRect().width",as:Double.self)
+        try await check(shownWidth == 400, "The picture shows at that width (\(shownWidth ?? -1))")
+        let centred = try await js("(()=>{const f=document.querySelector('.cm-image-frame').getBoundingClientRect(),b=document.querySelector('.cm-block-image').getBoundingClientRect();return Math.abs((f.left+f.right)/2-(b.left+b.right)/2)<2;})()",as:Bool.self)
+        try await check(centred == true, "The picture is centred")
+        try await check(try await js("getComputedStyle(document.querySelector('.cm-image-handle')).display",as:String.self) == "none", "Handles show only on a selected picture")
+        _ = try await js("window.__image=document.querySelector('.cm-block-image img');document.querySelector('.cm-block-image').dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true}))",as:Bool.self)
+        try await wait(0.3)
+        try await check(try await js("document.querySelector('.cm-block-image img')===window.__image",as:Bool.self) == true, "Selecting a picture does not redraw it")
+        try await check(try await js("getComputedStyle(document.querySelector('.cm-block-selected .cm-image-handle')).display",as:String.self) == "block", "A selected picture shows its handles")
+        _ = try await js("(()=>{const h=document.querySelector('.cm-image-handle-right');h.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,clientX:100}));window.dispatchEvent(new MouseEvent('mousemove',{clientX:150}));window.dispatchEvent(new MouseEvent('mouseup',{clientX:150}));})()",as:Bool.self)
+        try await wait(0.3)
+        let resized = try await js("window.acdianEditor.state.doc.line(3).text",as:String.self) ?? ""
+        try await check(resized.hasSuffix("|500]]"), "Dragging a handle keeps the new width in the Markdown (\(resized))")
+        try await check(try await js("document.querySelector('.cm-block-image img')===window.__image&&window.__image.getBoundingClientRect().width===500",as:Bool.self) == true, "The picture takes the new width without loading again")
+        try await check(try await js("!!document.querySelector('.cm-block-selected')",as:Bool.self) == true, "The picture stays selected after a resize")
+        _ = try await js("window.__image.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}))",as:Bool.self)
+        try await check(try await count(".cm-image-large img") == 1, "Double-clicking a picture shows it large")
+        _ = try await js("window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))",as:Bool.self)
+        try await check(try await count(".cm-image-large") == 0, "Escape closes the large view")
+
+        try await open("Inline.md")
+        try await wait(1)
+        try await check(try await count(".cm-inline-image") == 2, "A picture inside a line or list item shows in place")
+        try await check(try await text(".cm-image-missing").first?.contains("nothing.png") == true, "A missing picture says which file is missing")
+        try await check(try await text(".cm-image-caption") == ["caption words"], "Text with a picture is its caption")
+        try await check(try await js("[...document.querySelectorAll('.cm-block-image img')].at(-1).getBoundingClientRect().width",as:Double.self) == 100, "A caption and a width can go together")
+
+        print("Rich text: formulas across lines, stray marks, inline HTML, code, Mermaid, HTML blocks, callouts, folding, footnotes and pictures passed")
         exit(0)
     }
 }

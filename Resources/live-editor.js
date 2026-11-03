@@ -9,7 +9,7 @@ import { formatToolbar } from './format-toolbar.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
-import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded } from './rich-text.js';
+import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -52,6 +52,7 @@ const localeExtensions=()=>{
   const strings=messagesForLanguage(metadata.language);
   return [editorLanguage.of(metadata.language),placeholder(strings.placeholder),EditorView.contentAttributes.of({lang:metadata.language,'aria-label':strings.editorLabel})];
 };
+const isImageTarget = target => /\.(?:png|jpe?g|gif|webp|svg|avif|bmp|heic|tiff?)(?:#|$)/i.test(target);
 const escapeHTML = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const decode = text => { try { return decodeURIComponent(text); } catch { return text; } };
 const canonical = text => text.replace(/\r\n|\r/g, '\n');
@@ -138,12 +139,13 @@ class TaskWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-function fragment(source,state,html=false) {
+function fragment(source,state,kind='') {
+  const html=kind==='html';
   const holder = document.createElement('div'); holder.className = 'markdown-body cm-rendered-content';
   let prepared = source.replace(/!\[\[([^\]\n]+)\]\]/g, (_,value) => {
-    const [target,alias] = value.split('|');
+    const {target,width,caption} = parseEmbed(value),alias = caption;
     if (/\.pdf(?:#|$)/i.test(target)) return `<a data-live-target="${escapeHTML(target)}">PDF · ${escapeHTML(alias || target.split('/').pop())} ↗</a>`;
-    if (/\.(?:png|jpe?g|gif|webp|svg|avif|bmp|heic)(?:#|$)/i.test(target)) {const dimensions=/^(\d+)(?:x(\d+))?$/.exec(alias||'');return `<img data-live-resource="${escapeHTML(target)}" alt="${escapeHTML(dimensions?'':alias||'')}"${dimensions?` width="${Math.min(3000,Number(dimensions[1]))}"`:''}>`;}
+    if (isImageTarget(target)) return `<img data-live-resource="${escapeHTML(target)}" alt="${escapeHTML(caption)}"${width?` width="${width}"`:''}>`;
     return `<a data-live-target="${escapeHTML(target)}">${escapeHTML(alias||target)}</a>`;
   }).replace(/\[\[([^\]\n]+)\]\]/g, (_,value) => {
     const [target,alias] = value.split('|'); return `<a data-live-target="${escapeHTML(target)}">${escapeHTML(alias||target)}</a>`;
@@ -161,10 +163,16 @@ function fragment(source,state,html=false) {
     const target = image.dataset.liveResource || image.getAttribute('src') || '';
     if(/\.pdf(?:#|$)/i.test(target)){const link=document.createElement('a');link.dataset.liveTarget=target;link.textContent='PDF · '+(image.alt||target.split('/').pop())+' ↗';image.replaceWith(link);return;}
     const url = resourceURL(target); image.removeAttribute('src');
+    // ![caption|300](file) gives a width too, as ![[file|300]] does.
+    const sized=/^(.*?)\|?(\d+)(?:x\d+)?$/.exec(image.alt);
+    if(sized&&!image.getAttribute('width')){image.alt=sized[1];image.width=Math.min(3000,Number(sized[2]));}
+    if(!image.dataset.liveResource)image.dataset.liveResource=target;
     if (url) {
       image.src = url; image.loading = 'lazy';
       // Text given with a picture is its caption.
-      if (image.alt && !html) { const caption=document.createElement('div'); caption.className='cm-image-caption'; caption.textContent=image.alt; image.after(caption); }
+      const caption=image.alt&&!html?document.createElement('span'):null;
+      if (kind==='image') frameImage(image,state);
+      if (caption) { caption.className='cm-image-caption'; caption.textContent=image.alt; (image.closest('.cm-image-frame')||image).after(caption); }
     }
     else image.replaceWith(document.createTextNode(image.alt));
   });
@@ -195,7 +203,8 @@ class BlockWidget extends WidgetType {
         const math=document.createElement('div'); try { katex.render(tex,math,{displayMode:true,throwOnError:false,trust:false}); } catch {math.textContent=tex;} holder.append(math);
       }
     }
-    else holder.append(fragment(this.source,view.state,this.kind==='html'));
+    else holder.append(fragment(this.source,view.state,this.kind));
+    holder.dataset.source=this.source;
     if(this.kind!=='image') {
       holder.title=uiText(view.state,'doubleClickEdit');
       holder.addEventListener('dblclick',event=>{ if(!metadata.editable)return; event.preventDefault(); view.dispatch({selection:{anchor:view.posAtDOM(holder)+1}}); view.focus(); });
@@ -207,6 +216,21 @@ class BlockWidget extends WidgetType {
       const from=view.posAtDOM(holder);
       event.preventDefault(); view.dispatch({selection:{anchor:from,head:Math.min(from+this.source.length,view.state.doc.length)}}); view.focus();
     }); return spacedBlock(holder);
+  }
+  // Being selected, or a new width, changes the block in place, so its picture
+  // does not load again and a drag can go on.
+  updateDOM(dom) {
+    const holder=dom.querySelector?.('.cm-live-block');
+    if(!holder||!holder.classList.contains('cm-block-'+this.kind))return false;
+    const old=holder.dataset.source??'';
+    if(old!==this.source&&(this.kind!=='image'||imageWidthless(old)!==imageWidthless(this.source)))return false;
+    holder.classList.toggle('cm-block-selected',this.selected);
+    if(old!==this.source) {
+      const image=holder.querySelector('img'),width=/\|(\d+)(?:x\d+)?(?=\]\]|\]\()/.exec(this.source)?.[1];
+      if(image){image.style.width='';if(width)image.width=Number(width);else image.removeAttribute('width');}
+      holder.dataset.source=this.source;
+    }
+    return true;
   }
   ignoreEvent() { return true; }
 }
@@ -668,6 +692,11 @@ function decorations(state,reuse=new Map(),blocks=[]) {
     const touching=(from,to)=>metadata.editable&&state.selection.ranges.some(range=>range.to>=from&&range.from<=to);
     const inCodeSpan=(from,to)=>inlineCodeRanges.some(([a,b])=>from<b&&to>a);
     inlineHTML(line.text,line.from,touching,inCodeSpan,list);
+    for(const embed of line.text.matchAll(/!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\s]+)\)/g)) {
+      const from=line.from+embed.index,to=from+embed[0].length,parsed=embed[1]?parseEmbed(embed[1]):{target:embed[3],width:/\|(\d+)$/.exec(embed[2])?.[1]},url=isImageTarget(parsed.target)&&resourceURL(parsed.target);
+      if(!url||inCodeSpan(from,to)||touching(from,to))continue;
+      list.push(Decoration.replace({widget:new InlineImageWidget(url,parsed.target,parsed.width?Number(parsed.width):null)}).range(from,to));
+    }
     // A footnote mark shows as a small number that goes to its note.
     if(line.text.includes('[^')) {
       const note=/^\[\^[^\]\s]+\]:\s/.exec(line.text);
@@ -990,8 +1019,12 @@ window.acdianSetDocument=payload=>{
 window.acdianGetDocument=()=>{const place=scrollPlace();return{text:rawSource,currentPath:metadata.currentPath,documentID:metadata.documentID,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head,scrollPosition:place.pos,scrollOffset:place.offset};};
 // A block insertion, such as an image embed, gets lines of its own, as an
 // embed shows as a picture only when nothing else shares its line.
-const ownLines=(state,text)=>{const {from,to}=state.selection.main,doc=state.doc;return(from>0&&doc.sliceString(from-1,from)!=='\n'?'\n':'')+text+(to<doc.length&&doc.sliceString(to,to+1)!=='\n'?'\n':'');};
-window.acdianInsertText=(text,insertionID,block)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;const insert=canonical(String(text));view.dispatch(view.state.replaceSelection(block?ownLines(view.state,insert):insert));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
+window.acdianInsertText=(text,insertionID,block)=>{if(insertionID&&insertions.has(insertionID))return true;if(!metadata.editable)return false;const insert=canonical(String(text));
+  if(block){
+    // A picture takes lines of its own and the caret goes on below it, so typing never lands in its link.
+    const {from,to}=view.state.selection.main,doc=view.state.doc,before=from>0&&doc.sliceString(from-1,from)!=='\n'?'\n':'',after=doc.sliceString(to,to+1)==='\n'?'':'\n';
+    view.dispatch({changes:{from,to,insert:before+insert+after},selection:{anchor:from+before.length+insert.length+1},scrollIntoView:true});
+  } else view.dispatch(view.state.replaceSelection(insert));if(insertionID){insertions.add(insertionID);if(insertions.size>500)insertions.delete(insertions.values().next().value);}view.focus();return true;};
 // Files dragged in from another app land where the caret follows the pointer.
 window.acdianDropCaret=(x,y)=>{if(!metadata.editable)return false;const pos=view.posAtCoords({x,y},false);if(pos==null)return false;if(view.state.selection.main.head!==pos||!view.state.selection.main.empty)view.dispatch({selection:{anchor:pos}});if(!view.hasFocus)view.focus();return true;};
 window.acdianRefreshTitle=()=>showTitle(true);

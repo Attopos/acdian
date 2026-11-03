@@ -18,6 +18,7 @@ import { yaml } from '@codemirror/lang-yaml';
 import { php } from '@codemirror/lang-php';
 
 let host={post(){},uiText(){return '';}};
+const viewOf=dom=>{const content=dom.closest?.('.cm-content');return content?EditorView.findFromDOM(content):null;};
 export const configureRichText=value=>{host=value;};
 
 // Code blocks
@@ -135,7 +136,7 @@ async function drawMermaid(holder) {
     holder.classList.add('cm-mermaid-error');
     holder.textContent=(error?.message||String(error))+'\n\n'+code;
   }
-  EditorView.findFromDOM(holder)?.requestMeasure();
+  viewOf(holder)?.requestMeasure();
 }
 new MutationObserver(()=>{for(const holder of document.querySelectorAll('.cm-mermaid'))drawMermaid(holder);}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
 export class MermaidWidget extends WidgetType {
@@ -201,4 +202,76 @@ export function startFolded(state) {
     n=end;
   }
   return effects;
+}
+
+// Pictures: a frame with handles that change the width kept in the Markdown, a
+// message when the file is missing, and a large view on double click.
+export const imageWidthless=source=>source.replace(/\|\d+(?:x\d+)?(?=\]\]|\]\()/,'');
+export function withImageWidth(source,width) {
+  const plain=imageWidthless(source);
+  if(/\]\]\s*$/.test(plain))return plain.replace(/\]\](\s*)$/,`|${width}]]$1`);
+  return plain.replace(/\]\(/,`|${width}](`);
+}
+function measure(image) { viewOf(image)?.requestMeasure(); }
+function watchImage(image,state) {
+  image.addEventListener('load',()=>measure(image));
+  image.addEventListener('error',()=>{
+    const missing=document.createElement('span');missing.className='cm-image-missing';
+    missing.textContent=host.uiText(state,'imageMissing')+(image.dataset.liveResource?.split('/').pop()||'');
+    const place=image.closest('.cm-image-frame')||image;
+    place.style.display='none';place.after(missing);measure(image);
+  });
+}
+function resize(event,image,side) {
+  event.preventDefault();event.stopPropagation();
+  const view=viewOf(image),block=image.closest('.cm-live-block');
+  if(!view||!block)return;
+  const startX=event.clientX,startWidth=image.getBoundingClientRect().width,limit=block.clientWidth;
+  // The picture stays centred, so each side moves by the distance dragged.
+  const widthAt=x=>Math.round(Math.min(limit,Math.max(40,startWidth+(x-startX)*side*2)));
+  const move=moved=>{image.style.width=widthAt(moved.clientX)+'px';};
+  const up=moved=>{
+    window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);
+    const width=widthAt(moved.clientX),from=view.posAtDOM(block),line=view.state.doc.lineAt(from);
+    if(width===Math.round(startWidth))return;
+    const insert=withImageWidth(view.state.sliceDoc(line.from,line.to),width);
+    view.dispatch({changes:{from:line.from,to:line.to,insert},selection:{anchor:line.from,head:line.from+insert.length},userEvent:'input'});
+  };
+  window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
+}
+function showLarge(image) {
+  const cover=document.createElement('div');cover.className='cm-image-large';
+  const large=document.createElement('img');large.src=image.src;large.alt=image.alt;cover.append(large);
+  const close=()=>{cover.remove();window.removeEventListener('keydown',key,true);};
+  const key=event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}};
+  cover.addEventListener('mousedown',event=>{event.preventDefault();close();});
+  window.addEventListener('keydown',key,true);document.body.append(cover);
+}
+export function frameImage(image,state) {
+  watchImage(image,state);
+  const frame=document.createElement('span');frame.className='cm-image-frame';
+  image.replaceWith(frame);frame.append(image);
+  for(const side of [-1,1]) {
+    const handle=document.createElement('span');handle.className='cm-image-handle '+(side<0?'cm-image-handle-left':'cm-image-handle-right');
+    handle.addEventListener('mousedown',event=>resize(event,image,side));
+    frame.append(handle);
+  }
+  image.addEventListener('dblclick',event=>{event.preventDefault();showLarge(image);});
+}
+const parseEmbed=value=>{
+  const [target,...rest]=value.split('|');
+  const size=rest.find(part=>/^\d+(?:x\d+)?$/.test(part));
+  return {target,width:size?Math.min(3000,parseInt(size,10)):null,caption:rest.find(part=>!/^\d+(?:x\d+)?$/.test(part))||''};
+};
+export {parseEmbed};
+// A picture inside a line of text sits in the line.
+export class InlineImageWidget extends WidgetType {
+  constructor(url,target,width) { super(); Object.assign(this,{url,target,width}); }
+  eq(other) { return this.url===other.url&&this.width===other.width; }
+  toDOM(view) {
+    const image=document.createElement('img');image.className='cm-inline-image';image.src=this.url;image.dataset.liveResource=this.target;
+    if(this.width)image.width=this.width;
+    watchImage(image,view.state);
+    return image;
+  }
 }

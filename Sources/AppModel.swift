@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Combine
 import UniformTypeIdentifiers
+import ImageIO
 
 enum AppAppearance: String, CaseIterable, Identifiable {
     case system, light, dark
@@ -1022,15 +1023,26 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// Copies files into the attachments folder and links each one at the caret.
     @discardableResult func insertAttachments(_ urls: [URL]) -> Bool {
         guard acceptsAttachments, !urls.isEmpty else { return false }
-        do { insertLinks(try urls.map { source in try storeAttachment(named:source.lastPathComponent) { try FileManager.default.copyItem(at:source,to:$0) } }); return true }
+        do { insertLinks(try urls.map { source in Self.link(try storeAttachment(named:source.lastPathComponent) { try FileManager.default.copyItem(at:source,to:$0) },showingAt:CGImageSourceCreateWithURL(source as CFURL,nil).flatMap(Self.screenWidth)) }); return true }
         catch { self.error = self.localizedError(error); return false }
     }
     /// Saves a pasted or dropped picture into the attachments folder and embeds it at the caret.
     @discardableResult func insertImage(_ data: Data,ext: String) -> Bool {
         guard acceptsAttachments else { return false }
         let formatter = DateFormatter(); formatter.locale = Locale(identifier:"en_US_POSIX"); formatter.dateFormat = "yyyyMMddHHmmss"
-        do { insertLinks([try storeAttachment(named:"Pasted image \(formatter.string(from:Date())).\(ext)") { try data.write(to:$0,options:.withoutOverwriting) }]); return true }
+        do { insertLinks([Self.link(try storeAttachment(named:"Pasted image \(formatter.string(from:Date())).\(ext)") { try data.write(to:$0,options:.withoutOverwriting) },showingAt:CGImageSourceCreateWithData(data as CFData,nil).flatMap(Self.screenWidth))]); return true }
         catch { self.error = self.localizedError(error); return false }
+    }
+    /// A screenshot from a Retina screen holds twice the pixels it showed, so it
+    /// is embedded at the width it had on screen rather than twice as large.
+    private static func screenWidth(_ source: CGImageSource) -> Int? {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source,0,nil) as? [CFString:Any], let pixels = properties[kCGImagePropertyPixelWidth] as? Int,
+              let dpi = properties[kCGImagePropertyDPIWidth] as? Double, (143...145).contains(dpi) else { return nil }
+        return pixels / 2
+    }
+    private static func link(_ link: String,showingAt width: Int?) -> String {
+        guard let width, link.hasPrefix("![["), link.hasSuffix("]]") else { return link }
+        return link.dropLast(2) + "|\(width)]]"
     }
     /// Puts the links at the caret, one per line, each on a line of its own.
     private func insertLinks(_ links: [String]) { insertion = EditorInsertion(text:links.joined(separator:"\n"),block:true) }

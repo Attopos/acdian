@@ -98,3 +98,4 @@ html.light .cm-editor .cm-block-html details { border-color:#0000001c; }
 html.light .cm-editor .cm-block-html th,html.light .cm-editor .cm-block-html td { border-color:#00000024; }
 html.light .cm-editor .cm-footnote-mark { color:#c4206f; }
 html.light .cm-editor .cm-footnote-note { color:#6f6877; }
+html.light .cm-editor .cm-image-missing { border-color:#00000030; color:#6f6877; }
