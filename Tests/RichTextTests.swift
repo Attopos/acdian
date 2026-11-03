@@ -194,6 +194,7 @@ struct RichTextTests {
         try await wait(0.3)
         try await check(try await js("document.querySelector('.cm-block-image img')===window.__image",as:Bool.self) == true, "Selecting a picture does not redraw it")
         try await check(try await js("getComputedStyle(document.querySelector('.cm-block-selected .cm-image-handle')).display",as:String.self) == "block", "A selected picture shows its handles")
+        try await check(try await count(".cm-cursor") == 0, "A selected picture has no text caret beside it")
         _ = try await js("(()=>{const h=document.querySelector('.cm-image-handle-right');h.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,clientX:100}));window.dispatchEvent(new MouseEvent('mousemove',{clientX:150}));window.dispatchEvent(new MouseEvent('mouseup',{clientX:150}));})()",as:Bool.self)
         try await wait(0.3)
         let resized = try await js("window.acdianEditor.state.doc.line(3).text",as:String.self) ?? ""
