@@ -137,6 +137,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private var draftFolder = ""
     @Published var showOutline = true
     @Published var showSidebar = true
+    /// In full screen the window controls are gone, so nothing has to keep clear of them.
+    @Published var fullScreen = false
     @Published var showingTrash = false { didSet { if showingTrash { showingMarket = false } } }
     /// The component market fills the main area, like the trash.
     @Published var showingMarket = false { didSet { if showingMarket { showingTrash = false } } }

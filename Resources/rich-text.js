@@ -104,7 +104,11 @@ export function inlineHTML(text,base,touched,skipped,list) {
     const start=open[at];open.length=at;
     if(start.to===from)continue;
     list.push(Decoration.mark({class:'cm-html-'+name,attributes:inlineAttributes(name,start.attrs)}).range(start.from,to));
-    if(!touched(start.from,start.to)&&!touched(from,to)) { list.push(Decoration.replace({}).range(start.from,start.to)); list.push(Decoration.replace({}).range(from,to)); }
+    if(!touched(start.from,start.to)&&!touched(from,to)) {
+      // Marked, not replaced: an element in place of a tag would offer a place to break the line.
+      const hide=(a,b)=>list.push(Decoration.mark({class:'cm-format-delimiter'+(a>base&&b<base+text.length?' cm-hidden-syntax':'')}).range(a,b));
+      hide(start.from,start.to);hide(from,to);
+    }
   }
 }
 

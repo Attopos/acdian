@@ -11,7 +11,7 @@ struct SplitTabBar: View {
     @State private var hovering = false
     var body: some View {
         GeometryReader { geometry in
-            let leading: CGFloat = model.showSidebar || !atWindowEdge ? 10 : 78
+            let leading: CGFloat = model.showSidebar || !atWindowEdge || model.fullScreen ? 10 : 78
             HStack(spacing:2) {
                 HStack(spacing:2) {
                     Text(AppModel.editableName(entry)).font(.system(size:12)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)

@@ -112,6 +112,7 @@ struct RichTextTests {
         func open(_ name: String) async throws { model.open(model.index!.files.first { $0.relativePath == name }!,skipConfirmation:true); try await wait(2) }
         func js<T>(_ script: String, as _: T.Type = T.self) async throws -> T? { try await web.evaluateJavaScript(script) as? T }
         func text(_ selector: String) async throws -> [String] { try await js("JSON.stringify([...document.querySelectorAll('\(selector)')].map(e=>e.textContent))",as:String.self).flatMap { try? JSONDecoder().decode([String].self,from:Data($0.utf8)) } ?? [] }
+        func shown(_ selector: String) async throws -> [String] { try await js("JSON.stringify([...document.querySelectorAll('\(selector)')].map(e=>{const c=e.cloneNode(true);c.querySelectorAll('.cm-format-delimiter').forEach(x=>x.remove());return c.textContent;}))",as:String.self).flatMap { try? JSONDecoder().decode([String].self,from:Data($0.utf8)) } ?? [] }
         func count(_ selector: String) async throws -> Int { try await js("document.querySelectorAll('\(selector)').length",as:Int.self) ?? -1 }
 
         if report != nil {
@@ -137,10 +138,10 @@ struct RichTextTests {
         try await check(try await count(".cm-block-math") == 3, "A formula shows its source while the caret is in it")
 
         try await open("Rich.md")
-        let span = try await js("(()=>{const e=document.querySelector('.cm-html-span');return e.getAttribute('style')+'|'+e.textContent;})()",as:String.self)
+        let span = try await js("(()=>{const e=document.querySelector('.cm-html-span'),c=e.cloneNode(true);c.querySelectorAll('.cm-format-delimiter').forEach(x=>x.remove());return e.getAttribute('style')+'|'+c.textContent;})()",as:String.self)
         try await check(span == "color: red;|red", "A span keeps its colour, drops anything else and hides its tags (\(span ?? "nil"))")
         try await check(try await js("getComputedStyle(document.querySelector('.cm-html-font')).color",as:String.self) == "rgb(0, 0, 255)", "font color applies")
-        try await check(try await text(".cm-html-u") == ["under"], "Underline, subscript and mark render, and tags in code stay text")
+        try await check(try await shown(".cm-html-u") == ["under"], "Underline, subscript and mark render, and tags in code stay text")
         try await check((try await count(".cm-html-sub")) == 1, "Underline, subscript and mark render, and tags in code stay text")
         try await check((try await count(".cm-html-mark")) == 1, "Underline, subscript and mark render, and tags in code stay text")
         try await check(try await count(".cm-code-line .cm-tok-keyword") >= 1, "Python is highlighted")
@@ -277,6 +278,35 @@ struct RichTextTests {
         """,as:String.self)
         try await check(orphans == "", "Closing punctuation stays with the link before it (\(orphans ?? "nil"))")
 
+        // The caret still shows around a link, whose address takes no part in the line.
+        try write("Caret.md","Intro\n\nBefore [Label](https://example.com/a) after\n\n[Last](https://example.com/b)\n")
+        model.refresh()
+        for _ in 0..<500 where model.loading || model.index?.files.contains(where: { $0.relativePath == "Caret.md" }) != true { try await wait(0.01) }
+        try await open("Caret.md")
+        let carets = try await js("""
+        (()=>{document.hasFocus=()=>true;const v=window.acdianEditor,text=v.state.doc.toString(),spots=[text.indexOf('Label'),text.indexOf('Label')+5,text.indexOf(' after'),text.indexOf('Last'),text.indexOf('Last')+4,text.trimEnd().length],bad=[];v.contentDOM.focus();
+        for(const pos of spots){v.dispatch({selection:{anchor:pos}});const at=v.state.selection.main.head,a=v.coordsAtPos(at,-1),b=v.coordsAtPos(at,1);if(!a&&!b)bad.push(pos);}return bad.join(' ');})()
+        """,as:String.self)
+        try await check(carets == "", "The caret has a place at every spot around a link (\(carets ?? "nil"))")
+
+        // Typing right after hidden syntax lands after it, not inside the bold or link.
+        for (source,caret,expected) in [("Intro\n\n**Bold** tail\n",15,"Intro\n\n**Bold**字 tail\n"),("Intro\n\na [L](u) tail\n",15,"Intro\n\na [L](u)字 tail\n"),("Intro\n\n**Bold**\n",15,"Intro\n\n**Bold**字\n")] {
+            try write("Type.md",source)
+            model.refresh()
+            for _ in 0..<500 where model.loading || model.index?.files.contains(where: { $0.relativePath == "Type.md" }) != true { try await wait(0.01) }
+            model.open(model.index!.files.first { $0.relativePath == "Type.md" }!,skipConfirmation:true,fromDisk:true)
+            try await wait(1)
+            window.makeKey(); window.makeFirstResponder(web)
+            _ = try await js("(()=>{const v=window.acdianEditor;v.focus();v.dispatch({selection:{anchor:\(caret)}});})()",as:Bool.self)
+            try await wait(0.3)
+            web.insertText("字")
+            try await wait(0.3)
+            try await check(model.text == expected, "Typing after hidden syntax lands after it (\(model.text.debugDescription))")
+            model.closeTab(model.activeTabID!)
+            try await wait(0.5)
+            try FileManager.default.removeItem(at:root.appendingPathComponent("Type.md"))
+        }
+
         // The toolbar's colours.
         try write("Colors.md","Intro\n\nPaint this word here\n\nSecond line\n")
         try write("Toc.md","Intro\n\n[TOC]\n\n# One\n\n## **Two** deep\n\nText\n\n# Three\n")
@@ -294,7 +324,7 @@ struct RichTextTests {
         try await check(try await count(".cm-format-color") == 1, "The toolbar offers colours")
         try await choose("color","#e0524d")
         try await check(model.text.contains(#"Paint <span style="color:#e0524d">this word</span> here"#), "A colour wraps the selection in a span (\(model.text))")
-        try await check(try await text(".cm-html-span") == ["this word"], "The tags stay hidden while the text is selected")
+        try await check(try await shown(".cm-html-span") == ["this word"], "The tags stay hidden while the text is selected")
         try await check(try await js("window.acdianEditor.state.sliceDoc(window.acdianEditor.state.selection.main.from,window.acdianEditor.state.selection.main.to)",as:String.self) == "this word", "The same words stay selected")
         try await choose("background-color","#3fae6b40")
         try await check(model.text.contains(#"<span style="color:#e0524d;background-color:#3fae6b40">this word</span>"#), "A background joins the same span (\(model.text))")

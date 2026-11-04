@@ -756,7 +756,7 @@ const dividerCaret=EditorView.editorAttributes.compute(['selection',liveField],s
 const boldCoverage=new WeakMap();
 function boldDelimiters(state,windows=decorationRanges(state)) {
   const ranges=[],tree=ensureSyntaxTree(state,state.doc.length,40)||syntaxTree(state),code=[],inline=[];
-  const add=(from,to,extra={})=>{if(to>from)ranges.push(Decoration.mark({class:'cm-format-delimiter'+(extra.bold?' cm-live-bold-delimiter':''),...extra}).range(from,to));};
+  const add=(from,to,extra={})=>{if(to>from){const line=state.doc.lineAt(from);ranges.push(Decoration.mark({class:'cm-format-delimiter'+(extra.bold?' cm-live-bold-delimiter':'')+(from>line.from&&to<line.to?' cm-hidden-syntax':''),...extra}).range(from,to));}};
   for(const [windowFrom,windowTo] of windows)tree.iterate({from:windowFrom,to:windowTo,enter(node){
     if(node.name==='FencedCode'||node.name==='CodeBlock') {
       code.push([node.from,node.to]);

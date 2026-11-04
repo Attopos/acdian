@@ -60,6 +60,8 @@ import AppKit
     }
     func applicationDidBecomeActive(_ notification: Notification) { model?.refreshTrash() }
     func configureWindow() { for window in NSApp.windows where window.canBecomeMain { window.delegate = self; window.title = "ACdian"; window.backgroundColor = NSColor(name:nil) { $0.bestMatch(from:[.darkAqua,.aqua]) == .aqua ? .white : NSColor(red:0.065,green:0.065,blue:0.078,alpha:1) }; window.isMovableByWindowBackground = true; window.tabbingMode = .disallowed } }
+    func windowDidEnterFullScreen(_ notification: Notification) { model?.fullScreen = true }
+    func windowDidExitFullScreen(_ notification: Notification) { model?.fullScreen = false }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if closeApproved { return true }
         guard let model else { return true }

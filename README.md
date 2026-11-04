@@ -166,6 +166,8 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm
 .build/rich-tests/rich-tests
 ```
 
+版面和换行检查（`Tests/LayoutAudit.swift`：11 种窗口尺寸，配合侧栏、目录、分屏开关，检查标题和正文是否对齐居中；`Tests/WrapAudit.swift <文件夹>`：把一个文件夹里的文字按 10 种宽度排版，报告标点落单、单词被切开和超出版心；只读）。编译方式同上，把测试文件和资源目录换成对应的即可。
+
 模块与附件清理验证：
 
 ```sh

@@ -100,7 +100,9 @@ struct ContentView: View {
         GeometryReader { geometry in
             let available = geometry.size.width
             let split = model.splitEntry
-            let leftWidth = split == nil ? available : min(max(available * model.splitFraction,320),max(320,available - 320))
+            // Each column keeps a usable width; a window too small for that shares evenly.
+            let least = min(320,available / 2)
+            let leftWidth = split == nil ? available : min(max(available * model.splitFraction,least),available - least)
             // The columns keep their identity when the split opens, closes or
             // swaps sides, so neither editor is rebuilt.
             let order = split == nil ? ["main"] : model.splitOnLeft ? ["split","main"] : ["main","split"]
@@ -132,13 +134,13 @@ struct ContentView: View {
                         let fits = geometry.size.width >= Self.outlineFitWidth
                         ZStack(alignment:.topLeading) {
                             VStack(spacing:0) {
-                                if model.isDraft { DraftTitleView(model:model).id(model.editorDocumentID) }
-                                LiveMarkdownEditor(model:model).frame(minWidth:360,maxWidth:.infinity,maxHeight:.infinity)
+                                if model.isDraft { DraftTitleView(model:model,side:Self.pageSide(geometry.size.width)).id(model.editorDocumentID) }
+                                LiveMarkdownEditor(model:model).frame(maxWidth:.infinity,maxHeight:.infinity)
                             }
                             if model.showOutline && (fits || outlineFloating) {
                                 outline(title:model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent,floating:!fits)
                             } else {
-                                Button { withAnimation(.easeInOut(duration:0.18)) { if fits { model.showOutline = true } else { model.showOutline = true; outlineFloating = true } } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)).frame(width:22,height:22).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,20).padding(.top,39)
+                                Button { withAnimation(.easeInOut(duration:0.18)) { if fits { model.showOutline = true } else { model.showOutline = true; outlineFloating = true } } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)).frame(width:22,height:22).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,geometry.size.width > 700 ? 20 : 2).padding(.top,geometry.size.width > 700 ? 39 : 4)
                             }
                         }
                     }
@@ -157,6 +159,8 @@ struct ContentView: View {
     // The editor column is at most 860 wide with 58 of empty padding inside each
     // edge; the outline (220) fits when the margin left of the text holds it plus a gap.
     static let outlineFitWidth: CGFloat = 860 + 2 * (220 + 12 - 58)
+    // The empty space beside the text, by the page's width, as in live-editor.css.
+    static func pageSide(_ width: CGFloat) -> CGFloat { width > 700 ? 58 : width > 450 ? 28 : 19 }
     private func outline(title: String, floating: Bool) -> some View {
         VStack(alignment:.leading,spacing:0) {
             Button { withAnimation(.easeInOut(duration:0.18)) { if floating { outlineFloating = false } else { model.showOutline = false } } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
@@ -193,7 +197,7 @@ struct TabStrip: View {
     var atWindowEdge = true
     var body: some View {
         GeometryReader { geometry in
-            let leading: CGFloat = model.showSidebar || !atWindowEdge ? 10 : 78
+            let leading: CGFloat = model.showSidebar || !atWindowEdge || model.fullScreen ? 10 : 78
             let width = model.tabs.isEmpty ? 0 : min(200,max(36,(geometry.size.width - leading - 10) / CGFloat(model.tabs.count) - 2))
             HStack(spacing:2) {
                 ForEach(model.tabs) { tab in TabButton(tab:tab,active:tab.id == model.activeTabID && model.selected != nil && !model.showingTrash && !model.showingMarket,dimmed:model.splitEntry != nil && model.splitFocused).frame(width:width) }
@@ -232,6 +236,7 @@ struct SidebarToggle: View {
 }
 struct DraftTitleView: View {
     @ObservedObject var model: AppModel
+    var side: CGFloat = 58
     @FocusState private var titleFocused: Bool
     var body: some View {
         TextField("",text:$model.draftTitle,prompt:Text("New Page").foregroundColor(Color.primary.opacity(0.25)))
@@ -243,7 +248,7 @@ struct DraftTitleView: View {
             .accessibilityIdentifier("draftTitle")
             .onSubmit { titleFocused = false; model.editorFocus?() }
             .onChange(of:titleFocused) { _,focused in if !focused { model.draftTitleEnded() } }
-            .padding(.horizontal,58).padding(.top,43).padding(.bottom,8)
+            .padding(.horizontal,side).padding(.top,43).padding(.bottom,8)
             .frame(maxWidth:860,alignment:.leading)
             .frame(maxWidth:.infinity)
             .onAppear { titleFocused = true }
