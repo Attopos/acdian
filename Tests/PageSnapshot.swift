@@ -35,6 +35,11 @@ struct PageSnapshot {
             _ = try? await web.evaluateJavaScript("(()=>{const v=window.acdianEditor;v.scrollDOM.scrollTop=v.lineBlockAt(v.state.doc.line(\(line)).from).top-500;v.requestMeasure();})()")
             try await Task.sleep(nanoseconds:2_000_000_000)
         }
+        // ACDIAN_RUN=<script> runs in the page before the picture is taken.
+        if let script = ProcessInfo.processInfo.environment["ACDIAN_RUN"] {
+            _ = try? await web.evaluateJavaScript(script)
+            try await Task.sleep(nanoseconds:800_000_000)
+        }
         let image = try await web.takeSnapshot(configuration:nil)
         let rep = NSBitmapImageRep(data:image.tiffRepresentation!)!
         try rep.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:args[3]))

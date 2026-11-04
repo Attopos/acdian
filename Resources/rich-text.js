@@ -154,7 +154,7 @@ export class MermaidWidget extends WidgetType {
 }
 
 // Folding: an arrow beside a heading or a callout's first line.
-const foldableLine=/^(?: {0,3}#{1,6}[ \t]+\S|>\s*\[![\w-]+\])/;
+const foldableLine=/^(?: {0,3}#{1,6}[ \t]+\S|>\s*\[![\w-]+(?:\|[^\]\n]*)?\])/;
 class FoldToggleWidget extends WidgetType {
   constructor(folded) { super(); this.folded=folded; }
   eq(other) { return this.folded===other.folded; }
@@ -196,7 +196,7 @@ export function startFolded(state) {
   if(!doc.toString().includes(']-'))return effects;
   for(let n=1;n<=doc.lines;n++) {
     const line=doc.line(n);
-    if(!/^>\s*\[![\w-]+\]-/.test(line.text))continue;
+    if(!/^>\s*\[![\w-]+(?:\|[^\]\n]*)?\]-/.test(line.text))continue;
     let end=n; while(end<doc.lines&&/^>/.test(doc.line(end+1).text))end++;
     if(end>n)effects.push(foldEffect.of({from:line.to,to:doc.line(end).to}));
     n=end;
@@ -247,8 +247,73 @@ function showLarge(image) {
   cover.addEventListener('mousedown',event=>{event.preventDefault();close();});
   window.addEventListener('keydown',key,true);document.body.append(cover);
 }
+// Dragging a picture moves its line in the page. Tables, code, quotes and lists
+// stay whole: a drop on one lands before or after it.
+const wholeBlocks=new Set(['Table','FencedCode','CodeBlock','Blockquote','BulletList','OrderedList','HTMLBlock']);
+function dropPlace(view,clientY) {
+  const state=view.state,doc=state.doc,block=view.lineBlockAtHeight(clientY-view.documentTop);
+  let from=block.from,to=block.to;
+  for(let node=syntaxTree(state).resolveInner(from,1);node;node=node.parent)if(wholeBlocks.has(node.name)){from=Math.min(from,node.from);to=Math.max(to,node.to);}
+  const first=doc.lineAt(from),last=doc.lineAt(to);
+  const top=view.lineBlockAt(first.from).top+view.documentTop,bottom=view.lineBlockAt(last.from).bottom+view.documentTop;
+  const after=clientY>(top+bottom)/2;
+  return {pos:after?(last.number<doc.lines?doc.line(last.number+1).from:doc.length):first.from,y:after?bottom:top};
+}
+function moveLine(view,number,target) {
+  const state=view.state,doc=state.doc,line=doc.line(number);
+  if(target>=line.from&&target<=Math.min(line.to+1,doc.length))return;
+  // The blank line that set the picture apart goes with it.
+  const blank=n=>n>=1&&n<=doc.lines&&!doc.line(n).text.trim();
+  let from=line.from,to=line.to;
+  if(to<doc.length)to++; else if(from>0)from--;
+  if(blank(number-1)&&blank(number+1)&&!(target>to&&target<=doc.line(number+1).to+1))to=Math.min(doc.length,doc.line(number+1).to+1);
+  const atEnd=target===doc.length&&doc.sliceString(doc.length-1)!=='\n',insert=(atEnd?'\n':'')+line.text+(atEnd?'':'\n');
+  const changes=state.changes([{from,to},{from:target,insert}]),anchor=changes.mapPos(target,-1)+(atEnd?1:0);
+  view.dispatch({changes,selection:{anchor,head:anchor+line.text.length},userEvent:'move.line'});
+}
+function moveImage(event,image) {
+  const view=viewOf(image),holder=image.closest('.cm-live-block');
+  if(event.button!==0||!view||!holder||!view.state.facet(EditorView.editable))return;
+  const startX=event.clientX,startY=event.clientY;
+  let ghost=null,bar=null,scroller=null,place=null,lastY=startY;
+  const show=()=>{
+    place=dropPlace(view,lastY);
+    const content=view.contentDOM.getBoundingClientRect(),style=getComputedStyle(view.contentDOM);
+    bar.style.top=place.y-1+'px';bar.style.left=content.left+parseFloat(style.paddingLeft)+'px';bar.style.width=content.width-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)+'px';
+  };
+  const begin=()=>{
+    holder.classList.add('cm-image-moving');document.documentElement.classList.add('cm-image-dragging');
+    ghost=document.createElement('img');ghost.className='cm-image-ghost';ghost.src=image.src;ghost.style.width=Math.min(220,image.getBoundingClientRect().width)+'px';
+    bar=document.createElement('div');bar.className='cm-image-drop';
+    document.body.append(ghost,bar);
+    // Near the top or bottom of the page it scrolls by itself.
+    scroller=setInterval(()=>{
+      const area=view.scrollDOM.getBoundingClientRect(),edge=48;
+      const step=lastY<area.top+edge?-14:lastY>area.bottom-edge?14:0;
+      if(step){view.scrollDOM.scrollTop+=step;show();}
+    },30);
+  };
+  const move=moved=>{
+    if(!ghost&&Math.hypot(moved.clientX-startX,moved.clientY-startY)<5)return;
+    if(!ghost)begin();
+    lastY=moved.clientY;
+    ghost.style.left=moved.clientX+'px';ghost.style.top=moved.clientY+'px';
+    show();
+  };
+  const finish=commit=>{
+    window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);window.removeEventListener('keydown',key,true);
+    if(!ghost)return;
+    clearInterval(scroller);ghost.remove();bar.remove();holder.classList.remove('cm-image-moving');document.documentElement.classList.remove('cm-image-dragging');
+    if(commit&&place)moveLine(view,view.state.doc.lineAt(view.posAtDOM(holder)).number,place.pos);
+  };
+  const up=()=>finish(true);
+  const key=pressed=>{if(pressed.key==='Escape'&&ghost){pressed.preventDefault();pressed.stopPropagation();finish(false);}};
+  window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);window.addEventListener('keydown',key,true);
+}
 export function frameImage(image,state) {
   watchImage(image,state);
+  image.draggable=false;
+  image.addEventListener('mousedown',event=>moveImage(event,image));
   const frame=document.createElement('span');frame.className='cm-image-frame';
   image.replaceWith(frame);frame.append(image);
   for(const side of [-1,1]) {
@@ -274,4 +339,60 @@ export class InlineImageWidget extends WidgetType {
     watchImage(image,view.state);
     return image;
   }
+}
+
+// Callouts: an icon on the first line, which opens a choice of icons and colours.
+// Both are kept in the Markdown as > [!kind|icon], which other editors read as a callout.
+export const calloutHeader=/^>\s*\[!([\w-]+)(?:\|([^\]\n]*))?\][+-]?[ \t]*/;
+const calloutEmoji='💡 📝 📌 ⭐️ 🔥 ✅ ❌ ⚠️ ❗ ❓ ℹ️ 🔔 🎯 🚀 💬 📖 📚 🧠 🔍 🧪 🧮 🔢 📊 📈 🧬 ⚛️ 🌍 🌱 🕒 📅 🎉 🏆 👍 👎 ❤️ 🙂 🤔 😀 😎 🤖 🛠️ 🔒 🔑 📎 🎵 🎨 ✏️ 🗂️'.split(' ');
+const calloutColors=[['note','#d93b86'],['idea','#e0943a'],['tip','#3fae6b'],['info','#4c9be8'],['danger','#e0524d'],['question','#9b6fe0'],['quote','#8d8695']];
+function headerLine(view,icon) {
+  let number=view.state.doc.lineAt(view.posAtDOM(icon)).number;
+  while(number>1&&!calloutHeader.test(view.state.doc.line(number).text)&&/^>/.test(view.state.doc.line(number-1).text))number--;
+  return number;
+}
+function setCallout(view,number,kind,emoji) {
+  const line=view.state.doc.line(number),match=/^(>\s*\[!)([\w-]+)(?:\|([^\]\n]*))?\]/.exec(line.text);
+  if(!match)return;
+  const insert=`${match[1]}${kind??match[2]}${emoji??match[3]?`|${emoji??match[3]}`:''}]`;
+  view.dispatch({changes:{from:line.from,to:line.from+match[0].length,insert},userEvent:'input'});
+}
+function openCalloutPicker(view,icon) {
+  document.querySelector('.cm-callout-picker')?.dispatchEvent(new Event('close'));
+  const number=headerLine(view,icon),panel=document.createElement('div');panel.className='cm-callout-picker';
+  const colors=document.createElement('div');colors.className='cm-callout-picker-colors';
+  const current=()=>calloutHeader.exec(view.state.doc.line(number).text)?.[1];
+  const close=()=>{panel.remove();window.removeEventListener('mousedown',outside,true);window.removeEventListener('keydown',key,true);};
+  const outside=event=>{if(!panel.contains(event.target))close();};
+  const key=event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}};
+  for(const [kind,color] of calloutColors) {
+    const dot=document.createElement('button');dot.type='button';dot.style.background=color;dot.dataset.kind=kind;dot.setAttribute('aria-label',kind);
+    dot.classList.toggle('cm-callout-picker-on',current()===kind);
+    dot.addEventListener('mousedown',event=>event.preventDefault());
+    dot.addEventListener('click',()=>{setCallout(view,number,kind,null);for(const other of colors.children)other.classList.toggle('cm-callout-picker-on',other===dot);});
+    colors.append(dot);
+  }
+  const grid=document.createElement('div');grid.className='cm-callout-picker-grid';
+  for(const emoji of calloutEmoji) {
+    const choice=document.createElement('button');choice.type='button';choice.textContent=emoji;
+    choice.addEventListener('mousedown',event=>event.preventDefault());
+    choice.addEventListener('click',()=>{setCallout(view,number,null,emoji);close();});
+    grid.append(choice);
+  }
+  panel.append(colors,grid);panel.addEventListener('close',close);
+  document.body.append(panel);
+  const at=icon.getBoundingClientRect(),size=panel.getBoundingClientRect();
+  panel.style.left=Math.max(8,Math.min(at.left,innerWidth-size.width-8))+'px';
+  panel.style.top=(at.bottom+size.height+8<innerHeight?at.bottom+4:Math.max(8,at.top-size.height-4))+'px';
+  window.addEventListener('mousedown',outside,true);window.addEventListener('keydown',key,true);
+}
+export class CalloutIconWidget extends WidgetType {
+  constructor(emoji,kind) { super(); this.emoji=emoji; this.kind=kind; }
+  eq(other) { return this.emoji===other.emoji&&this.kind===other.kind; }
+  toDOM(view) {
+    const icon=document.createElement('span');icon.className='cm-callout-icon';icon.textContent=this.emoji;icon.contentEditable='false';icon.title=host.uiText(view.state,'calloutIcon');
+    icon.addEventListener('mousedown',event=>{event.preventDefault();if(view.state.facet(EditorView.editable))openCalloutPicker(view,icon);});
+    return icon;
+  }
+  ignoreEvent() { return true; }
 }

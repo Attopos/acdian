@@ -12,11 +12,12 @@ const commands = [
   {id:'bullet',label:'Bulleted List',description:'无序列表',icon:'• ≡',insert:'- ',aliases:'bulleted bullet unordered list 无序列表 项目符号'},
   {id:'number',label:'Numbered List',description:'有序列表',icon:'1 ≡',insert:'1. ',aliases:'numbered number ordered list 有序列表 编号'},
   {id:'code',label:'Code Block',description:'代码块',icon:'{ }',insert:'```\n\n```',caret:4,aliases:'code block fenced 代码块'},
-  {id:'callout',label:'Callout',description:'提示块',icon:'▣',insert:'> [!note]\n> ',aliases:'callout note info 提示块 提示 高亮块'},
+  {id:'callout',label:'Callout',description:'提示块',icon:'▣',insert:'> [!idea|💡] ',aliases:'callout note info 提示块 提示 高亮块'},
   // Asks the app to pick an image, which it copies into Attachments and embeds here.
   {id:'image',label:'Image',description:'图片',icon:'▨',action:'image',aliases:'image picture photo img 图片 图像 照片 插图'}
 ];
 // The blocks a line can be turned into; commands that hand off to the app are not blocks.
+export const newCallout='> [!idea|💡] ';
 export const blockCommands = commands.filter(command=>!command.action);
 // What commands that hand off to the app do, such as picking an image.
 const slashActions = Facet.define({combine:values=>Object.assign({},...values)});

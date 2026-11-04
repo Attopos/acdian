@@ -9,7 +9,7 @@ import { formatToolbar } from './format-toolbar.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
-import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget } from './rich-text.js';
+import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -301,8 +301,8 @@ function htmlBlockEnd(doc,n) {
   }
   return 0;
 }
-const calloutGroups={info:['info','todo','abstract','summary','tldr'],tip:['tip','hint','important','success','check','done'],warning:['warning','caution','attention'],danger:['danger','error','bug','failure','fail','missing'],question:['question','help','faq'],quote:['quote','cite','example']};
-const calloutIcons={note:'✦',info:'ℹ︎',tip:'✓',warning:'!',danger:'✕',question:'?',quote:'❝'};
+const calloutGroups={idea:['idea'],info:['info','todo','abstract','summary','tldr'],tip:['tip','hint','important','success','check','done'],warning:['warning','caution','attention'],danger:['danger','error','bug','failure','fail','missing'],question:['question','help','faq'],quote:['quote','cite','example']};
+const calloutIcons={note:'📝',idea:'💡',info:'ℹ️',tip:'✅',warning:'⚠️',danger:'❗',question:'❓',quote:'💬'};
 const calloutGroup=kind=>Object.keys(calloutGroups).find(group=>calloutGroups[group].includes(kind.toLowerCase()))||'note';
 // The last line of the display formula that starts on line n, or 0 if none does.
 // The closing $$ may share a line with the formula, on either side, and formulas
@@ -339,11 +339,6 @@ class InlineMathWidget extends WidgetType {
   eq(other) { return other.tex===this.tex; }
   toDOM() { const span=document.createElement('span'); span.className='cm-inline-math'; try { katex.render(this.tex,span,{throwOnError:false,trust:false}); } catch { span.textContent='$'+this.tex+'$'; } return span; }
   ignoreEvent() { return false; }
-}
-class CalloutKindWidget extends WidgetType {
-  constructor(kind,title) {super();Object.assign(this,{kind,title});}
-  eq(other) {return this.kind===other.kind&&this.title===other.title;}
-  toDOM() {const label=document.createElement('span');label.className='cm-callout-kind'+(this.title?' cm-callout-mark':'');const icon=calloutIcons[calloutGroup(this.kind)]+' ';label.textContent=this.title?icon:icon+this.kind.toUpperCase();label.setAttribute('aria-hidden','true');return label;}
 }
 class HeadingHintWidget extends WidgetType {
   constructor(level) { super(); this.level = level; }
@@ -512,7 +507,7 @@ function literalCodeLine(state,line) {
 function hiddenSourceLine(state,line) {
   let hidden=false;
   state.field(liveField).between(line.from,line.from,(_from,_to,decoration)=>{
-    if(/(?:^| )(?:cm-code-fence|cm-table-separator)(?: |$)/.test(decoration.spec.class||''))hidden=true;
+    if(/(?:^| )(?:cm-code-fence|cm-table-separator|cm-callout-empty)(?: |$)/.test(decoration.spec.class||''))hidden=true;
   });
   return hidden;
 }
@@ -590,12 +585,17 @@ function decorations(state,reuse=new Map(),blocks=[]) {
     while(code<codeRanges.length&&codeRanges[code][1]<=line.from)code++;
     if(code<codeRanges.length&&line.from>=codeRanges[code][0])continue;
     if(!/^\s*[$!><]/.test(line.text))continue;
-    if(/^>\s*\[![\w-]+\]/.test(line.text)) {
+    if(calloutHeader.test(line.text)) {
       let end=n; while(end<state.doc.lines && /^>/.test(state.doc.line(end+1).text)) end++;
       if(!inRanges(ranges,line.from,state.doc.line(end).to)){n=end;continue;}
-      const match=/^>\s*\[!([\w-]+)\][+-]?[ \t]*/.exec(line.text),titled=!!line.text.slice(match[0].length),group=calloutGroup(match[1]);
-      for(let row=n;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line cm-callout-'+group+(row===n?' cm-callout-first'+(titled?' cm-callout-titled':''):'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
-      list.push(Decoration.widget({widget:new CalloutKindWidget(match[1],titled),side:1}).range(line.from+match[0].length));
+      // The icon sits on the first line with text. An empty header line is
+      // hidden unless it carries the arrow of a folding callout.
+      const match=calloutHeader.exec(line.text),body=line.text.slice(match[0].length),group=calloutGroup(match[1]);
+      const hidden=!body&&end>n&&!/[+-]$/.test(match[0].trimEnd()),top=hidden?n+1:n;
+      const titled=!!body&&end>n&&match[2]===undefined;
+      if(hidden)list.push(Decoration.line({class:'cm-callout-empty'}).range(line.from));
+      for(let row=top;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line cm-callout-'+group+(row===top?' cm-callout-first'+(titled?' cm-callout-titled':''):'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
+      list.push(Decoration.widget({widget:new CalloutIconWidget(match[2]||calloutIcons[group],match[1]),side:-1}).range(state.doc.line(top).from));
       n=end;
     } else if(/^\s*\$\$/.test(line.text)) {
       const end=mathBlockEnd(state.doc,n);
@@ -781,7 +781,7 @@ function boldDelimiters(state,windows=decorationRanges(state)) {
   for(const [windowFrom,windowTo] of windows)for(let n=state.doc.lineAt(windowFrom).number,end=state.doc.lineAt(windowTo).number;n<=end;n++) {
     const line=state.doc.line(n);
     if(code.some(([a,b])=>line.from>=a&&line.from<b))continue;
-    const callout=/^>\s*\[![\w-]+\][+-]?[ \t]*/.exec(line.text),quote=/^ {0,3}(?:>[ \t]+)+/.exec(line.text);
+    const callout=calloutHeader.exec(line.text),quote=/^ {0,3}(?:>[ \t]+)+/.exec(line.text);
     const prefix=callout||quote;if(prefix)add(line.from,line.from+prefix[0].length,{kind:'prefix'});
     const links=/(!?)\[\[([^\]\n]+)\]\]|\[([^\]\n]+)\]\(([^)\n]+)\)/g;let match;
     while((match=links.exec(line.text))) {
@@ -802,13 +802,13 @@ function boldDelimiters(state,windows=decorationRanges(state)) {
 function removeBlockPrefix(view) {
   const {state}=view,range=state.selection.main;
   if(state.readOnly||!range.empty||state.selection.ranges.length!==1||inCode(state,range.head))return false;
-  const line=state.doc.lineAt(range.head),prefix=/^(?: {0,3}#{1,6}[ \t]+| {0,3}(?:>[ \t]+)+(?:\[![\w-]+\][+-]?[ \t]*)?)/.exec(line.text);
+  const line=state.doc.lineAt(range.head),prefix=/^(?: {0,3}#{1,6}[ \t]+| {0,3}(?:>[ \t]+)+(?:\[![\w-]+(?:\|[^\]\n]*)?\][+-]?[ \t]*)?)/.exec(line.text);
   if(prefix&&range.head<=line.from+prefix[0].length){view.dispatch({changes:{from:line.from,to:line.from+prefix[0].length},selection:{anchor:line.from},userEvent:'delete.backward'});return true;}
   return false;
 }
 function visiblePrefixEnd(state,pos) {
   if(inCode(state,pos))return null;
-  const line=state.doc.lineAt(pos),prefix=/^(?: {0,3}#{1,6}[ \t]+| {0,3}(?:>[ \t]+)+(?:\[![\w-]+\][+-]?[ \t]*)?)/.exec(line.text);
+  const line=state.doc.lineAt(pos),prefix=/^(?: {0,3}#{1,6}[ \t]+| {0,3}(?:>[ \t]+)+(?:\[![\w-]+(?:\|[^\]\n]*)?\][+-]?[ \t]*)?)/.exec(line.text);
   return prefix?line.from+prefix[0].length:null;
 }
 const formatSelectionFilter=EditorState.transactionFilter.of(tr=>{

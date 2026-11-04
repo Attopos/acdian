@@ -213,7 +213,48 @@ struct RichTextTests {
         try await check(try await text(".cm-image-caption") == ["caption words"], "Text with a picture is its caption")
         try await check(try await js("[...document.querySelectorAll('.cm-block-image img')].at(-1).getBoundingClientRect().width",as:Double.self) == 100, "A caption and a width can go together")
 
-        print("Rich text: formulas across lines, stray marks, inline HTML, code, Mermaid, HTML blocks, callouts, folding, footnotes and pictures passed")
+        // Callouts: an icon on the first line of text, chosen in the page.
+        try write("Callouts.md","Intro\n\n> [!note]\n> Body under an empty header\n> more\n\n> [!idea|🚀] One line\n\n> [!note] A title\n> Its body\n\nEnd\n")
+        try write("Move.md","First\n\nSecond\n\n![[Attachments/plain.png|100]]\n\nThird\n\n| A |\n| --- |\n| 1 |\n\nLast\n")
+        model.refresh()
+        for _ in 0..<500 where model.loading || model.index?.files.contains(where: { $0.relativePath == "Move.md" }) != true { try await wait(0.01) }
+        try await open("Callouts.md")
+        let hiddenHeader = try await js("(()=>{const walk=document.createTreeWalker(document.querySelector('.cm-content'),NodeFilter.SHOW_TEXT);for(let n;(n=walk.nextNode());)if(n.textContent.includes('[!')&&parseFloat(getComputedStyle(n.parentElement).fontSize)>0)return n.textContent;return '';})()",as:String.self)
+        try await check(hiddenHeader == "", "A callout shows nothing of its [!kind] source (\(hiddenHeader ?? "nil"))")
+        try await check(try await text(".cm-callout-icon") == ["📝","🚀","📝"], "Each callout shows its icon")
+        let sameLine = try await js("(()=>{const i=document.querySelector('.cm-callout-icon'),l=i.closest('.cm-line');return l.textContent.includes('Body under')&&Math.abs(i.getBoundingClientRect().top-l.getBoundingClientRect().top)<14;})()",as:Bool.self)
+        try await check(sameLine == true, "The icon shares a line with the first text")
+        try await check(try await js("document.querySelector('.cm-callout-empty').getBoundingClientRect().height",as:Double.self) == 0, "An empty header line takes no room")
+        try await check(try await count(".cm-callout-titled") == 1, "A title line written the old way stays bold; others do not")
+        _ = try await js("document.querySelectorAll('.cm-callout-icon')[1].dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true}))",as:Bool.self)
+        try await check(try await count(".cm-callout-picker-grid button") > 20, "Clicking the icon opens the choice of icons")
+        _ = try await js("document.querySelector('.cm-callout-picker-colors [data-kind=tip]').click()",as:Bool.self)
+        try await wait(0.2)
+        try await check(model.text.contains("> [!tip|🚀] One line"), "A colour changes the kind and keeps the icon (\(model.text))")
+        _ = try await js("[...document.querySelectorAll('.cm-callout-picker-grid button')].find(b=>b.textContent==='🎯').click()",as:Bool.self)
+        try await wait(0.2)
+        try await check(model.text.contains("> [!tip|🎯] One line"), "An icon is kept in the Markdown (\(model.text))")
+        try await check(try await count(".cm-callout-picker") == 0, "Choosing an icon closes the panel")
+        try await check(try await count(".cm-callout-tip") == 1, "The callout takes the new colour")
+
+        // Dragging a picture moves its line.
+        try await open("Move.md")
+        try await wait(0.5)
+        func dragPicture(toLine number: Int, below: Bool) async throws {
+            _ = try await js("(()=>{const v=window.acdianEditor,i=document.querySelector('.cm-block-image img'),r=i.getBoundingClientRect(),b=v.lineBlockAt(v.state.doc.line(\(number)).from),y=v.documentTop+(\(below ? "b.bottom-1" : "b.top+1")),go=(t,e)=>t.dispatchEvent(new MouseEvent(e,{bubbles:true,cancelable:true,button:0,clientX:r.left+5,clientY:y}));i.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0,clientX:r.left+5,clientY:r.top+5}));go(window,'mousemove');go(window,'mouseup');})()",as:Bool.self)
+            try await wait(0.3)
+        }
+        try await dragPicture(toLine:1,below:false)
+        try await check(model.text == "![[Attachments/plain.png|100]]\nFirst\n\nSecond\n\nThird\n\n| A |\n| --- |\n| 1 |\n\nLast\n", "A picture moves to the top, and the blank line it left goes too (\(model.text.debugDescription))")
+        try await check(try await js("!!document.querySelector('.cm-block-selected .cm-image-frame')",as:Bool.self) == true, "The moved picture stays selected")
+        try await check(try await count(".cm-image-ghost,.cm-image-drop") == 0, "Nothing of the drag is left on the page")
+        try await dragPicture(toLine:9,below:false)
+        try await check(model.text == "First\n\nSecond\n\nThird\n\n| A |\n| --- |\n| 1 |\n![[Attachments/plain.png|100]]\n\nLast\n" || model.text == "First\n\nSecond\n\nThird\n\n![[Attachments/plain.png|100]]\n| A |\n| --- |\n| 1 |\n\nLast\n", "A drop on a table lands beside it, never inside (\(model.text.debugDescription))")
+        _ = try await js("window.acdianUndo()",as:Bool.self)
+        try await wait(0.2)
+        try await check(model.text.hasPrefix("![[Attachments/plain.png|100]]\nFirst"), "Undo puts the picture back in one step")
+
+        print("Rich text: formulas across lines, stray marks, inline HTML, code, Mermaid, HTML blocks, callouts, folding, footnotes, pictures and callouts passed")
         exit(0)
     }
 }

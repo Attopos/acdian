@@ -3,7 +3,7 @@ import { EditorView, keymap, showTooltip, ViewPlugin } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { editorLanguage, uiMessages } from './ui-language.js';
-import { blockCommands } from './slash-commands.js';
+import { blockCommands, newCallout } from './slash-commands.js';
 
 // Selection formatting rewrites Markdown in place: every action stores plain
 // Markdown syntax, so files stay readable in any other editor.
@@ -15,8 +15,8 @@ const formats={
   highlight:{mark:'=='}
 };
 const inlineNodes={StrongEmphasis:'bold',Strikethrough:'strike',Emphasis:'italic',InlineCode:'code'};
-const blockPrefix=/^[ \t]*(?:#{1,6}(?:[ \t]+|$)|>[ \t]?(?:\[![\w-]+\][+-]?[ \t]*)?|(?:[-+*]|\d+[.)])(?:[ \t]+|$)(?:\[[ xX]\](?:[ \t]+|$))?)/;
-const calloutHeader=/^[ \t]*>[ \t]?\[![\w-]+\][+-]?[ \t]*/;
+const blockPrefix=/^[ \t]*(?:#{1,6}(?:[ \t]+|$)|>[ \t]?(?:\[![\w-]+(?:\|[^\]\n]*)?\][+-]?[ \t]*)?|(?:[-+*]|\d+[.)])(?:[ \t]+|$)(?:\[[ xX]\](?:[ \t]+|$))?)/;
+const calloutHeader=/^[ \t]*>[ \t]?\[![\w-]+(?:\|[^\]\n]*)?\][+-]?[ \t]*/;
 const markdownLinks=/(!?)\[\[([^\]\n]+)\]\]|(!?)\[([^\]\n]+)\]\(([^)\n]+)\)/g;
 const treeOf=state=>ensureSyntaxTree(state,state.doc.length,40)||syntaxTree(state);
 
@@ -289,10 +289,10 @@ export function setBlock(id,toggle=false) {
     };
     let insert='';const starts=new Map();
     if(id==='code')insert+='```\n';
-    if(id==='callout')insert+='> [!note]\n';
     rows.forEach((row,index)=>{
       if(index)insert+='\n';
-      const prefix=prefixFor(row);insert+=prefix;
+      // A callout's icon shares its first line with the text.
+      const prefix=id==='callout'&&!index?newCallout:prefixFor(row);insert+=prefix;
       starts.set(row.line.number,{at:insert.length,cut:row.cut});insert+=row.content;
     });
     if(id==='code')insert+='\n```';

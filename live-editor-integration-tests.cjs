@@ -471,7 +471,7 @@ test('every slash choice inserts its Markdown template with an isolated undo ste
     ['bullet', '- ', 2],
     ['number', '1. ', 3],
     ['code', '```\n\n```', 4],
-    ['callout', '> [!note]\n> ', 12]
+    ['callout', '> [!idea|💡] ', 13]
   ];
   for (const [command, template, caret] of choices) {
     await t.test(command, async sub => {
