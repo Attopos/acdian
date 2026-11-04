@@ -254,7 +254,60 @@ struct RichTextTests {
         try await wait(0.2)
         try await check(model.text.hasPrefix("![[Attachments/plain.png|100]]\nFirst"), "Undo puts the picture back in one step")
 
-        print("Rich text: formulas across lines, stray marks, inline HTML, code, Mermaid, HTML blocks, callouts, folding, footnotes, pictures and callouts passed")
+        // The toolbar's colours.
+        try write("Colors.md","Intro\n\nPaint this word here\n\nSecond line\n")
+        try write("Toc.md","Intro\n\n[TOC]\n\n# One\n\n## **Two** deep\n\nText\n\n# Three\n")
+        model.refresh()
+        for _ in 0..<500 where model.loading || model.index?.files.contains(where: { $0.relativePath == "Toc.md" }) != true { try await wait(0.01) }
+        try await open("Colors.md")
+        func select(_ word: String) async throws { _ = try await js("(()=>{document.hasFocus=()=>true;const v=window.acdianEditor,at=v.state.doc.toString().indexOf(\(String(reflecting:word)));v.contentDOM.focus();v.dispatch({selection:{anchor:at,head:at+\(word.count)}});})()",as:Bool.self); try await wait(0.3) }
+        func choose(_ property: String, _ value: String) async throws {
+            _ = try await js("document.querySelector('.cm-format-color').click()",as:Bool.self)
+            try await wait(0.1)
+            _ = try await js("document.querySelector('.cm-format-swatch[data-property=\"\(property)\"][data-value=\"\(value)\"]').click()",as:Bool.self)
+            try await wait(0.3)
+        }
+        try await select("this word")
+        try await check(try await count(".cm-format-color") == 1, "The toolbar offers colours")
+        try await choose("color","#e0524d")
+        try await check(model.text.contains(#"Paint <span style="color:#e0524d">this word</span> here"#), "A colour wraps the selection in a span (\(model.text))")
+        try await check(try await text(".cm-html-span") == ["this word"], "The tags stay hidden while the text is selected")
+        try await check(try await js("window.acdianEditor.state.sliceDoc(window.acdianEditor.state.selection.main.from,window.acdianEditor.state.selection.main.to)",as:String.self) == "this word", "The same words stay selected")
+        try await choose("background-color","#3fae6b40")
+        try await check(model.text.contains(#"<span style="color:#e0524d;background-color:#3fae6b40">this word</span>"#), "A background joins the same span (\(model.text))")
+        try await choose("color","")
+        try await check(model.text.contains(#"<span style="background-color:#3fae6b40">this word</span>"#), "No colour takes off just the text colour (\(model.text))")
+        _ = try await js("document.querySelector('.cm-format-color').click();document.querySelector('.cm-format-colors-clear').click()",as:Bool.self)
+        try await wait(0.3)
+        try await check(model.text.contains("Paint this word here"), "Clear puts back the plain text (\(model.text))")
+
+        // [TOC]
+        try await open("Toc.md")
+        try await wait(0.3)
+        try await check(try await text(".cm-toc button") == ["One","Two deep","Three"], "[TOC] lists the headings as plain text")
+        _ = try await js("(()=>{const v=window.acdianEditor,l=v.state.doc.line(7);v.dispatch({changes:{from:l.from,to:l.to,insert:'## Renamed'}});})()",as:Bool.self)
+        try await wait(0.3)
+        try await check(try await text(".cm-toc button") == ["One","Renamed","Three"], "[TOC] follows edits")
+        _ = try await js("document.querySelector('.cm-toc').dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}))",as:Bool.self)
+        try await wait(0.3)
+        try await check(try await count(".cm-toc") == 0, "Double-clicking [TOC] shows its source")
+
+        // The picture's own menu.
+        try await open("Inline.md")
+        try await wait(0.5)
+        _ = try await js("document.querySelector('.cm-block-image img:not([hidden])').closest('.cm-block-image');[...document.querySelectorAll('.cm-block-image img')].at(-1).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:50,clientY:50}))",as:Bool.self)
+        let actions = try await js("JSON.stringify([...document.querySelectorAll('.cm-image-menu button')].map(b=>b.dataset.action))",as:String.self)
+        try await check(actions == #"["viewImage","copyImage","revealImage","deleteImage"]"#, "A picture has its own menu (\(actions ?? "nil"))")
+        let clip = NSPasteboard(name:NSPasteboard.Name("acdian-rich-\(UUID().uuidString)"))
+        model.copyImage("Attachments/plain.png",from:"Inline.md",to:clip)
+        try await check(clip.canReadObject(forClasses:[NSImage.self],options:nil) && clip.canReadObject(forClasses:[NSURL.self],options:[.urlReadingFileURLsOnly:true]), "Copying gives the image and the file")
+        clip.releaseGlobally()
+        _ = try await js("document.querySelector('.cm-image-menu [data-action=deleteImage]').click()",as:Bool.self)
+        try await wait(0.3)
+        try await check(!model.text.contains("caption words"), "Delete removes the picture from the page (\(model.text))")
+        try await check(try await count(".cm-image-menu") == 0, "The menu closes after a choice")
+
+        print("Rich text: formulas across lines, stray marks, inline HTML, code, Mermaid, HTML blocks, callouts, folding, footnotes, pictures, callouts, colours and [TOC] passed")
         exit(0)
     }
 }

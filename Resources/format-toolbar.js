@@ -191,6 +191,50 @@ export function toggleFormat(kind) {
   };
 }
 
+// Colours are kept as <span style>, the one inline form Markdown leaves alone.
+// Selecting a whole coloured run changes it; anything else gets a span of its own.
+const textColors=['#8d8695','#e0524d','#e0943a','#c9a227','#3fae6b','#4c9be8','#9b6fe0'];
+const backColors=['#8d869540','#e0524d40','#e0943a40','#e5c84d50','#3fae6b40','#4c9be840','#9b6fe040'];
+function coloredRun(line,from,to) {
+  const open=[];let found=null;
+  for(const match of line.text.matchAll(/<(\/?)span\b([^<>]*)>/gi)) {
+    const start=line.from+match.index,end=start+match[0].length;
+    if(!match[1]){open.push({openFrom:start,openTo:end,attrs:match[2]});continue;}
+    const run=open.pop();
+    if(run&&from<=run.openTo&&to>=start&&from>=run.openFrom&&to<=end)found={...run,closeFrom:start,closeTo:end};
+  }
+  return found;
+}
+function styleOf(attrs) {
+  const style=/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs),map=new Map();
+  for(const part of (style?.[1]??style?.[2]??'').split(';')){const at=part.indexOf(':');if(at>0)map.set(part.slice(0,at).trim().toLowerCase(),part.slice(at+1).trim());}
+  if(map.has('background')&&!map.has('background-color')){map.set('background-color',map.get('background'));map.delete('background');}
+  return map;
+}
+export function applyColor(view,property,value) {
+  const {state}=view,range=state.selection.main;
+  if(state.readOnly||range.empty)return false;
+  const list=segments(state,range.from,range.to);
+  if(!list.length)return false;
+  const edits=[];
+  for(const segment of list) {
+    const run=coloredRun(state.doc.lineAt(segment.from),segment.from,segment.to);
+    if(run) {
+      const style=styleOf(run.attrs);
+      if(!property)style.clear();else if(value)style.set(property,value);else style.delete(property);
+      const text=[...style].map(([name,setting])=>name+':'+setting).join(';');
+      if(text)edits.push({from:run.openFrom,to:run.openTo,insert:`<span style="${text}">`});
+      else edits.push({from:run.openFrom,to:run.openTo,insert:''},{from:run.closeFrom,to:run.closeTo,insert:''});
+    } else if(property&&value) edits.push({from:segment.from,insert:`<span style="${property}:${value}">`},{from:segment.to,insert:'</span>'});
+  }
+  if(!edits.length)return false;
+  const changes=state.changes(edits),first=list[0],last=list.at(-1);
+  const inner=coloredRun(state.doc.lineAt(first.from),first.from,first.to),outer=coloredRun(state.doc.lineAt(last.from),last.from,last.to);
+  const anchor=changes.mapPos(inner?inner.openTo:first.from,1),head=changes.mapPos(outer?outer.closeFrom:last.to,-1);
+  view.dispatch({changes,selection:EditorSelection.range(anchor,head),userEvent:'input.format',...historyStep});
+  return true;
+}
+
 // Links
 function linkAt(state,from,to) {
   const line=state.doc.lineAt(from);
@@ -343,6 +387,7 @@ const icons={
   link:svg(['M8.6 11.4a3 3 0 0 0 4.2 0l2.5-2.5a3 3 0 0 0-4.2-4.2l-1 1','M11.4 8.6a3 3 0 0 0-4.2 0l-2.5 2.5a3 3 0 0 0 4.2 4.2l1-1']),
   code:svg(['M6.8 6 3 10l3.8 4','M13.2 6 17 10l-3.8 4','M11.4 4.5 8.6 15.5']),
   highlight:svg(['M5.8 15 10 4.5 14.2 15','M7.4 11h5.2']),
+  color:svg(['M6.2 12.5 10 3.5l3.8 9','M7.5 9.5h5','M4 16.5h12']),
   chevron:svg(['M6 8.5l4 4 4-4'],' class="cm-format-chevron"')
 };
 const inlineButtons=[['bold','Mod-b'],['strike','Mod-Shift-x'],['italic','Mod-i'],['link','Mod-k'],['code','Mod-e'],['highlight',null]];
@@ -380,6 +425,23 @@ function createToolbar(view) {
     const element=button('cm-format-'+kind,icons[kind],()=>{if(kind==='link'){openLink(view);return;}toggleFormat(kind)(view);});
     inline.set(kind,element);bar.append(element);
   }
+  const colorButton=button('cm-format-color',icons.color,()=>view.dispatch({effects:setMode.of(view.state.field(toolbarState).mode==='color'?null:'color')}));
+  colorButton.setAttribute('aria-haspopup','menu');bar.append(colorButton);
+  const colorPanel=document.createElement('div');colorPanel.className='cm-format-colors';
+  const swatch=(label,property,value,paint)=>{
+    const element=document.createElement('button');element.type='button';element.tabIndex=-1;element.className='cm-format-swatch';
+    if(paint)paint(element);
+    element.dataset.property=property||'';element.dataset.value=value||'';
+    element.addEventListener('mousedown',event=>event.preventDefault());
+    element.addEventListener('click',()=>{applyColor(view,property,value);view.dispatch({effects:setMode.of(null)});});
+    return element;
+  };
+  const colorTitle=document.createElement('div'),backTitle=document.createElement('div'),colorRow=document.createElement('div'),backRow=document.createElement('div');
+  colorTitle.className=backTitle.className='cm-format-colors-title';colorRow.className=backRow.className='cm-format-colors-row';
+  colorRow.append(swatch('','color',null,element=>{element.textContent='A';}),...textColors.map(color=>swatch('','color',color,element=>{element.textContent='A';element.style.color=color;})));
+  backRow.append(swatch('','background-color',null,element=>{element.classList.add('cm-format-swatch-none');}),...backColors.map(color=>swatch('','background-color',color,element=>{element.style.background=color;})));
+  const clearColors=swatch('',null,null);clearColors.classList.add('cm-format-colors-clear');
+  colorPanel.append(colorTitle,colorRow,backTitle,backRow,clearColors);
   const linkPanel=document.createElement('div');linkPanel.className='cm-format-link';
   const input=document.createElement('input');input.type='text';input.spellcheck=false;input.autocomplete='off';
   linkPanel.append(input);
@@ -390,7 +452,7 @@ function createToolbar(view) {
   });
   input.addEventListener('blur',()=>{if(view.state.field(toolbarState).mode==='link')view.dispatch({effects:setMode.of(null)});});
   const menu=document.createElement('div');menu.className='cm-format-menu';menu.setAttribute('role','menu');
-  dom.append(bar,linkPanel,menu);
+  dom.append(bar,linkPanel,menu,colorPanel);
   let mode=null,language=null;
   const render=()=>{
     const {state}=view,value=state.field(toolbarState),strings=uiMessages(state);
@@ -406,7 +468,9 @@ function createToolbar(view) {
       element.setAttribute('aria-pressed',String(kind==='link'?!!link:formatActive(state,kind)));
       if(kind==='link')element.disabled=link?.kind==='wiki';
     }
-    bar.hidden=value.mode==='link';linkPanel.hidden=value.mode!=='link';menu.hidden=value.mode!=='block';
+    bar.hidden=value.mode==='link';linkPanel.hidden=value.mode!=='link';menu.hidden=value.mode!=='block';colorPanel.hidden=value.mode!=='color';
+    colorButton.title=strings.format.color;colorButton.setAttribute('aria-label',strings.format.color);colorButton.setAttribute('aria-expanded',String(value.mode==='color'));
+    colorTitle.textContent=strings.format.textColor;backTitle.textContent=strings.format.backColor;clearColors.textContent=strings.format.clearColor;
     input.placeholder=strings.linkPlaceholder;input.setAttribute('aria-label',strings.format.link);
     if(value.mode==='link'&&mode!=='link'){input.value=link?.kind==='link'?link.url:'';requestAnimationFrame(()=>{input.focus();input.select();});}
     if(value.mode==='block'&&(mode!=='block'||language!==state.facet(editorLanguage))) {

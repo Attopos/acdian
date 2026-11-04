@@ -9,7 +9,7 @@ import { formatToolbar } from './format-toolbar.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
-import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader } from './rich-text.js';
+import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -584,7 +584,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
     const line=state.doc.line(n);
     while(code<codeRanges.length&&codeRanges[code][1]<=line.from)code++;
     if(code<codeRanges.length&&line.from>=codeRanges[code][0])continue;
-    if(!/^\s*[$!><]/.test(line.text))continue;
+    if(!/^\s*[$!><[]/.test(line.text))continue;
     if(calloutHeader.test(line.text)) {
       let end=n; while(end<state.doc.lines && /^>/.test(state.doc.line(end+1).text)) end++;
       if(!inRanges(ranges,line.from,state.doc.line(end).to)){n=end;continue;}
@@ -597,6 +597,11 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       for(let row=top;row<=end;row++)list.push(Decoration.line({class:'cm-callout-line cm-callout-'+group+(row===top?' cm-callout-first'+(titled?' cm-callout-titled':''):'')+(row===end?' cm-callout-last':'')}).range(state.doc.line(row).from));
       list.push(Decoration.widget({widget:new CalloutIconWidget(match[2]||calloutIcons[group],match[1]),side:-1}).range(state.doc.line(top).from));
       n=end;
+    } else if(/^\s*\[toc\]\s*$/i.test(line.text)) {
+      if(metadata.editable&&state.selection.ranges.some(range=>range.empty&&range.head>line.from&&range.head<line.to))continue;
+      const entries=headingStarts(state).map(pos=>{const text=state.doc.lineAt(pos).text,level=/^#+/.exec(text)[0].length;return {level,text:text.replace(/^#+\s+/,'').replace(/<[^>]+>|\*\*|__|~~|==|[*`]/g,'').trim()};});
+      const widget=new TocWidget(entries);
+      list.push(Decoration.replace({widget,block:true}).range(line.from,line.to));covered.push([line.from,line.to]);
     } else if(/^\s*\$\$/.test(line.text)) {
       const end=mathBlockEnd(state.doc,n);
       if(end) {addBlock(line.from,state.doc.line(end).to,'math');n=end;}
@@ -691,7 +696,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
     }
     const touching=(from,to)=>metadata.editable&&state.selection.ranges.some(range=>range.to>=from&&range.from<=to);
     const inCodeSpan=(from,to)=>inlineCodeRanges.some(([a,b])=>from<b&&to>a);
-    inlineHTML(line.text,line.from,touching,inCodeSpan,list);
+    inlineHTML(line.text,line.from,(from,to)=>metadata.editable&&state.selection.ranges.some(range=>range.empty&&range.head>=from&&range.head<=to),inCodeSpan,list);
     for(const embed of line.text.matchAll(/!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\s]+)\)/g)) {
       const from=line.from+embed.index,to=from+embed[0].length,parsed=embed[1]?parseEmbed(embed[1]):{target:embed[3],width:/\|(\d+)$/.exec(embed[2])?.[1]},url=isImageTarget(parsed.target)&&resourceURL(parsed.target);
       if(!url||inCodeSpan(from,to)||touching(from,to))continue;
@@ -939,7 +944,7 @@ function extensions() {return [
 ];}
 const view=new EditorView({state:EditorState.create({doc:'',extensions:extensions()}),parent:document.getElementById('editor')});
 view.scrollDOM.insertBefore(titleBlock,view.contentDOM);
-configureRichText({post,uiText});
+configureRichText({post,uiText,currentPath:()=>metadata.currentPath,headings:headingStarts});
 // The text fills what the title leaves of the window, so a short page does not scroll.
 new ResizeObserver(()=>document.documentElement.style.setProperty('--page-title-height',titleBlock.offsetHeight+'px')).observe(titleBlock);
 window.acdianEditor=view;
@@ -976,7 +981,8 @@ function installDocument(text,remembered) {
     ({rawSource,lineBreak,rawSnapshots}=session);
     view.setState(session.state);
     // Reconfiguring costs a few milliseconds on a long page, so it is skipped when nothing changed.
-    const reconfigure=session.settings===editorSettings()?[]:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions())];
+    // A page stashed while a load held the editor read-only must not come back read-only.
+    const reconfigure=session.settings===editorSettings()&&session.state.facet(EditorView.editable)===metadata.editable?[]:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions())];
     view.dispatch({effects:[...reconfigure,scrollTo(session.scroll)].flat()});
   } else {
     rawSource=text;lineBreak=rawSource.includes('\r\n')?'\r\n':rawSource.includes('\r')?'\r':'\n';rawSnapshots=new Map([[canonical(rawSource),rawSource]]);

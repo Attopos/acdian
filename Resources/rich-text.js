@@ -17,7 +17,7 @@ import { xml } from '@codemirror/lang-xml';
 import { yaml } from '@codemirror/lang-yaml';
 import { php } from '@codemirror/lang-php';
 
-let host={post(){},uiText(){return '';}};
+let host={post(){},uiText(){return '';},currentPath(){return '';}};
 const viewOf=dom=>{const content=dom.closest?.('.cm-content');return content?EditorView.findFromDOM(content):null;};
 export const configureRichText=value=>{host=value;};
 
@@ -68,7 +68,7 @@ export const codeTools=name=>Decoration.widget({widget:new CodeToolsWidget(name)
 
 // Inline HTML: coloured text, underline, sub- and superscript and so on. Only
 // plain colours and text styling get through; the tags hide unless the caret
-// is on them.
+// is right beside one, so a selection never shows them.
 const safeValue=value=>/^[#\w\s.,%()/-]+$/.test(value)&&!/url|expression|javascript/i.test(value);
 export function safeStyle(style,allowed) {
   return style.split(';').map(part=>{
@@ -104,7 +104,7 @@ export function inlineHTML(text,base,touched,skipped,list) {
     const start=open[at];open.length=at;
     if(start.to===from)continue;
     list.push(Decoration.mark({class:'cm-html-'+name,attributes:inlineAttributes(name,start.attrs)}).range(start.from,to));
-    if(!touched(start.from,to)) { list.push(Decoration.replace({}).range(start.from,start.to)); list.push(Decoration.replace({}).range(from,to)); }
+    if(!touched(start.from,start.to)&&!touched(from,to)) { list.push(Decoration.replace({}).range(start.from,start.to)); list.push(Decoration.replace({}).range(from,to)); }
   }
 }
 
@@ -213,7 +213,38 @@ export function withImageWidth(source,width) {
   return plain.replace(/\]\(/,`|${width}](`);
 }
 function measure(image) { viewOf(image)?.requestMeasure(); }
+function removeImage(view,image) {
+  const at=view.posAtDOM(image),line=view.state.doc.lineAt(at),own=/^\s*(?:!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\))\s*$/.test(line.text);
+  if(own){view.dispatch({changes:{from:line.from,to:Math.min(line.to+1,view.state.doc.length)},userEvent:'delete'});return;}
+  const inline=/^!\[\[[^\]]+\]\]|^!\[[^\]]*\]\([^)]+\)/.exec(view.state.sliceDoc(at,line.to));
+  if(inline)view.dispatch({changes:{from:at,to:at+inline[0].length},userEvent:'delete'});
+}
+function openImageMenu(event,image,state) {
+  event.preventDefault();event.stopPropagation();
+  document.querySelector('.cm-image-menu')?.dispatchEvent(new Event('close'));
+  const view=viewOf(image),menu=document.createElement('div');menu.className='cm-image-menu';menu.setAttribute('role','menu');
+  const close=()=>{menu.remove();window.removeEventListener('mousedown',outside,true);window.removeEventListener('keydown',key,true);};
+  const outside=down=>{if(!menu.contains(down.target))close();};
+  const key=pressed=>{if(pressed.key==='Escape'){pressed.preventDefault();pressed.stopPropagation();close();}};
+  const item=(name,run,className='')=>{
+    const button=document.createElement('button');button.type='button';button.setAttribute('role','menuitem');button.textContent=host.uiText(state,name);button.className=className;button.dataset.action=name;
+    button.addEventListener('mousedown',down=>down.preventDefault());
+    button.addEventListener('click',()=>{close();run();});
+    menu.append(button);
+  };
+  item('viewImage',()=>showLarge(image));
+  const target=image.dataset.liveResource||'';
+  item('copyImage',()=>host.post({type:'copyImage',target,currentPath:host.currentPath()}));
+  item('revealImage',()=>host.post({type:'revealImage',target,currentPath:host.currentPath()}));
+  if(view?.state.facet(EditorView.editable))item('deleteImage',()=>removeImage(view,image),'cm-image-menu-danger');
+  document.body.append(menu);
+  const size=menu.getBoundingClientRect();
+  menu.style.left=Math.max(8,Math.min(event.clientX,innerWidth-size.width-8))+'px';
+  menu.style.top=Math.max(8,Math.min(event.clientY,innerHeight-size.height-8))+'px';
+  window.addEventListener('mousedown',outside,true);window.addEventListener('keydown',key,true);
+}
 function watchImage(image,state) {
+  image.addEventListener('contextmenu',event=>openImageMenu(event,image,state));
   image.addEventListener('load',()=>measure(image));
   image.addEventListener('error',()=>{
     const missing=document.createElement('span');missing.className='cm-image-missing';
@@ -393,6 +424,31 @@ export class CalloutIconWidget extends WidgetType {
     const icon=document.createElement('span');icon.className='cm-callout-icon';icon.textContent=this.emoji;icon.contentEditable='false';icon.title=host.uiText(view.state,'calloutIcon');
     icon.addEventListener('mousedown',event=>{event.preventDefault();if(view.state.facet(EditorView.editable))openCalloutPicker(view,icon);});
     return icon;
+  }
+  ignoreEvent() { return true; }
+}
+
+// [TOC]: the page's headings, listed where it is written. A click goes to one.
+export class TocWidget extends WidgetType {
+  constructor(entries) { super(); this.entries=entries; }
+  eq(other) { return JSON.stringify(this.entries)===JSON.stringify(other.entries); }
+  toDOM(view) {
+    const wrap=document.createElement('div');wrap.className='cm-live-block-wrap';
+    const block=document.createElement('nav');block.className='cm-live-block cm-toc';block.title=host.uiText(view.state,'doubleClickEdit');
+    const title=document.createElement('div');title.className='cm-toc-title';title.textContent=host.uiText(view.state,'toc');block.append(title);
+    if(!this.entries.length){const empty=document.createElement('div');empty.className='cm-toc-empty';empty.textContent=host.uiText(view.state,'tocEmpty');block.append(empty);}
+    const top=Math.min(...this.entries.map(entry=>entry.level));
+    this.entries.forEach((entry,index)=>{
+      const link=document.createElement('button');link.type='button';link.textContent=entry.text;link.style.paddingLeft=(entry.level-top)*1.2+'em';
+      link.addEventListener('mousedown',event=>event.preventDefault());
+      link.addEventListener('click',()=>{
+        const pos=host.headings(view.state)[index];
+        if(pos!==undefined)view.dispatch({effects:EditorView.scrollIntoView(pos,{y:'start',yMargin:24})});
+      });
+      block.append(link);
+    });
+    block.addEventListener('dblclick',event=>{event.preventDefault();view.dispatch({selection:{anchor:view.posAtDOM(wrap)+1}});view.focus();});
+    wrap.append(block);return wrap;
   }
   ignoreEvent() { return true; }
 }

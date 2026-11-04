@@ -1033,6 +1033,18 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         do { insertLinks([Self.link(try storeAttachment(named:"Pasted image \(formatter.string(from:Date())).\(ext)") { try data.write(to:$0,options:.withoutOverwriting) },showingAt:CGImageSourceCreateWithData(data as CFData,nil).flatMap(Self.screenWidth))]); return true }
         catch { self.error = self.localizedError(error); return false }
     }
+    /// Puts a picture from the page on the clipboard, as the file and as an image.
+    func copyImage(_ target: String,from page: String,to pasteboard: NSPasteboard = .general) {
+        guard let url = index?.resolve(target,from:page) else { return }
+        pasteboard.clearContents()
+        var items: [NSPasteboardWriting] = [url as NSURL]
+        if let image = NSImage(contentsOf:url) { items.append(image) }
+        pasteboard.writeObjects(items)
+    }
+    func revealImage(_ target: String,from page: String) {
+        guard let url = index?.resolve(target,from:page) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
     /// A screenshot from a Retina screen holds twice the pixels it showed, so it
     /// is embedded at the width it had on screen rather than twice as large.
     private static func screenWidth(_ source: CGImageSource) -> Int? {
