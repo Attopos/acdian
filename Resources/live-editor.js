@@ -9,7 +9,7 @@ import { formatToolbar } from './format-toolbar.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
-import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget } from './rich-text.js';
+import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -702,6 +702,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       if(!url||inCodeSpan(from,to)||touching(from,to))continue;
       list.push(Decoration.replace({widget:new InlineImageWidget(url,parsed.target,parsed.width?Number(parsed.width):null)}).range(from,to));
     }
+    if(!tableRanges.some(([a,b])=>line.from>=a&&line.from<b))keepWords(line.text,line.from,inCodeSpan,list);
     // A footnote mark shows as a small number that goes to its note.
     if(line.text.includes('[^')) {
       const note=/^\[\^[^\]\s]+\]:\s/.exec(line.text);
@@ -1070,5 +1071,5 @@ function followHeading(){
   reportHeading(index);
 }
 view.scrollDOM.addEventListener('scroll',()=>{if(!headingFrame)headingFrame=requestAnimationFrame(followHeading);},{passive:true});
-window.acdianLiveEditorTest={simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString(),keptTabs:()=>[...sessions.keys()]};
+window.acdianLiveEditorTest={wordRanges,simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString(),keptTabs:()=>[...sessions.keys()]};
 post({type:'ready'});

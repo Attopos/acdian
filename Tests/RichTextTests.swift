@@ -278,6 +278,22 @@ struct RichTextTests {
         """,as:String.self)
         try await check(orphans == "", "Closing punctuation stays with the link before it (\(orphans ?? "nil"))")
 
+        // Chinese words stay whole at the end of a line, at every position along it.
+        try write("Words.md","Intro\n\nx\n")
+        model.refresh()
+        for _ in 0..<500 where model.loading || model.index?.files.contains(where: { $0.relativePath == "Words.md" }) != true { try await wait(0.01) }
+        try await open("Words.md")
+        let splitWords = try await js("""
+        (()=>{const v=window.acdianEditor,bad=[];
+        for(let k=0;k<60;k++){const at=v.state.doc.toString().lastIndexOf('x'),line=v.state.doc.lineAt(at),text='x'.repeat(k%3)+'字'.repeat(k)+'它部署在国内各个通往国外的网络出口上，看着经过的流量，**巨大的、分布式的入侵检测系统**。';
+          v.dispatch({changes:{from:line.from,to:line.to,insert:text}});
+          const l=[...document.querySelectorAll('.cm-line')].find(e=>e.textContent.includes('网络')),walk=document.createTreeWalker(l,NodeFilter.SHOW_TEXT);let n,top={};
+          for(;(n=walk.nextNode());)for(const w of ['网络','部署','通往','流量','系统']){const i=n.data.indexOf(w);if(i<0)continue;const r=document.createRange();r.setStart(n,i);r.setEnd(n,i+1);const a=r.getBoundingClientRect();r.setStart(n,i+1);r.setEnd(n,i+2);const b=r.getBoundingClientRect();if(Math.abs(a.top-b.top)>4)bad.push(w+k);}
+          v.dispatch({changes:{from:line.from,to:v.state.doc.lineAt(line.from).to,insert:'x'}});
+        }return bad.join(' ');})()
+        """,as:String.self)
+        try await check(splitWords == "", "Chinese words stay whole across lines (\(splitWords ?? "nil"))")
+
         // The caret still shows around a link, whose address takes no part in the line.
         try write("Caret.md","Intro\n\nBefore [Label](https://example.com/a) after\n\n[Last](https://example.com/b)\n")
         model.refresh()

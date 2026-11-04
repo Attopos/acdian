@@ -35,6 +35,8 @@ struct WrapAudit {
         if(index&&closing.test(clean)&&!/\\s$/.test(rows[index-1].cells.map(x=>x.c).join('')))found.push(['closing-starts-line',kind,rows[index-1].cells.map(x=>x.c).join('').trim().slice(-14)+' ⏎ '+clean.slice(0,10)]);
         if(index+1<rows.length&&opening.test(clean))found.push(['opening-ends-line',kind,clean.slice(-14)]);
         if(index+1<rows.length){const end=row.cells.at(-1)?.c||'',next=rows[index+1].cells[0]?.c||'';if(word.test(end)&&word.test(next))found.push(['word-split',kind,clean.slice(-14)+' ⏎ '+rows[index+1].cells.map(x=>x.c).join('').slice(0,10)]);}
+        // A Chinese word broken across lines: the words of the joined text cross the break.
+        if(index+1<rows.length&&window.Intl?.Segmenter){const a=row.cells.map(x=>x.c).join(''),b=rows[index+1].cells.map(x=>x.c).join('');if(/[\\u3400-\\u9fff]$/.test(a)&&/^[\\u3400-\\u9fff]/.test(b)){const tail=a.slice(-8),head=b.slice(0,8);let at=0,split=false;for(const s of new Intl.Segmenter('zh',{granularity:'word'}).segment(tail+head)){if(s.index<tail.length&&s.index+s.segment.length>tail.length)split=s.segment;}if(split)found.push(['chinese-word-split',kind,tail+' ⏎ '+head+' ('+split+')']);}}
       });
     }
     return JSON.stringify({lines:document.querySelectorAll('.cm-content > .cm-line').length,found});})()

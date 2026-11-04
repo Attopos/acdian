@@ -52,6 +52,7 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-format-delimiter,.cm-editor .cm-live-bold-delimiter { font-size:0; line-height:0; }
 /* Hidden syntax with text on both sides takes no part in the line: even at no size it offers places to break, stranding the punctuation after it. At a line's start or end it stays, as the caret needs something to stand beside there. */
 .cm-editor .cm-hidden-syntax { position:absolute; }
+.cm-editor .cm-whole-word { white-space:nowrap; }
 .cm-editor .cm-live-em { font-style:italic; color:#e6d3da; }
 .cm-editor .cm-live-strike { text-decoration:line-through; color:#929099; }
 .cm-editor .cm-live-code { font-family:"SFMono-Regular",Menlo,monospace; font-size:.87em; color:#ec9dc3; background:#d93b860e; border-radius:4px; }

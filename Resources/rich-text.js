@@ -456,3 +456,33 @@ export class TocWidget extends WidgetType {
   }
   ignoreEvent() { return true; }
 }
+
+// Chinese has no spaces, so a browser breaks a line between any two characters,
+// even inside a word: 网 at the end of one line, 络 at the start of the next. Each
+// word is kept whole instead, along with the punctuation that has to stay with it.
+const han=/[\u3400-\u9fff\uf900-\ufaff]/;
+const wordFinder=typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter('zh',{granularity:'word'}):null;
+const afterWord=/^(?:\*{1,3}|_{1,3}|~~|==|`|\]\([^)\n]*\)|\]\])*[）」』】》〉〕。，、；：！？”’)\]]+/;
+const beforeWord=/[（「『【《〈〔“‘(\[]+(?:\*{1,3}|_{1,3}|~~|==|`|\[{1,2})*$/;
+const wordCache=new Map();
+export function wordRanges(text) {
+  if(!wordFinder||!han.test(text))return [];
+  const kept=wordCache.get(text);
+  if(kept)return kept;
+  const ranges=[];let last=0;
+  for(const {segment,index,isWordLike} of wordFinder.segment(text)) {
+    if(!isWordLike||segment.length<2||!han.test(segment))continue;
+    let from=index,to=index+segment.length;
+    const after=afterWord.exec(text.slice(to,to+200));if(after)to+=after[0].length;
+    const before=beforeWord.exec(text.slice(Math.max(0,from-12),from));if(before)from-=before[0].length;
+    from=Math.max(from,last);
+    if(to>from){ranges.push([from,to]);last=to;}
+  }
+  if(wordCache.size>3000)wordCache.clear();
+  wordCache.set(text,ranges);
+  return ranges;
+}
+const wholeWord=Decoration.mark({class:'cm-whole-word'});
+export function keepWords(text,base,skipped,list) {
+  for(const [from,to] of wordRanges(text))if(!skipped(base+from,base+to))list.push(wholeWord.range(base+from,base+to));
+}
