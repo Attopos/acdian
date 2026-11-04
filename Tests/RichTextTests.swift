@@ -254,6 +254,8 @@ struct RichTextTests {
         try await wait(0.2)
         try await check(model.text.hasPrefix("![[Attachments/plain.png|100]]\nFirst"), "Undo puts the picture back in one step")
 
+        try await check(try await js("[document.documentElement,document.body,window.acdianEditor.scrollDOM].every(e=>getComputedStyle(e).overscrollBehaviorY==='none')",as:Bool.self) == true, "The page cannot be pulled past its top or bottom")
+
         // The toolbar's colours.
         try write("Colors.md","Intro\n\nPaint this word here\n\nSecond line\n")
         try write("Toc.md","Intro\n\n[TOC]\n\n# One\n\n## **Two** deep\n\nText\n\n# Three\n")

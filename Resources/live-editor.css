@@ -1,5 +1,7 @@
 :root { --editor-font-size:16px; }
 html,body { height:100%; margin:0; }
+/* A hard flick stops at the top and bottom of the page instead of pulling it past them. */
+html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 #editor { min-height:100%; }
 .cm-editor { background:#111114; color:#e5e3e8; height:100vh; min-height:100vh; font-size:var(--editor-font-size); }
 .cm-editor.cm-focused { outline:none; }

@@ -37,7 +37,7 @@ struct PageSnapshot {
         }
         // ACDIAN_RUN=<script> runs in the page before the picture is taken.
         if let script = ProcessInfo.processInfo.environment["ACDIAN_RUN"] {
-            _ = try? await web.evaluateJavaScript(script)
+            if let result = try? await web.evaluateJavaScript(script) { print(result) }
             try await Task.sleep(nanoseconds:800_000_000)
         }
         let image = try await web.takeSnapshot(configuration:nil)
