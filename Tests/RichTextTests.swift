@@ -256,6 +256,27 @@ struct RichTextTests {
 
         try await check(try await js("[document.documentElement,document.body,window.acdianEditor.scrollDOM].every(e=>getComputedStyle(e).overscrollBehaviorY==='none')",as:Bool.self) == true, "The page cannot be pulled past its top or bottom")
 
+        // Hidden link addresses must not give the line places to break, or closing
+        // punctuation lands alone on the next line. Tried at every position along the line.
+        try write("Wrap.md","Intro\n\n> [!note] Title\n> x\n\n> y\n\nz\n")
+        model.refresh()
+        for _ in 0..<500 where model.loading || model.index?.files.contains(where: { $0.relativePath == "Wrap.md" }) != true { try await wait(0.01) }
+        try await open("Wrap.md")
+        let orphans = try await js("""
+        (()=>{const v=window.acdianEditor,bad=[];v.dispatch({selection:{anchor:0}});
+        for(const row of ['x','y','z'])for(let k=0;k<60;k++){
+          const at=v.state.doc.toString().indexOf(row==='z'?'\\nz':'> '+row)+(row==='z'?1:2),line=v.state.doc.lineAt(at),text=row+'字'.repeat(k)+'（[Word Limitations](https://www.example.com/known-limitations/)）。';
+          v.dispatch({changes:{from:at,to:line.to,insert:text}});
+          const l=[...document.querySelectorAll('.cm-line')].find(e=>e.textContent.includes('（')),link=l.querySelector('.cm-live-link'),walk=document.createTreeWalker(l,NodeFilter.SHOW_TEXT);
+          let tail=null;for(let t;(t=walk.nextNode());)if(t.data.includes('）')&&parseFloat(getComputedStyle(t.parentElement).fontSize)>0)tail=t;
+          const r=document.createRange();r.setStart(tail,tail.data.indexOf('）'));r.setEnd(tail,tail.data.indexOf('）')+1);
+          const a=r.getBoundingClientRect(),b=[...link.getClientRects()].at(-1);
+          if(Math.abs(a.top-b.top)>4)bad.push(row+k);
+          const again=v.state.doc.lineAt(at);v.dispatch({changes:{from:at,to:again.to,insert:row}});
+        }return bad.join(' ');})()
+        """,as:String.self)
+        try await check(orphans == "", "Closing punctuation stays with the link before it (\(orphans ?? "nil"))")
+
         // The toolbar's colours.
         try write("Colors.md","Intro\n\nPaint this word here\n\nSecond line\n")
         try write("Toc.md","Intro\n\n[TOC]\n\n# One\n\n## **Two** deep\n\nText\n\n# Three\n")

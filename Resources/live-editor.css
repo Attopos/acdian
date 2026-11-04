@@ -47,7 +47,8 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-plain-syntax, .cm-editor .cm-plain-syntax * { color:inherit!important; font-weight:inherit!important; text-decoration:none!important; }
 .cm-editor .cm-divider-line.cm-divider-selected { background:var(--divider-selected,#d93b8650); }
 .cm-editor .cm-live-strong { font-weight:700; color:#f4f1f6; }
-.cm-editor .cm-format-delimiter,.cm-editor .cm-live-bold-delimiter { font-size:0; line-height:0; }
+/* Hidden text gives the line no place to break, or the punctuation after a link can land alone on the next line. */
+.cm-editor .cm-format-delimiter,.cm-editor .cm-live-bold-delimiter { font-size:0; line-height:0; white-space:nowrap; }
 .cm-editor .cm-live-em { font-style:italic; color:#e6d3da; }
 .cm-editor .cm-live-strike { text-decoration:line-through; color:#929099; }
 .cm-editor .cm-live-code { font-family:"SFMono-Regular",Menlo,monospace; font-size:.87em; color:#ec9dc3; background:#d93b860e; border-radius:4px; }
