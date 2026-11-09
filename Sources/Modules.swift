@@ -175,3 +175,19 @@ enum AttachmentReferences {
         return complete ? pages : nil
     }
 }
+
+extension MetadataMerge {
+    /// The module list merged by folder: a module changed only on one side
+    /// takes that side, one removed here stays removed, new ones are added.
+    static func modules(base: [PageModule], local: [PageModule], disk: [PageModule]) -> [PageModule] {
+        let before = Dictionary(base.map { ($0.folder, $0) }, uniquingKeysWith: { first, _ in first })
+        let onDisk = Dictionary(disk.map { ($0.folder, $0) }, uniquingKeysWith: { first, _ in first })
+        var result = local.map { module -> PageModule in
+            if let unchanged = before[module.folder], unchanged == module, let theirs = onDisk[module.folder] { return theirs }
+            return module
+        }
+        let folders = Set(local.map(\.folder))
+        result += disk.filter { !folders.contains($0.folder) && before[$0.folder] == nil }
+        return result.filter { before[$0.folder] == nil || onDisk[$0.folder] != nil || folders.contains($0.folder) }
+    }
+}

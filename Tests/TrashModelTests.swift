@@ -59,8 +59,7 @@ struct TrashModelTests {
             let (model,directory) = try fixture("selected-conflict")
             let entry = try select(model,directory)
             let generation = model.editorDocumentID
-            let insertion = EditorInsertion(text:"pending attachment")
-            model.insertion = insertion
+            model.insertion = EditorInsertion(text:"pending attachment")
             var callback: ((Result<EditorSnapshot,Error>) -> Void)?
             model.editorSnapshot = { callback = $0 }
             var completion: Bool?
@@ -69,9 +68,10 @@ struct TrashModelTests {
             try write("# External version",directory,"Page.md")
             callback?(.success(EditorSnapshot(text:"# Latest unsaved 中文🌸",currentPath:entry.relativePath)))
             await settle()
-            try check(completion == false && model.error != nil && model.text == "# Latest unsaved 中文🌸" && model.dirty, "A pre-delete save conflict retains the latest editor text and reports no deletion")
-            try check(model.selected?.id == entry.id && model.editorDocumentID == generation && model.insertion == insertion && !model.showingTrash, "A failed automatic save preserves document identity, pending insertion and view")
-            try check(try disk(directory,"Page.md") == "# External version" && store(directory).entries().isEmpty, "A save conflict preserves external edits and creates no trash item")
+            try check(completion == true && model.error == nil && store(directory).entries().count == 1, "A file changed meanwhile is merged before it goes to the trash")
+            let trashed = try store(directory).entries()[0]
+            let kept = try String(contentsOf:directory.appendingPathComponent(".acdian-trash/\(trashed.id.uuidString)/payload"),encoding:.utf8)
+            try check(kept.contains("# Latest unsaved 中文🌸") && kept.contains("# External version"), "The trashed page keeps both the editor text and the outside edit")
         }
 
         do {
