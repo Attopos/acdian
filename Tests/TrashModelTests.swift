@@ -214,13 +214,13 @@ struct TrashModelTests {
         do {
             let (model,directory) = try fixture("save-conflict")
             let entry = try select(model,directory)
-            try write("# Changed by another app",directory,"Page.md")
+            try fm.removeItem(at:entry.url)
             model.text = "# Unsaved local edit"
             let generation = model.editorDocumentID
             var completion: Bool?
             model.delete(entry) { completion = $0 }
             try check(completion == false && model.error != nil && model.text == "# Unsaved local edit" && model.selected?.id == entry.id && model.editorDocumentID == generation, "A failed automatic save aborts deletion and preserves local edits")
-            try check(try disk(directory,"Page.md") == "# Changed by another app" && store(directory).entries().isEmpty, "Save conflict must preserve the externally changed page and create no trash item")
+            try check(!fm.fileExists(atPath:entry.url.path) && store(directory).entries().isEmpty, "A page deleted elsewhere is not recreated and creates no trash item")
         }
 
         do {
@@ -247,7 +247,7 @@ struct TrashModelTests {
             var callback: ((Result<EditorSnapshot,Error>) -> Void)?
             model.editorSnapshot = { callback = $0 }
             let baseline = model.originalText
-            try write("# Externally changed page",directory,"Page.md")
+            try fm.removeItem(at:entry.url)
             model.showTrash()
             callback?(.success(EditorSnapshot(text:"# Dirty latest body",currentPath:entry.relativePath)))
             await settle()

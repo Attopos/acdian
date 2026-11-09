@@ -89,7 +89,7 @@ enum PagesStorage {
         guard !sourcePath.hasPrefix(targetPath), !targetPath.hasPrefix(sourcePath) else { throw VaultCoreError.invalidMove(target) }
         let items = try listing(of:source)
         guard !items.contains(where:{ CloudFiles.logicalName(ofPlaceholder:($0 as NSString).lastPathComponent) != nil }) else { throw MoveError.notDownloaded }
-        let top = try manager.contentsOfDirectory(at:source,includingPropertiesForKeys:nil,options:[])
+        let top = try manager.contentsOfDirectory(at:source,includingPropertiesForKeys:nil,options:[]).filter { $0.lastPathComponent != ".DS_Store" }
         var copied: [URL] = []
         do {
             for item in top {
@@ -120,6 +120,8 @@ enum PagesStorage {
         var result: [String] = []
         func walk(_ directory: URL, _ prefix: String) throws {
             for child in try FileManager.default.contentsOfDirectory(at:directory,includingPropertiesForKeys:[.isDirectoryKey,.isSymbolicLinkKey],options:[]) {
+                // Finder's own file, which iCloud may remove at any moment.
+                guard child.lastPathComponent != ".DS_Store" else { continue }
                 let path = prefix + child.lastPathComponent, values = try child.resourceValues(forKeys:[.isDirectoryKey,.isSymbolicLinkKey])
                 result.append(path.precomposedStringWithCanonicalMapping)
                 if values.isDirectory == true, values.isSymbolicLink != true { try walk(child,path + "/") }
