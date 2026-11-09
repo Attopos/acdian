@@ -1474,3 +1474,42 @@ test('a long note far from the top renders and takes clicks like the top does', 
   await page.keyboard.insertText('Z');
   assert.ok((await page.evaluate(() => window.acdianGetDocument().text)).split('\n')[target.line - 1].includes('Z'));
 });
+
+test('a page changed on disk is patched in place, keeping the caret, scroll and undo', async t => {
+  const lines = Array.from({ length: 200 }, (_, i) => `Line ${i + 1} of the page.`);
+  const source = '# Fixture\n\n' + lines.join('\n\n') + '\n';
+  const { page, get } = await editor(t, source, { documentID: 'disk-doc' });
+  // Type something, so the page has its own undo history before the refresh.
+  const typedAt = source.indexOf('Line 150 of') + 'Line 150'.length;
+  await page.evaluate(at => { window.acdianEditor.dispatch({ selection: { anchor: at } }); window.acdianEditor.focus(); }, typedAt);
+  await page.keyboard.insertText('!');
+  const typed = (await get()).text;
+  await page.evaluate(() => { const s = window.acdianEditor.scrollDOM; s.scrollTop = s.scrollHeight * 0.7; });
+  await page.waitForTimeout(100);
+  const before = await page.evaluate(() => ({ scroll: window.acdianEditor.scrollDOM.scrollTop, head: window.acdianEditor.state.selection.main.head }));
+  // Another app adds a paragraph near the top and rewrites one far below.
+  const disk = typed.replace('Line 3 of the page.', 'Line 3 of the page.\n\nAdded by another app.').replace('Line 180 of the page.', 'Line 180 changed.');
+  await page.evaluate(({ disk, typed }) => window.acdianSetDocument({ text: disk, currentPath: 'a page changed on disk is patched in place, keeping the caret, scroll and undo.md', documentID: 'disk-doc', refresh: { base: typed } }), { disk, typed });
+  await page.waitForTimeout(100);
+  const after = await get();
+  assert.equal(after.text, disk);
+  const shift = '\n\nAdded by another app.'.length;
+  assert.equal(after.selection.head, before.head + shift, 'the caret stays after the typed mark');
+  const scroll = await page.evaluate(() => window.acdianEditor.scrollDOM.scrollTop);
+  assert.ok(Math.abs(scroll - before.scroll) < 80, `scroll stays near ${before.scroll}, got ${scroll}`);
+  assert.ok(!after.messages.some(m => m.type === 'change' && m.text === disk), 'the refresh is not echoed back as an edit');
+  // Undo takes back the typed mark, not the other app's change.
+  await page.keyboard.press('Control+z');
+  const undone = (await get()).text;
+  assert.ok(undone.includes('Added by another app.') && undone.includes('Line 180 changed.'));
+  assert.ok(!undone.includes('Line 150!'));
+});
+
+test('a disk refresh is dropped when the page was typed in after it was sent', async t => {
+  const source = '# Fixture\n\nOne.\n';
+  const { page, get } = await editor(t, source, { documentID: 'stale-doc' });
+  await page.evaluate(() => { window.acdianEditor.dispatch({ selection: { anchor: window.acdianEditor.state.doc.length - 1 } }); window.acdianEditor.focus(); });
+  await page.keyboard.insertText(' Two');
+  await page.evaluate(source => window.acdianSetDocument({ text: '# Fixture\n\nFrom disk.\n', currentPath: 'a disk refresh is dropped when the page was typed in after it was sent.md', documentID: 'stale-doc', refresh: { base: source } }), source);
+  assert.equal((await get()).text, '# Fixture\n\nOne. Two\n');
+});

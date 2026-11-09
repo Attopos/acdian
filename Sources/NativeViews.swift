@@ -135,6 +135,9 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         var payload: [String:Any] = ["currentPath":documentPath,"documentID":documentID.uuidString,"tabID":model.activeTabID?.uuidString ?? "","openTabs":model.tabs.map(\.id.uuidString),
                                      "title":model.isDraft ? model.draftTitle : model.selected?.name ?? "","draft":true,"fontSize":model.fontSize,"editable":!model.loading,"language":model.language.rawValue,"appearance":appearance,"pageTitle":model.isDraft ? "" : (model.selected?.url.deletingPathExtension().lastPathComponent ?? "")]
         let sendText = !documentInstalled || lastJSText.map { !model.text.sameBytes($0) } ?? true
+        // A page re-read from disk is patched in place, unless the editor was
+        // typed in after the text it was last sent.
+        if model.refreshPending { model.refreshPending = false; if sendText && documentInstalled { payload["refresh"] = ["base":lastJSText ?? ""] } }
         if sendText {
             payload["text"] = model.text
             if let place = model.frontTabView { payload["view"] = ["anchor":place.anchor,"head":place.head,"scroll":["pos":place.scrollPosition,"offset":place.scrollOffset]] }

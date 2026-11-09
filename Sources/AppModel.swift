@@ -278,6 +278,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         self.pagesRootOverride = pagesRoot ?? argumentRoot
         self.language = AppLanguage.stored(in:preferences)
         guard loadInitialVault else { return }
+        watchOpenPage()
         do { loadPages(try resolvePageStorage()) }
         catch { self.error = localizedError(error) }
     }
@@ -315,7 +316,51 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             } catch { DispatchQueue.main.async { guard self.loadID == request else { return }; self.loading = false; self.error = self.localizedError(error) } }
         }
     }
-    deinit { trashTimer?.invalidate(); cleanupTimer?.invalidate(); autosaveTask?.cancel() }
+    deinit { trashTimer?.invalidate(); cleanupTimer?.invalidate(); diskTimer?.invalidate(); autosaveTask?.cancel() }
+
+    // MARK: Changes made to the open page by other apps
+    /// Set when the open page was re-read because its file changed on disk. The
+    /// editor then replaces only the changed text and keeps its caret and scroll.
+    var refreshPending = false
+    private var diskTimer: Timer?
+    private var diskCheckRunning = false
+    private var activationObserver: NSObjectProtocol?
+    /// Checks the open page's file every second and a half while ACdian is in
+    /// front, and as soon as it comes back to the front.
+    private func watchOpenPage() {
+        diskTimer = Timer.scheduledTimer(withTimeInterval:1.5,repeats:true) { [weak self] _ in
+            MainActor.assumeIsolated { if NSApp?.isActive ?? true { self?.checkOpenPageOnDisk() } }
+        }
+        activationObserver = NotificationCenter.default.addObserver(forName:NSApplication.didBecomeActiveNotification,object:nil,queue:.main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkOpenPageOnDisk() }
+        }
+    }
+    /// Shows the file's new text when it changed on disk and the page has no
+    /// edits of its own. A page with unsaved edits keeps them; saving them
+    /// then reports the conflict, as before.
+    func checkOpenPageOnDisk() {
+        guard !diskCheckRunning, !isDraft, !loading, let entry = selected, entry.ext == "md", let tab = activeTabID,
+              tabs.contains(where: { $0.id == tab && $0.path == entry.relativePath }) else { return }
+        let known = tabMemory[tab]?.stamp, root = index?.root, documentID = editorDocumentID
+        diskCheckRunning = true
+        DispatchQueue.global(qos:.utility).async {
+            let current = FileStamp(of:entry.url)
+            var disk: String?
+            if current != nil, current != known { disk = try? VaultFileIO.readMarkdown(at:entry.url,allowedRoot:root) }
+            DispatchQueue.main.async {
+                self.diskCheckRunning = false
+                guard let disk, self.editorDocumentID == documentID, self.activeTabID == tab, self.selected?.relativePath == entry.relativePath, !self.loading else { return }
+                if disk.sameBytes(self.originalText) { self.tabMemory[tab]?.stamp = current; return }
+                // The editor may hold a keystroke the model has not heard of yet.
+                self.withEditorSnapshot {
+                    guard self.editorDocumentID == documentID, self.activeTabID == tab, !self.dirty, !disk.sameBytes(self.originalText) else { return }
+                    self.originalText = disk; self.text = Self.body(disk,entry); self.refreshPending = true
+                    self.tabMemory[tab,default:TabMemory()].text = disk; self.tabMemory[tab]?.stamp = current
+                    self.searchSaved(entry.id,disk)
+                }
+            }
+        }
+    }
 
     private func cancelAutosave() {
         autosaveTask?.cancel(); autosaveTask = nil

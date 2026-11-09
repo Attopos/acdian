@@ -1,4 +1,4 @@
-import { EditorState, EditorSelection, StateField, StateEffect, Compartment, findClusterBreak } from '@codemirror/state';
+import { EditorState, EditorSelection, StateField, StateEffect, Compartment, Transaction, findClusterBreak } from '@codemirror/state';
 import { EditorView, ViewPlugin, Decoration, WidgetType, keymap, placeholder, drawSelection } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
@@ -998,6 +998,45 @@ function installDocument(text,remembered) {
   lastSource=rawSource;revision=0;
   reportedHeading=null;requestAnimationFrame(followHeading);
 }
+// The file changed on disk while this page was open and unedited. Only the
+// changed span is replaced, so the caret, the scroll place and the undo
+// history of the page stay where they were.
+function refreshFromDisk(text) {
+  const next=canonical(text),current=view.state.doc.toString();
+  applyingExternal=true;
+  if(next!==current)view.dispatch({changes:lineChanges(current,next),annotations:Transaction.addToHistory.of(false)});
+  applyingExternal=false;
+  rawSource=text;lineBreak=rawSource.includes('\r\n')?'\r\n':rawSource.includes('\r')?'\r':'\n';rawSnapshots=new Map([[canonical(rawSource),rawSource]]);lastSource=rawSource;
+}
+// The lines that differ, as separate changes, so a caret between two edits
+// stays on its line. Pages too large to compare line by line change as one span.
+function lineChanges(a,b) {
+  const A=a.split('\n'),B=b.split('\n');
+  let top=0;while(top<A.length&&top<B.length&&A[top]===B[top])top++;
+  let bottom=0;while(bottom<A.length-top&&bottom<B.length-top&&A[A.length-1-bottom]===B[B.length-1-bottom])bottom++;
+  const n=A.length-top-bottom,m=B.length-top-bottom,offsets=[0];
+  for(const line of A)offsets.push(offsets[offsets.length-1]+line.length+1);
+  const span=(i0,i1,j0,j1)=>{
+    const from=offsets[i0],to=i1>i0?offsets[i1]-1:from,insert=B.slice(j0,j1).join('\n');
+    // A pure insertion or deletion carries one of its line breaks with it.
+    if(i1===i0)return i0<A.length?{from,insert:insert+'\n'}:{from:from-1,insert:'\n'+insert};
+    if(j1===j0)return i1<A.length?{from,to:offsets[i1]}:{from:Math.max(0,from-1),to};
+    return {from,to,insert};
+  };
+  if(!n||!m||n*m>4e6)return [span(top,top+n,top,top+m)];
+  // Longest common subsequence of the middle lines.
+  const L=new Uint32Array((n+1)*(m+1)),w=m+1;
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i*w+j]=A[top+i]===B[top+j]?L[(i+1)*w+j+1]+1:Math.max(L[(i+1)*w+j],L[i*w+j+1]);
+  const changes=[];let i=0,j=0,si=0,sj=0;
+  const flush=()=>{if(i>si||j>sj)changes.push(span(top+si,top+i,top+sj,top+j));};
+  while(i<n||j<m){
+    if(i<n&&j<m&&A[top+i]===B[top+j]){flush();i++;j++;si=i;sj=j;}
+    else if(j>=m||i<n&&L[(i+1)*w+j]>=L[i*w+j+1])i++;
+    else j++;
+  }
+  flush();
+  return changes;
+}
 window.acdianSetDocument=payload=>{
   const previousPath=metadata.currentPath,previousToken=metadata.resetToken,previousDocument=metadata.documentID,previousTab=metadata.tabID;
   if(typeof payload.currentPath==='string')metadata.currentPath=payload.currentPath;
@@ -1020,7 +1059,10 @@ window.acdianSetDocument=payload=>{
   // Tabs that were closed give up their kept state.
   if(Array.isArray(payload.openTabs))for(const id of [...sessions.keys()])if(!payload.openTabs.includes(id))sessions.delete(id);
   const hasText=typeof payload.text==='string';
-  if(hasText&&(switched||payload.text!==rawSource||previousPath!==metadata.currentPath||previousToken!==metadata.resetToken))installDocument(payload.text,switched?payload.view:null);
+  // A refresh is dropped when the page was typed in after the native side last
+  // heard from it; that edit is saved next and reports the conflict.
+  if(hasText&&payload.refresh&&!switched&&previousPath===metadata.currentPath){if(payload.refresh.base===rawSource)refreshFromDisk(payload.text);}
+  else if(hasText&&(switched||payload.text!==rawSource||previousPath!==metadata.currentPath||previousToken!==metadata.resetToken))installDocument(payload.text,switched?payload.view:null);
   else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions())]});
 };
 window.acdianGetDocument=()=>{const place=scrollPlace();return{text:rawSource,currentPath:metadata.currentPath,documentID:metadata.documentID,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head,scrollPosition:place.pos,scrollOffset:place.offset};};
