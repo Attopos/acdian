@@ -1513,3 +1513,44 @@ test('a disk refresh is dropped when the page was typed in after it was sent', a
   await page.evaluate(source => window.acdianSetDocument({ text: '# Fixture\n\nFrom disk.\n', currentPath: 'a disk refresh is dropped when the page was typed in after it was sent.md', documentID: 'stale-doc', refresh: { base: source } }), source);
   assert.equal((await get()).text, '# Fixture\n\nOne. Two\n');
 });
+
+test('comment cards sit beside their text in a wide window and float below it in a narrow one', async t => {
+  const text = '第一段文字，对应日期写入失败，应补预建和检查重试链路。\n\n第二段，也有一条评论。\n';
+  const at = text.indexOf('日期写入失败'), second = text.indexOf('一条评论');
+  const comments = JSON.stringify({ version: 1, threads: [
+    { id: 'a', from: at, to: at + 6, quote: '日期写入失败', created: 1, replies: [{ id: 'r1', text: 'Commit 1', created: 1 }, { id: 'r2', text: 'Commit 2', created: 2 }] },
+    { id: 'b', from: second, to: second + 4, quote: '一条评论', created: 1, replies: [{ id: 'r3', text: '第二条', created: 3 }] }
+  ] });
+  const { page } = await editor(t, text, { documentID: 'doc', tabID: 'tab', pageTitle: '评论', comments, language: 'zh-Hans' });
+  await page.setViewportSize({ width: 1300, height: 760 });
+  await page.waitForFunction(() => document.querySelector('.cm-scroller').classList.contains('cm-comments-wide'));
+  await page.waitForTimeout(250);
+  const wide = await page.evaluate(() => {
+    const content = document.querySelector('.cm-content').getBoundingClientRect();
+    const marks = [...document.querySelectorAll('.cm-comment-mark')].map(mark => mark.getBoundingClientRect());
+    const cards = [...document.querySelectorAll('.cm-comment-card')].map(card => card.getBoundingClientRect());
+    return { contentRight: content.right, marks: marks.map(m => m.top), cards: cards.map(c => ({ top: c.top, left: c.left, bottom: c.bottom })) };
+  });
+  assert.equal(wide.cards.length, 2);
+  assert.ok(wide.cards.every(card => card.left > wide.contentRight - 40), 'cards are to the right of the text');
+  assert.ok(Math.abs(wide.cards[0].top - wide.marks[0]) < 12, 'the first card lines up with its text');
+  assert.ok(wide.cards[1].top >= wide.cards[0].bottom, 'cards never overlap');
+  await page.click('.cm-comment-mark >> nth=1');
+  await page.waitForTimeout(300);
+  const active = await page.evaluate(() => {
+    const card = document.querySelector('.cm-comment-card.active').getBoundingClientRect();
+    return { card: card.top, mark: document.querySelectorAll('.cm-comment-mark')[1].getBoundingClientRect().top };
+  });
+  assert.ok(Math.abs(active.card - active.mark) < 12, 'the open card is pinned to its text');
+  await page.setViewportSize({ width: 680, height: 760 });
+  await page.waitForFunction(() => document.querySelector('.cm-scroller').classList.contains('cm-comments-narrow'));
+  await page.waitForTimeout(250);
+  const narrow = await page.evaluate(() => ({
+    badges: [...document.querySelectorAll('.cm-comment-badge')].filter(b => getComputedStyle(b).display !== 'none').length,
+    visible: [...document.querySelectorAll('.cm-comment-card')].filter(c => getComputedStyle(c).display !== 'none').length,
+    width: document.documentElement.scrollWidth
+  }));
+  assert.equal(narrow.badges, 2);
+  assert.equal(narrow.visible, 1, 'only the open comment shows in a narrow window');
+  assert.ok(narrow.width <= 680, 'no sideways scrolling');
+});

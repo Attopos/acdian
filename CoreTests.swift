@@ -172,6 +172,25 @@ struct CoreTests {
         try fm.createDirectory(at: updates.appendingPathComponent("Inbox/Empty"), withIntermediateDirectories: false)
         updated = updated.addingFolder("Inbox/Empty"); try matchesScan("Adding a folder")
 
+        // Comments live beside their page and follow it when it is renamed or moved.
+        try put("Comments/Page.md", "text")
+        try PageComments.write("{\"version\":1}", page: "Comments/Page.md", root: root)
+        try check(fm.fileExists(atPath: root.appendingPathComponent("Comments/.Page.md.comments.json").path), "Comments are stored in a hidden file beside the page")
+        try check(PageComments.read(page: "Comments/Page.md", root: root) == "{\"version\":1}", "Stored comments read back unchanged")
+        try check(try VaultIndex(root: root).files.allSatisfy { !$0.name.hasSuffix(".comments.json") }, "Comment files never show as pages")
+        let commentOrganizer = PageOrganizer(root: root)
+        let renamedPage = try commentOrganizer.rename("Comments/Page.md", to: "Renamed.md")
+        try check(PageComments.read(page: renamedPage, root: root) == "{\"version\":1}" && PageComments.read(page: "Comments/Page.md", root: root) == nil, "Comments follow a renamed page")
+        let movedPage = try commentOrganizer.move(renamedPage, to: PageDropTarget(folder: ""))
+        try check(PageComments.read(page: movedPage, root: root) == "{\"version\":1}", "Comments follow a moved page")
+        try PageComments.write("{}", page: "Comments/Gone.md", root: root)
+        try check(!fm.fileExists(atPath: root.appendingPathComponent("Comments/.Gone.md.comments.json").path), "No comments are written for a page that is not there")
+        try PageComments.write(nil, page: movedPage, root: root)
+        try check(PageComments.read(page: movedPage, root: root) == nil, "Removing the last comment removes the file")
+        var unsafeRejected = false
+        do { try PageComments.write("{}", page: "../Outside.md", root: root) } catch { unsafeRejected = true }
+        try check(unsafeRejected, "Comments cannot be written outside the pages folder")
+
         print("VaultCore: all index, link, attachment, safety, and save tests passed")
     }
 }

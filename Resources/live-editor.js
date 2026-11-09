@@ -8,6 +8,7 @@ import { slashCommands } from './slash-commands.js';
 import { formatToolbar } from './format-toolbar.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
+import { comments, loadComments, commentsTest } from './comments.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
 import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
 
@@ -929,7 +930,7 @@ function simpleListBackspace(view) {
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
   history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
-  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),
+  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
   keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'ArrowUp',run:intoTitle},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
@@ -974,7 +975,7 @@ function stashSession(tabID,path){
   let total=0;for(const session of sessions.values())total+=session.rawSource.length;
   for(const [id,session] of sessions){if(sessions.size<=sessionLimit&&total<=sessionTextLimit)break;if(id===tabID)continue;sessions.delete(id);total-=session.rawSource.length;}
 }
-function installDocument(text,remembered) {
+function installDocument(text,remembered,savedComments) {
   const session=sessions.get(metadata.tabID);
   sessions.delete(metadata.tabID);
   applyingExternal=true;
@@ -989,6 +990,8 @@ function installDocument(text,remembered) {
     rawSource=text;lineBreak=rawSource.includes('\r\n')?'\r\n':rawSource.includes('\r')?'\r':'\n';rawSnapshots=new Map([[canonical(rawSource),rawSource]]);
     view.setState(EditorState.create({doc:canonical(rawSource),extensions:extensions()}));
     const folded=startFolded(view.state);if(folded.length)view.dispatch({effects:folded});
+    // Comments come with the text they belong to, from the hidden file beside the page.
+    if(typeof savedComments==='string'&&savedComments)view.dispatch({effects:loadComments(view.state,savedComments)});
     // A tab whose editor state was not kept still returns to its last place.
     const place=session&&session.path===metadata.currentPath?{anchor:session.state.selection.main.anchor,head:session.state.selection.main.head,scroll:session.scroll}:remembered;
     const length=view.state.doc.length,clamp=value=>Number.isFinite(value)?Math.max(0,Math.min(value,length)):0;
@@ -1062,7 +1065,7 @@ window.acdianSetDocument=payload=>{
   // A refresh is dropped when the page was typed in after the native side last
   // heard from it; that edit is saved next and reports the conflict.
   if(hasText&&payload.refresh&&!switched&&previousPath===metadata.currentPath){if(payload.refresh.base===rawSource)refreshFromDisk(payload.text);}
-  else if(hasText&&(switched||payload.text!==rawSource||previousPath!==metadata.currentPath||previousToken!==metadata.resetToken))installDocument(payload.text,switched?payload.view:null);
+  else if(hasText&&(switched||payload.text!==rawSource||previousPath!==metadata.currentPath||previousToken!==metadata.resetToken))installDocument(payload.text,switched?payload.view:null,payload.comments);
   else view.dispatch({effects:[editability.reconfigure([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),localization.reconfigure(localeExtensions())]});
 };
 window.acdianGetDocument=()=>{const place=scrollPlace();return{text:rawSource,currentPath:metadata.currentPath,documentID:metadata.documentID,revision,selectionAnchor:view.state.selection.main.anchor,selectionHead:view.state.selection.main.head,scrollPosition:place.pos,scrollOffset:place.offset};};
@@ -1113,5 +1116,5 @@ function followHeading(){
   reportHeading(index);
 }
 view.scrollDOM.addEventListener('scroll',()=>{if(!headingFrame)headingFrame=requestAnimationFrame(followHeading);},{passive:true});
-window.acdianLiveEditorTest={wordRanges,simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString(),keptTabs:()=>[...sessions.keys()]};
+window.acdianLiveEditorTest={wordRanges,simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString(),keptTabs:()=>[...sessions.keys()],comments:commentsTest};
 post({type:'ready'});

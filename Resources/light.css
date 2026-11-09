@@ -107,3 +107,22 @@ html.light .cm-editor .cm-toc button { color:#45404b; }
 html.light .cm-editor .cm-toc button:hover { color:#c4206f; }
 html.light .cm-format-swatch { border-color:#00000024; color:#17161b; }
 html.light .cm-format-swatch:hover { border-color:#17161b; }
+
+/* Comments */
+html.light .cm-editor .cm-comment-mark { background: #f2c94c26; border-bottom-color: #e0ad1a99; }
+html.light .cm-editor .cm-comment-mark.cm-comment-active { background: #f2c94c55; border-bottom-color: #d9a20f; }
+html.light .cm-comment-card { background: #ffffff; color: #2a2830; border-color: #0000001a; box-shadow: 0 2px 10px #0000000f; }
+html.light .cm-comment-card.active { border-top-color: #e5b52a; box-shadow: 0 10px 30px #00000024; }
+html.light .cm-comment-quote { color: #77727e; border-left-color: #e5b52a; }
+html.light .cm-comment-tool { color: #8d8893; }
+html.light .cm-comment-tool:hover { background: #0000000d; color: #2a2830; }
+html.light .cm-comment-reply + .cm-comment-reply { border-top-color: #0000000f; }
+html.light .cm-comment-meta { color: #9a95a0; }
+html.light .cm-comment-text { color: #2a2830; }
+html.light .cm-comment-input { background: #f6f5f8; color: #2a2830; border-color: #0000001f; }
+html.light .cm-comment-input:focus { border-color: #e5b52a; }
+html.light .cm-comment-input::placeholder { color: #a8a3ae; }
+html.light .cm-comment-badge { background: #ffffff; border-color: #0000001f; color: #b98c0c; }
+html.light .cm-comment-badge.active { background: #f2c94c; color: #2a2830; }
+html.light .cm-comments-solved { color: #8d8893; }
+html.light .cm-comments-solved:hover { color: #2a2830; }

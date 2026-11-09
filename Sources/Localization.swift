@@ -202,6 +202,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "“%@”指向页面存储位置以外，已停止读取或保存。": ("“%@” points outside page storage. Reading or saving was stopped.", "«%@» apunta fuera de la ubicación de las páginas. Se detuvo la lectura o el guardado."),
         "编辑器加载失败，请重新载入文件。\n%@": ("The editor could not load. Reload the file.\n%@", "No se pudo cargar el editor. Vuelve a cargar el archivo.\n%@"),
         "附件链接插入失败：%@": ("Could not insert attachment links: %@", "No se pudieron insertar los enlaces de los archivos adjuntos: %@"),
+        "评论保存失败：%@": ("Could not save comments: %@", "No se pudieron guardar los comentarios: %@"),
         "无法读取 PDF，文件可能已损坏或受密码保护。": ("Could not read the PDF. It may be damaged or password protected.", "No se pudo leer el PDF. Puede estar dañado o protegido con contraseña."),
         "适应窗口": ("Fit to window", "Ajustar a la ventana"),
         "无法预览图片": ("Cannot preview image", "No se puede mostrar la imagen"),

@@ -1547,6 +1547,12 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private static func body(_ text: String, _ entry: VaultEntry) -> String {
         entry.ext == "md" ? withoutNameHeading(text,name:entry.url.deletingPathExtension().lastPathComponent) : text
     }
+    /// Stores the comments the editor sent for a page beside that page.
+    func storeComments(_ json: String?, page path: String?) {
+        guard let path, !path.isEmpty, let root = index?.root else { return }
+        do { try PageComments.write(json,page:path,root:root) }
+        catch { self.error = localized("评论保存失败：%@",localizedError(error)) }
+    }
     func titleTyped(_ title: String) { typedTitle = title }
     func splitTitleTyped(_ title: String) { splitTypedTitle = title }
     /// Editing the title block has ended: it lost the keyboard, or the page is

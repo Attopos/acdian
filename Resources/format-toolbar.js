@@ -4,6 +4,7 @@ import { isolateHistory } from '@codemirror/commands';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { editorLanguage, uiMessages } from './ui-language.js';
 import { blockCommands, newCallout } from './slash-commands.js';
+import { startComment, commentIcon } from './comments.js';
 
 // Selection formatting rewrites Markdown in place: every action stores plain
 // Markdown syntax, so files stay readable in any other editor.
@@ -427,6 +428,9 @@ function createToolbar(view) {
   }
   const colorButton=button('cm-format-color',icons.color,()=>view.dispatch({effects:setMode.of(view.state.field(toolbarState).mode==='color'?null:'color')}));
   colorButton.setAttribute('aria-haspopup','menu');bar.append(colorButton);
+  const commentSeparator=document.createElement('span');commentSeparator.className='cm-format-separator';
+  const commentButton=button('cm-format-comment',commentIcon,()=>startComment(view));
+  bar.append(commentSeparator,commentButton);
   const colorPanel=document.createElement('div');colorPanel.className='cm-format-colors';
   const swatch=(label,property,value,paint)=>{
     const element=document.createElement('button');element.type='button';element.tabIndex=-1;element.className='cm-format-swatch';
@@ -470,6 +474,7 @@ function createToolbar(view) {
     }
     bar.hidden=value.mode==='link';linkPanel.hidden=value.mode!=='link';menu.hidden=value.mode!=='block';colorPanel.hidden=value.mode!=='color';
     colorButton.title=strings.format.color;colorButton.setAttribute('aria-label',strings.format.color);colorButton.setAttribute('aria-expanded',String(value.mode==='color'));
+    commentButton.title=strings.format.comment+' ⇧⌘M';commentButton.setAttribute('aria-label',strings.format.comment);
     colorTitle.textContent=strings.format.textColor;backTitle.textContent=strings.format.backColor;clearColors.textContent=strings.format.clearColor;
     input.placeholder=strings.linkPlaceholder;input.setAttribute('aria-label',strings.format.link);
     if(value.mode==='link'&&mode!=='link'){input.value=link?.kind==='link'?link.url:'';requestAnimationFrame(()=>{input.focus();input.select();});}

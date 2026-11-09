@@ -140,6 +140,8 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         if model.refreshPending { model.refreshPending = false; if sendText && documentInstalled { payload["refresh"] = ["base":lastJSText ?? ""] } }
         if sendText {
             payload["text"] = model.text
+            // A page installed afresh brings its comments; a refresh keeps the ones the editor has.
+            if payload["refresh"] == nil, let root = model.index?.root { payload["comments"] = PageComments.read(page:documentPath,root:root) ?? "" }
             if let place = model.frontTabView { payload["view"] = ["anchor":place.anchor,"head":place.head,"scroll":["pos":place.scrollPosition,"offset":place.scrollOffset]] }
         }
         if let data = try? JSONSerialization.data(withJSONObject:payload,options:[.sortedKeys]), let json = String(data:data,encoding:.utf8), sendText || json != lastConfig {
@@ -182,6 +184,8 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     func userContentController(_ userContentController: WKUserContentController,didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let value = message.body as? [String:Any], let type = value["type"] as? String else { return }
         if type == "ready" { ready = true; render(); return }
+        // Comments name their page by path and may arrive after it was left.
+        if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
         guard isCurrent, let model, let documentID, value["documentID"] as? String == documentID.uuidString else { return }
         let path = value["currentPath"] as? String ?? value["from"] as? String
         // Messages sent before the page heard of a rename still name the old path.

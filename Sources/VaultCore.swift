@@ -587,7 +587,11 @@ struct PageOrganizer {
                 name = Self.numberedName(components.last!, isDirectory: isDirectory.boolValue, number: number)
                 let candidate = destination.appendingPathComponent(name)
                 if !FileManager.default.fileExists(atPath: candidate.path) {
-                    do { try FileManager.default.moveItem(at: source, to: candidate); break }
+                    do {
+                        try FileManager.default.moveItem(at: source, to: candidate)
+                        if !isDirectory.boolValue { PageComments.follow(from: source, to: candidate) }
+                        break
+                    }
                     catch let error as CocoaError where error.code == .fileWriteFileExists { }
                 }
                 number += 1
@@ -655,6 +659,7 @@ struct PageOrganizer {
             if errno == EEXIST { throw VaultCoreError.nameTaken(destination) }
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: source.path])
         }
+        PageComments.follow(from: source, to: destination)
         let saved = Self.loadOrder(root: root)
         var order = saved
         if let index = order[folder]?.firstIndex(of: components.last!) { order[folder]![index] = name }
@@ -689,5 +694,57 @@ struct PageOrganizer {
         let ext = isDirectory ? "" : (name as NSString).pathExtension
         let stem = ext.isEmpty ? name : (name as NSString).deletingPathExtension
         return stem + " \(number)" + (ext.isEmpty ? "" : "." + ext)
+    }
+}
+
+/// Comments on a page live in a hidden file beside it, `.<page name>.comments.json`,
+/// so the page's own Markdown is never changed. The editor writes and reads
+/// its contents; here it is only stored, and kept with the page when the page
+/// is renamed, moved, sent to the trash or restored.
+enum PageComments {
+    static let maximumSize = 4_000_000
+    static func sidecarName(_ pageName: String) -> String { "." + pageName + ".comments.json" }
+    static func sidecar(of page: URL) -> URL { page.deletingLastPathComponent().appendingPathComponent(sidecarName(page.lastPathComponent)) }
+    /// The page at `path`, or nil when the path is not a Markdown page inside the vault.
+    private static func page(_ path: String, root: URL) -> URL? {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !parts.isEmpty, !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." || $0.hasPrefix(".") }),
+              parts.last!.lowercased().hasSuffix(".md") else { return nil }
+        let url = root.appendingPathComponent(path)
+        guard VaultIndex.contains(url.standardizedFileURL, in: root.standardizedFileURL) else { return nil }
+        return url
+    }
+    static func read(page path: String, root: URL) -> String? {
+        guard let url = page(path, root: root).map(sidecar(of:)),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              attributes[.type] as? FileAttributeType == .typeRegular,
+              ((attributes[.size] as? NSNumber)?.intValue ?? 0) <= maximumSize,
+              let data = try? Data(contentsOf: url) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+    /// Stores the comments of the page at `path`; nil or empty removes the file.
+    /// Nothing is written for a page that is no longer there, so a late save
+    /// for a renamed page cannot leave comments under its old name.
+    static func write(_ json: String?, page path: String, root: URL) throws {
+        guard let pageURL = page(path, root: root) else { throw VaultCoreError.unsafeLocation(root.appendingPathComponent(path)) }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: pageURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else { return }
+        let url = sidecar(of: pageURL)
+        if let link = try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink, link { throw VaultCoreError.unsafeLocation(url) }
+        guard let json, !json.isEmpty else {
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            return
+        }
+        let data = Data(json.utf8)
+        guard data.count <= maximumSize else { throw VaultCoreError.unsafeLocation(url) }
+        try data.write(to: url, options: .atomic)
+    }
+    /// Moves a page's comments after the page itself moved from `old` to `new`.
+    /// A comments file already at the new name belongs to no page, as the page
+    /// could only move to a free name, so it is replaced.
+    static func follow(from old: URL, to new: URL) {
+        let source = sidecar(of: old), destination = sidecar(of: new)
+        guard source.path != destination.path, FileManager.default.fileExists(atPath: source.path) else { return }
+        _ = Darwin.rename(source.path, destination.path)
     }
 }

@@ -64,6 +64,22 @@ struct PageTrashTests {
         }
 
         do {
+            // A page's comments go to the trash with it, come back beside it, and expire with it.
+            let (trash,pages) = try fixture("comments-round-trip")
+            let comments = Data("{\"version\":1}".utf8)
+            try write(text,pages,"Page.md")
+            try write(comments,pages,".Page.md.comments.json")
+            let entry = try trash.moveToTrash(relativePath:"Page.md")
+            try check(!fm.fileExists(atPath:pages.appendingPathComponent(".Page.md.comments.json").path) && (try Data(contentsOf:entryDirectory(pages,entry.id).appendingPathComponent("comments.json"))) == comments, "A trashed page must take its comments with it")
+            try write(text,pages,"Page.md")
+            let restored = try trash.restore(entry.id)
+            try check(restored.lastPathComponent == "Page 2.md" && (try Data(contentsOf:pages.appendingPathComponent(".Page 2.md.comments.json"))) == comments, "A restored page must bring its comments back under its restored name")
+            let again = try trash.moveToTrash(relativePath:"Page 2.md")
+            now = again.expiresAt
+            try check(try trash.purgeExpired() == [again.id] && !fm.fileExists(atPath:entryDirectory(pages,again.id).path), "An expired page must leave no comments behind in the trash")
+        }
+
+        do {
             let (trash,pages) = try fixture("folder-round-trip")
             try write(text,pages,"Folder/Nested/Page.md")
             try write(binary,pages,"Folder/Attachments/reference.bin")

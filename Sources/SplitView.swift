@@ -174,7 +174,10 @@ struct SplitMarkdownEditor: NSViewRepresentable {
         var payload: [String:Any] = ["currentPath":entry.relativePath,"documentID":id.uuidString,"tabID":"split","openTabs":["split"],"title":entry.name,"draft":true,"fontSize":model.fontSize,
                                      "editable":true,"language":model.language.rawValue,"appearance":appearance,"pageTitle":entry.url.deletingPathExtension().lastPathComponent]
         let newDocument = installed != id
-        if newDocument { payload["text"] = model.splitText }
+        if newDocument {
+            payload["text"] = model.splitText
+            if let root = model.index?.root { payload["comments"] = PageComments.read(page:entry.relativePath,root:root) ?? "" }
+        }
         guard let data = try? JSONSerialization.data(withJSONObject:payload,options:[.sortedKeys]), let json = String(data:data,encoding:.utf8), newDocument || json != lastConfig else { return }
         if newDocument { latestRevision = -1 }
         installed = id; lastConfig = json
@@ -191,6 +194,7 @@ struct SplitMarkdownEditor: NSViewRepresentable {
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let value = message.body as? [String:Any], let type = value["type"] as? String else { return }
         if type == "ready" { ready = true; installed = nil; render(); return }
+        if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
         // The document ID alone names the page: it survives the page being renamed.
         guard let model, let id = installed, id == model.splitDocumentID, value["documentID"] as? String == id.uuidString else { return }
         if type == "change", var text = value["text"] as? String {

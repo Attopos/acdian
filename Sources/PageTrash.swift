@@ -51,6 +51,8 @@ final class PageTrash {
     private let metadataName = "metadata.json"
     private let pendingName = "pending.json"
     private let payloadName = "payload"
+    // A trashed page's comments, kept with it and restored beside it.
+    private let commentsName = "comments.json"
 
     init(root: URL, nowDate: @escaping () -> Date = Date.init) throws {
         guard root.isFileURL else { throw VaultCoreError.notDirectory(root) }
@@ -97,6 +99,7 @@ final class PageTrash {
                   try validPayload(directory.fd, isDirectory: entry.isDirectory) else { throw TrashError.invalidEntry }
             try writeJSON(entry, to: metadataName, in: directory.fd)
             _ = unlinkat(directory.fd, pendingName, 0)
+            if !entry.isDirectory { _ = renameatx_np(parent.fd, PageComments.sidecarName(name), directory.fd, commentsName, UInt32(RENAME_EXCL)) }
             _ = fsync(parent.fd)
             _ = fsync(storage.fd)
             return entry
@@ -146,6 +149,7 @@ final class PageTrash {
             let name = restoredName(entry.name, isDirectory: entry.isDirectory, number: number)
             do {
                 try move(directory.fd, payloadName, parent.fd, name)
+                if !entry.isDirectory { _ = renameat(directory.fd, commentsName, parent.fd, PageComments.sidecarName(name)) }
                 // The data is restored already. Cleanup cannot turn this into
                 // a failed restore or cause a second copy on a later retry.
                 removeRecords(in: directory.fd)
@@ -359,6 +363,7 @@ final class PageTrash {
     private func removeRecords(in directory: Int32) {
         _ = unlinkat(directory, metadataName, 0)
         _ = unlinkat(directory, pendingName, 0)
+        _ = unlinkat(directory, commentsName, 0)
     }
 
     private func removeNode(_ parent: Int32, _ name: String) throws {
