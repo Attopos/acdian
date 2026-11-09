@@ -179,6 +179,48 @@ struct CloudSyncTests {
         bases.store("kept",root:held,path:"M.md")
         try check(bases.read(root:held,path:"M.md") == "kept" && bases.read(root:held,path:"N.md") == nil,"A page's base is kept outside the folder")
 
+        // Comments, order, modules and saved cards merge item by item.
+        func threads(_ json: String?) throws -> [[String:Any]] { (try JSONSerialization.jsonObject(with:Data((json ?? "{}").utf8)) as? [String:Any])?["threads"] as? [[String:Any]] ?? [] }
+        func ids(_ list: [[String:Any]]) -> [String] { list.map { $0["id"] as? String ?? "" } }
+        func thread(_ id: String, replies: [String], solved: Bool = false) -> String { "{\"id\":\"\(id)\",\"created\":1,\"solved\":\(solved),\"replies\":[\(replies.map { "{\"id\":\"\($0)\",\"text\":\"t\",\"created\":1}" }.joined(separator:","))]}" }
+        func file(_ items: String...) -> String { "{\"version\":1,\"threads\":[\(items.joined(separator:","))]}" }
+        let oneThread = file(thread("A",replies:["a1"]))
+        var combined = MetadataMerge.comments(base:oneThread,local:file(thread("A",replies:["a1"]),thread("B",replies:["b1"])),disk:file(thread("A",replies:["a1"]),thread("C",replies:["c1"])),now:9)
+        try check(Set(ids(try threads(combined))) == ["A","B","C"],"Threads added on each device are both kept")
+        combined = MetadataMerge.comments(base:oneThread,local:nil,disk:oneThread,now:9)
+        try check(try threads(combined).isEmpty && combined!.contains("deletedThreads") && combined!.contains("\"deleted\":9"),"A deleted thread leaves a tombstone")
+        let afterDelete = combined
+        combined = MetadataMerge.comments(base:nil,local:oneThread,disk:afterDelete,now:10)
+        try check(try threads(combined).isEmpty,"The other device cannot bring a deleted thread back")
+        combined = MetadataMerge.comments(base:oneThread,local:file(thread("A",replies:["a1","a2"])),disk:file(thread("A",replies:["a1","a3"])),now:9)
+        try check(ids((try threads(combined))[0]["replies"] as? [[String:Any]] ?? []).sorted() == ["a1","a2","a3"],"Replies merge by id")
+        combined = MetadataMerge.comments(base:file(thread("A",replies:["a1","a2"])),local:file(thread("A",replies:["a1"])),disk:file(thread("A",replies:["a1","a2"])),now:9)
+        try check(ids((try threads(combined))[0]["replies"] as? [[String:Any]] ?? []) == ["a1"] && combined!.contains("deletedReplies"),"A deleted reply stays deleted")
+        combined = MetadataMerge.comments(base:oneThread,local:oneThread,disk:file(thread("A",replies:["a1"],solved:true)),now:9)
+        try check(((try threads(combined))[0]["solved"] as? Bool) == true,"Solved on the other device is kept when unchanged here")
+        try check(MetadataMerge.comments(base:nil,local:nil,disk:nil,now:9) == nil,"No comments anywhere means no file")
+        let commentRoot = try vault("comment-merge",["P.md":text("x")])
+        PageComments.baseStore = PageBases(directory:base.appendingPathComponent("comment-bases",isDirectory:true))
+        defer { PageComments.baseStore = nil }
+        try text(oneThread).write(to:commentRoot.appendingPathComponent(".P.md.comments.json"))
+        PageComments.baseStore?.store(oneThread,root:commentRoot,path:"P.md",kind:"comments")
+        try PageComments.write(file(thread("A",replies:["a1"]),thread("B",replies:["b1"])),page:"P.md",root:commentRoot,merging:true)
+        try check(Set(ids(try threads(PageComments.read(page:"P.md",root:commentRoot)))) == ["A","B"],"Writing comments merges with the file in one step")
+        try PageComments.write(nil,page:"P.md",root:commentRoot,merging:true)
+        try check(try threads(PageComments.read(page:"P.md",root:commentRoot)).isEmpty && fm.fileExists(atPath:commentRoot.appendingPathComponent(".P.md.comments.json").path),"In a synced folder the tombstones stay in the file")
+        try check(MetadataMerge.order(["F":["a","b"]],["F":["b","c"],"G":["x"]]) == ["F":["a","b","c"],"G":["x"]],"Order merges per folder")
+        func module(_ folder: String, _ name: String) -> PageModule { PageModule(name:name,folder:folder,icon:"folder",color:"pink") }
+        var mods = MetadataMerge.modules(base:[module("A","A"),module("B","B")],local:[module("A","Mine"),module("B","B"),module("N","N")],disk:[module("A","A"),module("B","Theirs"),module("D","D")])
+        try check(mods.map(\.name) == ["Mine","Theirs","N","D"],"Modules merge by folder")
+        mods = MetadataMerge.modules(base:[module("A","A"),module("B","B")],local:[module("A","A")],disk:[module("A","A"),module("B","B")])
+        try check(mods.map(\.folder) == ["A"],"A module removed here stays removed")
+        var cards = MetadataMerge.saved(base:["a","b"],local:["a","c"],disk:["a","b","d"],removed:[:],now:5)
+        try check(cards.saved.sorted() == ["a","c","d"] && cards.removed == ["b":5],"Saved cards are a union with tombstones")
+        cards = MetadataMerge.saved(base:["a"],local:["a","b"],disk:["a"],removed:["b":5],now:6)
+        try check(cards.saved.contains("b") && cards.removed.isEmpty,"Saving a card again clears its tombstone")
+        let oldCard = try JSONDecoder().decode(ComponentInstance.self,from:text("{\"component\":\"card-index\",\"source\":\"F\",\"saved\":[\"a\"]}"))
+        try check(oldCard.saved == ["a"] && oldCard.unsaved.isEmpty && !String(decoding:try ComponentStore.encode(oldCard),as:UTF8.self).contains("unsaved"),"Old card files read and write as before")
+
         // Moving the pages to iCloud.
         let hidden: [String:Data] = ["Welcome.md":text("# Hi"),".Welcome.md.comments.json":text("{\"t\":1}"),".acdian-order.json":text("{}"),".acdian-modules.json":text("{\"modules\":[]}"),
                                      ".acdian-trash/A1/payload":text("gone"),".acdian-trash/A1/metadata.json":text("{}"),"Notes/粉色 示例.md":text("中文"),"Attachments/pic.png":Data([1,2,3,0,255])]

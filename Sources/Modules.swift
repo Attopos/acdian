@@ -57,9 +57,25 @@ enum ModuleStore {
         // Nothing is written until the modules are changed, so opening a folder leaves it as it was.
         return discover(root:root)
     }
-    static func save(_ modules: [PageModule], root: URL) throws {
+    /// With a `base` (the list as last read) the file is merged with what another device wrote.
+    static func save(_ modules: [PageModule], root: URL, base: [PageModule]? = nil) throws {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted,.sortedKeys,.withoutEscapingSlashes]
+        if let base, CloudFiles.isSynced(root) {
+            let file = root.appendingPathComponent(fileName)
+            try FileCoordination.writing(file,options:.forReplacing) {
+                let disk = (try? Data(contentsOf:file)).flatMap { try? JSONDecoder().decode(File.self,from:$0) }?.modules ?? base
+                try encoder.encode(File(modules:MetadataMerge.modules(base:base,local:modules,disk:disk))).write(to:file,options:.atomic)
+            }
+            return
+        }
         try FileCoordination.write(encoder.encode(File(modules:modules)),to:root.appendingPathComponent(fileName))
+    }
+    /// Two versions of the file, with no known common ancestor: the current one
+    /// wins for a module both have, and modules only the other has are added.
+    static func mergedData(_ current: Data, _ other: Data) -> Data? {
+        guard let mine = try? JSONDecoder().decode(File.self,from:current), let theirs = try? JSONDecoder().decode(File.self,from:other) else { return nil }
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted,.sortedKeys,.withoutEscapingSlashes]
+        return try? encoder.encode(File(modules:MetadataMerge.modules(base:[],local:mine.modules,disk:theirs.modules)))
     }
     static func discover(root: URL) -> [PageModule] {
         let folders = PageOrganizer(root:root).currentOrder(of:"",order:PageOrganizer.loadOrder(root:root)).filter { name in

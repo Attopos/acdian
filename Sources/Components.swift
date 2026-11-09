@@ -37,8 +37,10 @@ struct ComponentInstance: Codable, Equatable {
     /// Pages starred in a Card Index, oldest first, as paths inside the source
     /// folder without ".md", so the list follows the folder when it moves.
     var saved: [String] = []
+    /// Cards un-saved on some device, with when, so a sync cannot bring them back.
+    var unsaved: [String: Double] = [:]
 
-    private enum CodingKeys: String, CodingKey { case component, source, hideSource, columns, saved }
+    private enum CodingKeys: String, CodingKey { case component, source, hideSource, columns, saved, unsaved }
     init(component: ComponentKind, source: String, hideSource: Bool = false, columns: Int = ComponentInstance.defaultColumns, saved: [String] = []) {
         self.component = component; self.source = source; self.hideSource = hideSource; self.columns = columns; self.saved = saved
     }
@@ -49,12 +51,14 @@ struct ComponentInstance: Codable, Equatable {
         hideSource = try values.decodeIfPresent(Bool.self,forKey:.hideSource) ?? false
         columns = min(max(try values.decodeIfPresent(Int.self,forKey:.columns) ?? Self.defaultColumns,Self.columnRange.lowerBound),Self.columnRange.upperBound)
         saved = try values.decodeIfPresent([String].self,forKey:.saved) ?? []
+        unsaved = try values.decodeIfPresent([String:Double].self,forKey:.unsaved) ?? [:]
     }
     func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy:CodingKeys.self)
         try values.encode(component,forKey:.component); try values.encode(source,forKey:.source)
         try values.encode(hideSource,forKey:.hideSource); try values.encode(columns,forKey:.columns)
         if !saved.isEmpty { try values.encode(saved,forKey:.saved) }
+        if !unsaved.isEmpty { try values.encode(unsaved,forKey:.unsaved) }
     }
     /// Stars a page that is not saved, adding it at the end; unstars one that is.
     static func toggled(_ key: String, in saved: [String]) -> [String] {

@@ -335,6 +335,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         self.pagesRootOverride = pagesRoot ?? argumentRoot
         self.language = AppLanguage.stored(in:preferences)
         self.pagesBackupPath = preferences.string(forKey:"pagesBackupPath")
+        if pagesRootOverride == nil { PageComments.baseStore = .standard }
         guard loadInitialVault else { return }
         watchOpenPage()
         do { loadPages(try resolvePageStorage()) }
@@ -364,6 +365,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let request = UUID(); loadID = request; openID = UUID(); loading = true; statusValue = .readingPages
         DispatchQueue.global(qos:.userInitiated).async {
             do {
+                Self.foldMetadataConflicts(url)
                 let newIndex = try VaultIndex(root:url)
                 DispatchQueue.main.async {
                     guard self.loadID == request else { return }
@@ -412,6 +414,15 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 }
             }
         }
+    }
+    /// Folds iCloud conflict versions of the order and module files into them.
+    nonisolated private static func foldMetadataConflicts(_ root: URL) {
+        guard CloudFiles.isSynced(root) else { return }
+        try? MetadataMerge.resolveConflicts(at:root.appendingPathComponent(PageOrganizer.orderFileName)) { current,other in
+            let decoder = JSONDecoder(), encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted,.sortedKeys]
+            return try encoder.encode(MetadataMerge.order(try decoder.decode([String:[String]].self,from:current),try decoder.decode([String:[String]].self,from:other)))
+        }
+        try? MetadataMerge.resolveConflicts(at:root.appendingPathComponent(ModuleStore.fileName)) { current,other in ModuleStore.mergedData(current,other) ?? current }
     }
     deinit { trashTimer?.invalidate(); cleanupTimer?.invalidate(); diskTimer?.invalidate(); autosaveTask?.cancel() }
 
@@ -1286,15 +1297,17 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func module(containing path: String) -> PageModule? {
         modules.filter { $0.contains(path) }.max { $0.folder.count < $1.folder.count }
     }
+    /// The module list as last read, for merging with another device's changes.
+    private var moduleBase: [PageModule] = []
     private func loadModules() {
         guard let root = index?.root else { return }
-        modules = ModuleStore.load(root:root)
+        modules = ModuleStore.load(root:root); moduleBase = modules
         let stored = preferences.string(forKey:activeModuleKey)
         activeModuleID = modules.contains { $0.id == stored } ? stored : nil
     }
     private func saveModules() {
         guard let root = index?.root else { return }
-        do { try ModuleStore.save(modules,root:root) } catch { self.error = localizedError(error) }
+        do { try ModuleStore.save(modules,root:root,base:moduleBase); moduleBase = modules } catch { self.error = localizedError(error) }
     }
     func enterModule(_ id: String?) {
         guard activeModuleID != id else { return }
@@ -1518,7 +1531,19 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// Saves a component's settings back to its file.
     func updateComponent(_ file: VaultEntry, _ instance: ComponentInstance) {
         guard let root = index?.root, let data = try? ComponentStore.encode(instance) else { return }
-        do { try VaultFileIO.checkedWrite(data,to:file.url,allowedRoot:root); componentMemo = (-1,[]) }
+        do {
+            if CloudFiles.isSynced(root) {
+                var merged = instance
+                let base = ComponentStore.read(file.url)
+                try FileCoordination.writing(file.url,options:.forReplacing) {
+                    let disk = (try? Data(contentsOf:file.url)).flatMap { try? JSONDecoder().decode(ComponentInstance.self,from:$0) }
+                    let result = MetadataMerge.saved(base:base?.saved ?? [],local:instance.saved,disk:disk?.saved ?? [],removed:(disk?.unsaved ?? [:]).merging(instance.unsaved) { max($0,$1) },now:Date().timeIntervalSince1970 * 1000)
+                    merged.saved = result.saved; merged.unsaved = result.removed
+                    try ComponentStore.encode(merged).write(to:file.url,options:.atomic)
+                }
+            } else { try VaultFileIO.checkedWrite(data,to:file.url,allowedRoot:root) }
+            componentMemo = (-1,[])
+        }
         catch { self.error = localizedError(error) }
     }
     /// Components keep showing their folder after it is renamed or moved.
@@ -1562,12 +1587,12 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             }
             if !copied.isEmpty {
                 let organizer = PageOrganizer(root:root)
-                var order = PageOrganizer.loadOrder(root:root)
-                var names = organizer.currentOrder(of:target.folder,order:order).filter { !copied.contains($0) }
-                let at = target.anchor.flatMap { names.firstIndex(of:$0) }.map { target.after ? $0 + 1 : $0 } ?? names.count
-                names.insert(contentsOf:copied,at:at)
-                order[target.folder] = names
-                try? organizer.saveOrder(order)
+                try? organizer.updateOrder { order in
+                    var names = organizer.currentOrder(of:target.folder,order:order).filter { !copied.contains($0) }
+                    let at = target.anchor.flatMap { names.firstIndex(of:$0) }.map { target.after ? $0 + 1 : $0 } ?? names.count
+                    names.insert(contentsOf:copied,at:at)
+                    order[target.folder] = names
+                }
             }
             let newIndex = try? VaultIndex(root:root)
             DispatchQueue.main.async {

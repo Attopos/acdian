@@ -610,6 +610,101 @@ enum PageMerge {
     }
 }
 
+/// Item-by-item merging of the small JSON files that travel with the pages.
+enum MetadataMerge {
+    typealias Object = [String: Any]
+    private static func parse(_ json: String?) -> Object? {
+        guard let json, !json.isEmpty, let data = json.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? Object
+    }
+    private static func items(_ object: Object?, _ key: String) -> [Object] { object?[key] as? [Object] ?? [] }
+    private static func id(_ item: Object) -> String { item["id"] as? String ?? "" }
+    private static func deletions(_ object: Object?, _ key: String) -> [String: Double] {
+        var result: [String: Double] = [:]
+        for item in items(object, key) { if let time = item["deleted"] as? Double { result[id(item)] = time } }
+        return result
+    }
+
+    /// Merges a page's comments by thread and reply. Something present in
+    /// `base` but gone from `local` was deleted here, and leaves a tombstone so
+    /// the other device cannot bring it back. Files without tombstones read as before.
+    static func comments(base: String?, local: String?, disk: String?, now: Double) -> String? {
+        let was = parse(base), mine = parse(local), theirs = parse(disk)
+        var gone = deletions(theirs, "deletedThreads").merging(deletions(mine, "deletedThreads")) { max($0, $1) }
+        var goneReplies = deletions(theirs, "deletedReplies").merging(deletions(mine, "deletedReplies")) { max($0, $1) }
+        let mineThreads = Dictionary(items(mine, "threads").map { (id($0), $0) }, uniquingKeysWith: { first, _ in first })
+        let theirThreads = Dictionary(items(theirs, "threads").map { (id($0), $0) }, uniquingKeysWith: { first, _ in first })
+        for thread in items(was, "threads") {
+            guard let kept = mineThreads[id(thread)] else { gone[id(thread)] = gone[id(thread)] ?? now; continue }
+            let present = Set(items(kept, "replies").map(id))
+            for reply in items(thread, "replies") where !present.contains(id(reply)) { goneReplies[id(reply)] = goneReplies[id(reply)] ?? now }
+        }
+        let wasThreads = Dictionary(items(was, "threads").map { (id($0), $0) }, uniquingKeysWith: { first, _ in first })
+        var threads: [Object] = []
+        for thread in items(mine, "threads") + items(theirs, "threads").filter({ mineThreads[id($0)] == nil }) where gone[id(thread)] == nil {
+            var merged = thread
+            let theirThread = theirThreads[id(thread)]
+            var seen = Set<String>(), replies: [Object] = []
+            for reply in items(thread, "replies") + items(theirThread, "replies") where seen.insert(id(reply)).inserted && goneReplies[id(reply)] == nil { replies.append(reply) }
+            guard !replies.isEmpty else { gone[id(thread)] = gone[id(thread)] ?? now; continue }
+            merged["replies"] = replies.sorted { ($0["created"] as? Double ?? 0) < ($1["created"] as? Double ?? 0) }
+            // "Solved" changed here wins; otherwise the other device's value does.
+            if let theirThread, mineThreads[id(thread)] != nil, (thread["solved"] as? Bool ?? false) == (wasThreads[id(thread)]?["solved"] as? Bool ?? false) { merged["solved"] = theirThread["solved"] }
+            threads.append(merged)
+        }
+        guard !threads.isEmpty || !gone.isEmpty || !goneReplies.isEmpty else { return nil }
+        var result: Object = ["version": 1, "threads": threads]
+        func tombstones(_ list: [String: Double]) -> [Object] { list.sorted { $0.key < $1.key }.map { ["id": $0.key, "deleted": $0.value] } }
+        if !gone.isEmpty { result["deletedThreads"] = tombstones(gone) }
+        if !goneReplies.isEmpty { result["deletedReplies"] = tombstones(goneReplies) }
+        guard let data = try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]) else { return local }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Two versions of the sidebar order, merged folder by folder: names only
+    /// one side has are kept, after the ones both have.
+    static func order(_ current: [String: [String]], _ other: [String: [String]]) -> [String: [String]] {
+        current.merging(other) { mine, theirs in mine + theirs.filter { !mine.contains($0) } }
+    }
+    /// The module list merged by folder: a module changed only on one side
+    /// takes that side, one removed here stays removed, new ones are added.
+    static func modules(base: [PageModule], local: [PageModule], disk: [PageModule]) -> [PageModule] {
+        let before = Dictionary(base.map { ($0.folder, $0) }, uniquingKeysWith: { first, _ in first })
+        let onDisk = Dictionary(disk.map { ($0.folder, $0) }, uniquingKeysWith: { first, _ in first })
+        var result = local.map { module -> PageModule in
+            if let unchanged = before[module.folder], unchanged == module, let theirs = onDisk[module.folder] { return theirs }
+            return module
+        }
+        let folders = Set(local.map(\.folder))
+        result += disk.filter { !folders.contains($0.folder) && before[$0.folder] == nil }
+        return result.filter { before[$0.folder] == nil || onDisk[$0.folder] != nil || folders.contains($0.folder) }
+    }
+    /// Card Index saved cards: a union, except that a card un-saved here stays
+    /// un-saved on every device, until someone saves it again.
+    static func saved(base: [String], local: [String], disk: [String], removed: [String: Double], now: Double) -> (saved: [String], removed: [String: Double]) {
+        var tombstones = removed
+        for key in base where !local.contains(key) { tombstones[key] = now }
+        for key in local where !base.contains(key) { tombstones[key] = nil }
+        var result: [String] = []
+        for key in disk + local where tombstones[key] == nil && !result.contains(key) { result.append(key) }
+        return (result, tombstones)
+    }
+
+    /// Folds iCloud's conflict versions of a data file into it, then removes them.
+    static func resolveConflicts(at url: URL, merge: (Data, Data) throws -> Data) throws {
+        guard (try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [.ubiquitousItemHasUnresolvedConflictsKey]).ubiquitousItemHasUnresolvedConflicts) == true else { return }
+        try FileCoordination.writing(url, options: .forReplacing) {
+            let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
+            guard !versions.isEmpty else { return }
+            var current = try Data(contentsOf: url)
+            for version in versions { current = try merge(current, try Data(contentsOf: version.url)) }
+            try current.write(to: url, options: .atomic)
+            for version in versions { version.isResolved = true }
+            try NSFileVersion.removeOtherVersionsOfItem(at: url)
+        }
+    }
+}
+
 /// The last text of each page known to match the disk, kept outside the synced
 /// folder, as the common ancestor when a page's versions have to be merged.
 struct PageBases {
@@ -648,6 +743,8 @@ enum CloudFiles {
         let dataless: UInt32 = 0x40000000 // SF_DATALESS
         return info.st_flags & dataless != 0
     }
+    /// True for a folder kept in an iCloud container; only those need merging.
+    static func isSynced(_ root: URL) -> Bool { root.path.contains("/Library/Mobile Documents/") }
     static func requestDownload(_ url: URL) { try? FileManager.default.startDownloadingUbiquitousItem(at: url) }
 
     /// True when iCloud has finished with an item and everything inside it: all
@@ -891,6 +988,20 @@ struct PageOrganizer {
         try FileCoordination.write(encoder.encode(order), to: root.appendingPathComponent(Self.orderFileName))
     }
 
+    /// Reads the order, changes it and writes it back as one coordinated write,
+    /// so another device's order is never written over.
+    func updateOrder(_ change: (inout [String: [String]]) throws -> Void) throws {
+        let file = root.appendingPathComponent(Self.orderFileName)
+        try FileCoordination.writing(file, options: .forReplacing) {
+            var order = Self.loadOrder(root: root)
+            let before = order
+            try change(&order)
+            guard order != before else { return }
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(order).write(to: file, options: .atomic)
+        }
+    }
+
     /// Moves `path` to `target` and records its place. Returns the new relative path.
     @discardableResult func move(_ path: String, to target: PageDropTarget) throws -> String {
         let components = try Self.components(path)
@@ -928,19 +1039,19 @@ struct PageOrganizer {
             }
         }
         let newPath = target.folder.isEmpty ? name : target.folder + "/" + name
-        var order = Self.loadOrder(root: root)
-        if sourceFolder != target.folder {
-            order[sourceFolder]?.removeAll { $0 == components.last! }
-            // Folder orders inside a moved folder follow it to its new path.
-            for key in order.keys where key == path || key.hasPrefix(path + "/") {
-                order[newPath + key.dropFirst(path.count)] = order.removeValue(forKey: key)
+        try updateOrder { order in
+            if sourceFolder != target.folder {
+                order[sourceFolder]?.removeAll { $0 == components.last! }
+                // Folder orders inside a moved folder follow it to its new path.
+                for key in order.keys where key == path || key.hasPrefix(path + "/") {
+                    order[newPath + key.dropFirst(path.count)] = order.removeValue(forKey: key)
+                }
             }
+            var names = currentOrder(of: target.folder, order: order).filter { $0 != name }
+            if let anchor = target.anchor, let index = names.firstIndex(of: anchor) { names.insert(name, at: target.after ? index + 1 : index) }
+            else { names.append(name) }
+            order[target.folder] = names
         }
-        var names = currentOrder(of: target.folder, order: order).filter { $0 != name }
-        if let anchor = target.anchor, let index = names.firstIndex(of: anchor) { names.insert(name, at: target.after ? index + 1 : index) }
-        else { names.append(name) }
-        order[target.folder] = names
-        try saveOrder(order)
         return newPath
     }
     /// Creates a folder inside `folder`, numbering the name if it is taken, and
@@ -959,12 +1070,12 @@ struct PageOrganizer {
             do {
                 let folderURL = parent.appendingPathComponent(candidate)
                 try FileCoordination.writing(folderURL) { try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: false) }
-                var order = Self.loadOrder(root: root)
-                var names = currentOrder(of: folder, order: order).filter { $0 != candidate }
-                if let anchor, let index = names.firstIndex(of: anchor) { names.insert(candidate, at: index + 1) }
-                else { names.insert(candidate, at: 0) }
-                order[folder] = names
-                try saveOrder(order)
+                try updateOrder { order in
+                    var names = currentOrder(of: folder, order: order).filter { $0 != candidate }
+                    if let anchor, let index = names.firstIndex(of: anchor) { names.insert(candidate, at: index + 1) }
+                    else { names.insert(candidate, at: 0) }
+                    order[folder] = names
+                }
                 return folder.isEmpty ? candidate : folder + "/" + candidate
             } catch let error as CocoaError where error.code == .fileWriteFileExists { number += 1 }
         }
@@ -994,13 +1105,12 @@ struct PageOrganizer {
                 throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: source.path])
             }
         }
-        let saved = Self.loadOrder(root: root)
-        var order = saved
-        if let index = order[folder]?.firstIndex(of: components.last!) { order[folder]![index] = name }
-        for key in order.keys where key == path || key.hasPrefix(path + "/") {
-            order[newPath + key.dropFirst(path.count)] = order.removeValue(forKey: key)
+        try updateOrder { order in
+            if let index = order[folder]?.firstIndex(of: components.last!) { order[folder]![index] = name }
+            for key in order.keys where key == path || key.hasPrefix(path + "/") {
+                order[newPath + key.dropFirst(path.count)] = order.removeValue(forKey: key)
+            }
         }
-        if order != saved { try saveOrder(order) }
         return newPath
     }
     /// The vault root itself, or a real (non-alias) location inside it.
@@ -1052,7 +1162,14 @@ enum PageComments {
         guard VaultIndex.contains(url.standardizedFileURL, in: root.standardizedFileURL) else { return nil }
         return url
     }
+    /// Where the last-seen comments live for merging; off unless the app turns it on.
+    nonisolated(unsafe) static var baseStore: PageBases?
     static func read(page path: String, root: URL) -> String? {
+        let text = readFile(page: path, root: root)
+        if CloudFiles.isSynced(root) { baseStore?.store(text ?? "", root: root, path: path, kind: "comments") }
+        return text
+    }
+    private static func readFile(page path: String, root: URL) -> String? {
         guard let url = page(path, root: root).map(sidecar(of:)),
               let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
               attributes[.type] as? FileAttributeType == .typeRegular,
@@ -1063,12 +1180,23 @@ enum PageComments {
     /// Stores the comments of the page at `path`; nil or empty removes the file.
     /// Nothing is written for a page that is no longer there, so a late save
     /// for a renamed page cannot leave comments under its old name.
-    static func write(_ json: String?, page path: String, root: URL) throws {
+    static func write(_ json: String?, page path: String, root: URL, merging: Bool? = nil) throws {
         guard let pageURL = page(path, root: root) else { throw VaultCoreError.unsafeLocation(root.appendingPathComponent(path)) }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: pageURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else { return }
         let url = sidecar(of: pageURL)
         if let link = try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink, link { throw VaultCoreError.unsafeLocation(url) }
+        if merging ?? CloudFiles.isSynced(root) {
+            // In a synced folder another device may have written since: merge inside one coordinated write.
+            try FileCoordination.writing(url, options: .forReplacing) {
+                let disk = (try? Data(contentsOf: url)).flatMap { String(data: $0, encoding: .utf8) }
+                let merged = MetadataMerge.comments(base: baseStore?.read(root: root, path: path, kind: "comments"), local: json, disk: disk, now: Date().timeIntervalSince1970 * 1000)
+                if let merged, merged.utf8.count <= maximumSize { try Data(merged.utf8).write(to: url, options: .atomic) }
+                else if merged == nil, FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+                baseStore?.store(merged ?? "", root: root, path: path, kind: "comments")
+            }
+            return
+        }
         guard let json, !json.isEmpty else {
             try FileCoordination.writing(url, options: .forDeleting) {
                 if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
