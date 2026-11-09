@@ -95,7 +95,7 @@ struct NewPageTests {
         do {
             let (model,directory) = try fixture("snapshot-save-conflict")
             let url = try installExisting(model,directory)
-            let saved = model.text, generation = model.editorDocumentID
+            let saved = model.text
             let pending = EditorInsertion(text:"![[Attachments/pending.png]]")
             model.insertion = pending
             var callback: ((Result<EditorSnapshot, Error>) -> Void)?
@@ -106,16 +106,8 @@ struct NewPageTests {
             try Data("Externally changed body".utf8).write(to:url)
             callback?(.success(EditorSnapshot(text:finalText,currentPath:"Existing.md")))
             await settle()
-            try check(completions == 0 && !model.isDraft && model.error != nil, "A save conflict must abort New Page without a leave-decision dialog")
-            try check(model.text == finalText && model.dirty && model.editorDocumentID == generation && model.insertion == pending, "A failed automatic save retains newest text, identity and pending insertion")
-            try check(diskText(url) == "Externally changed body", "A save conflict must not overwrite external edits")
-            try Data(saved.utf8).write(to:url)
-            model.error = nil
-            model.newPageFromEditor { completions += 1 }
-            callback?(.success(EditorSnapshot(text:finalText,currentPath:"Existing.md")))
-            await settle()
-            try check(completions == 1 && model.isDraft && model.text.isEmpty && model.insertion == nil, "A successful retry saves before installing one clean new page")
-            try check(diskText(url) == finalText, "Navigation automatically saves the newest editor snapshot")
+            try check(completions == 1 && model.isDraft && model.error == nil, "A file changed meanwhile is merged, so New Page goes ahead")
+            try check(diskText(url).contains("Last keystroke 中文🌸") && diskText(url).contains("Externally changed body"), "A merge keeps the newest editor text and the outside edit")
         }
 
         do {

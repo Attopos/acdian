@@ -147,8 +147,37 @@ struct CloudSyncTests {
         await pause(0.05)
         app.checkOpenPageOnDisk()
         await pause(0.2)
-        try check(app.text == "my edit" && !app.save(),"With local edits the save reports the conflict")
-        app.error = nil
+        try check(app.save() && app.error == nil && app.text.contains("my edit") && app.text.contains("third"),"With local edits the save merges both sides")
+        try check(try String(contentsOf:synced.appendingPathComponent("Open.md"),encoding:.utf8) == app.text && app.text.contains("[!warning]"),"Overlapping edits are kept in callouts on disk")
+
+        // Three-way merges.
+        func merged(_ base: String, _ local: String, _ disk: String) -> PageMerge.Outcome { PageMerge.merge(base:base,local:local,disk:disk,localName:"Mac",diskName:"iPad") }
+        let ten = (1...10).map { "line \($0)" }.joined(separator:"\n")
+        func edit(_ number: Int, _ value: String) -> String { ten.replacingOccurrences(of:"line \(number)\n",with:value + "\n") }
+        var result = merged(ten,edit(2,"two here"),edit(8,"eight there"))
+        try check(result.clean && result.text.contains("two here") && result.text.contains("eight there") && !result.text.contains("line 2\n") && !result.text.contains("line 8\n"),"Edits on different lines merge silently")
+        try check(merged(ten,ten,edit(3,"x")).text == edit(3,"x") && merged(ten,edit(3,"x"),ten).text == edit(3,"x") && merged(ten,edit(3,"x"),edit(3,"x")).clean,"One side unchanged, or both the same, needs no merge")
+        result = merged(ten,edit(5,"mine"),edit(5,"theirs"))
+        try check(!result.clean && result.text.contains("> [!warning] Merge conflict: Mac\n> mine") && result.text.contains("> [!warning] Merge conflict: iPad\n> theirs") && result.text.contains("line 4") && result.text.contains("line 6"),"Overlapping edits keep both sides in named callouts")
+        result = merged(ten,ten + "\nend mine",edit(1,"start theirs"))
+        try check(result.clean && result.text.hasPrefix("start theirs") && result.text.hasSuffix("end mine"),"Additions at both ends merge")
+        result = merged(ten,ten.replacingOccurrences(of:"line 4\n",with:""),edit(9,"nine"))
+        try check(result.clean && !result.text.contains("line 4") && result.text.contains("nine"),"A deleted line merges with an edit elsewhere")
+        result = merged(ten,ten.replacingOccurrences(of:"line 4\n",with:""),edit(4,"changed"))
+        try check(!result.clean && result.text.contains("changed"),"Deleted on one side and changed on the other keeps the change")
+        try check(merged("","a","b").text.contains("> a") && merged("","a","b").text.contains("> b"),"Without a common ancestor both versions are kept")
+        let held = try vault("merge-save",["M.md":text("a\nb\nc\n")])
+        let heldPage = held.appendingPathComponent("M.md")
+        try text("a\nB\nc\n").write(to:heldPage)
+        let outcome = try VaultFileIO.saveMerging("A\nb\nc\n",at:heldPage,base:"a\nb\nc\n",allowedRoot:held)
+        try check(outcome == .merged("A\nB\nc\n") && String(contentsOf:heldPage,encoding:.utf8) == "A\nB\nc\n","A save merges against the disk in one step")
+        try check(try VaultFileIO.saveMerging("X\nB\nc\n",at:heldPage,base:"A\nB\nc\n",allowedRoot:held) == .saved,"An unchanged disk is simply saved")
+        try fm.removeItem(at:heldPage)
+        do { _ = try VaultFileIO.saveMerging("X",at:heldPage,base:"A",allowedRoot:held); try check(false,"A deleted file is not recreated") }
+        catch VaultCoreError.conflict { checks += 1 }
+        let bases = PageBases(directory:base.appendingPathComponent("bases",isDirectory:true))
+        bases.store("kept",root:held,path:"M.md")
+        try check(bases.read(root:held,path:"M.md") == "kept" && bases.read(root:held,path:"N.md") == nil,"A page's base is kept outside the folder")
 
         // Moving the pages to iCloud.
         let hidden: [String:Data] = ["Welcome.md":text("# Hi"),".Welcome.md.comments.json":text("{\"t\":1}"),".acdian-order.json":text("{}"),".acdian-modules.json":text("{\"modules\":[]}"),

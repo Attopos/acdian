@@ -184,18 +184,11 @@ struct AutosaveTests {
         do {
             let (model,directory) = try fixture("external-conflict")
             let url = try select(model,directory)
-            let baseline = model.originalText, generation = model.editorDocumentID
             let local = "# Original\r\n\r\n本地尚未保存🌸\r\n"
             model.text = local
             try Data("# Changed by another app\n".utf8).write(to:url)
-            try await eventually("An external edit prevents automatic overwriting") { model.error != nil }
-            try check(model.text == local && model.originalText == baseline && model.dirty && (try disk(url)) == "# Changed by another app\n","Conflict keeps both local unsaved text and the external disk version")
-            try check(!model.saveBeforeLeaving() && model.editorDocumentID == generation,"A conflicting exit flush refuses to leave and preserves editor identity")
-            model.goHome()
-            try check(model.selected?.relativePath == "Page.md" && model.text == local,"A conflicting navigation flush leaves the current editor open")
-            try Data(baseline.utf8).write(to:url)
-            model.text = local + "Recovered edit"
-            try await eventually("Typing after conflict recovery can save the retained content") { !model.dirty && (try? disk(url)) == local + "Recovered edit" }
+            try await eventually("An external edit is merged instead of refused") { !model.dirty && ((try? disk(url))?.contains("Changed by another app") ?? false) && ((try? disk(url))?.contains("本地尚未保存🌸") ?? false) }
+            try check(model.error == nil && model.text == (try disk(url)) && model.saveBeforeLeaving(),"Merging keeps both sides, in the editor too, and leaving is not blocked")
         }
 
         print("Autosave: \(checks) checks passed for title/body debounce, coalesced edits, navigation/exit flush, stable draft editing, Unicode/CRLF, failures and conflicts")

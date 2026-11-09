@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct VaultEntry: Identifiable {
     var id: String { relativePath }
@@ -513,6 +514,121 @@ struct FileStamp: Equatable {
     }
 }
 
+/// Three-way merging of a page's text. Lines changed on one side only are taken
+/// silently; lines changed differently on both sides are both kept, each in a
+/// callout naming where it came from, so nothing is lost.
+enum PageMerge {
+    struct Outcome { let text: String; let clean: Bool }
+    static var deviceName: String {
+        #if os(macOS)
+        return Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        #else
+        return ProcessInfo.processInfo.hostName
+        #endif
+    }
+    /// For each line of `old`, its line in `new`, or nil when it did not survive.
+    private static func survivors(_ old: [String], _ new: [String]) -> [Int?] {
+        let changes = new.difference(from: old)
+        var removed = Set<Int>(), inserted = Set<Int>()
+        for change in changes {
+            switch change {
+            case .remove(let offset, _, _): removed.insert(offset)
+            case .insert(let offset, _, _): inserted.insert(offset)
+            }
+        }
+        var result = [Int?](repeating: nil, count: old.count), next = 0
+        for index in old.indices where !removed.contains(index) {
+            while inserted.contains(next) { next += 1 }
+            result[index] = next; next += 1
+        }
+        return result
+    }
+    /// Neighbouring lines edited on different sides form one region but do not
+    /// overlap; with no lines added or removed they can be merged one by one.
+    private static func lineByLine(_ was: [String], _ a: [String], _ c: [String]) -> [String]? {
+        guard a.count == was.count, c.count == was.count else { return nil }
+        var result: [String] = []
+        for index in was.indices {
+            if a[index] == was[index] { result.append(c[index]) }
+            else if c[index] == was[index] || a[index] == c[index] { result.append(a[index]) }
+            else { return nil }
+        }
+        return result
+    }
+    static func merge(base: String, local: String, disk: String, localName: String, diskName: String) -> Outcome {
+        if local == disk || disk == base { return Outcome(text: local, clean: true) }
+        if local == base { return Outcome(text: disk, clean: true) }
+        let original = base.components(separatedBy: "\n"), mine = local.components(separatedBy: "\n"), theirs = disk.components(separatedBy: "\n")
+        let inMine = survivors(original, mine), inTheirs = survivors(original, theirs)
+        var output: [String] = [], clean = true, b = 0, m = 0, t = 0
+        func emitConflict(_ a: ArraySlice<String>, _ c: ArraySlice<String>) {
+            clean = false
+            func block(_ lines: ArraySlice<String>, _ name: String) {
+                if let last = output.last, !last.isEmpty { output.append("") }
+                output.append("> [!warning] Merge conflict: \(name)")
+                output.append(contentsOf: lines.map { $0.isEmpty ? ">" : "> " + $0 })
+                output.append("")
+            }
+            block(a, localName); block(c, diskName)
+        }
+        // Each stable line, unchanged on both sides, closes the region before it.
+        var position = 0
+        while position <= original.count {
+            let atEnd = position == original.count
+            if !atEnd, inMine[position] == nil || inTheirs[position] == nil { position += 1; continue }
+            let endMine = atEnd ? mine.count : inMine[position]!, endTheirs = atEnd ? theirs.count : inTheirs[position]!
+            let was = original[b..<position], a = mine[m..<endMine], c = theirs[t..<endTheirs]
+            if Array(a) == Array(was) { output.append(contentsOf: c) }
+            else if Array(c) == Array(was) || Array(a) == Array(c) { output.append(contentsOf: a) }
+            else if let combined = lineByLine(Array(was), Array(a), Array(c)) { output.append(contentsOf: combined) }
+            else { emitConflict(a, c) }
+            if !atEnd { output.append(original[position]) }
+            b = position + 1; m = endMine + 1; t = endTheirs + 1
+            position += 1
+        }
+        return Outcome(text: output.joined(separator: "\n"), clean: clean)
+    }
+
+    /// Folds every unresolved iCloud conflict version of a page into the page,
+    /// then marks them resolved and removes them. Returns true if it changed anything.
+    @discardableResult static func resolveConflicts(at url: URL, base: String?, allowedRoot: URL?) throws -> Bool {
+        guard (try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [.ubiquitousItemHasUnresolvedConflictsKey]).ubiquitousItemHasUnresolvedConflicts) == true else { return false }
+        return try FileCoordination.writing(url, options: .forReplacing) {
+            let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
+            guard !versions.isEmpty else { return false }
+            let original = try VaultFileIO.readMarkdown(at: url, allowedRoot: allowedRoot)
+            var current = original
+            for version in versions {
+                let theirs = try VaultFileIO.readMarkdown(at: version.url)
+                current = merge(base: base ?? "", local: current, disk: theirs, localName: deviceName, diskName: version.localizedNameOfSavingComputer ?? "another device").text
+            }
+            if current != original { try VaultFileIO.overwriteHeld(current, at: url, allowedRoot: allowedRoot, previous: original) }
+            for version in versions { version.isResolved = true }
+            try NSFileVersion.removeOtherVersionsOfItem(at: url)
+            return true
+        }
+    }
+}
+
+/// The last text of each page known to match the disk, kept outside the synced
+/// folder, as the common ancestor when a page's versions have to be merged.
+struct PageBases {
+    let directory: URL
+    static var standard: PageBases {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return PageBases(directory: support.appendingPathComponent("acdian/Bases", isDirectory: true))
+    }
+    private func file(root: URL, path: String, kind: String) -> URL {
+        let key = SHA256.hash(data: Data((root.path + "\n" + path + "\n" + kind).utf8)).map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent(key)
+    }
+    func read(root: URL, path: String, kind: String = "page") -> String? { try? String(contentsOf: file(root: root, path: path, kind: kind), encoding: .utf8) }
+    func store(_ text: String, root: URL, path: String, kind: String = "page") {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? Data(text.utf8).write(to: file(root: root, path: path, kind: kind), options: .atomic)
+    }
+}
+
 /// What the pages folder looks like when iCloud holds a file's content instead
 /// of this device: either a hidden `.Name.md.icloud` stub, or a "dataless" file
 /// under the real name whose bytes arrive when something reads it.
@@ -642,6 +758,26 @@ enum VaultFileIO {
         try FileCoordination.writing(target, options: .forReplacing) {
             try replaceMarkdown(text, target: target, url: url, expectedContent: expectedContent, allowedRoot: allowedRoot)
         }
+    }
+
+    enum SaveOutcome: Equatable { case saved, merged(String) }
+    /// Saves `text`, whose common ancestor with the disk is `base`. If the disk
+    /// changed meanwhile the two are merged, all inside one coordinated write.
+    static func saveMerging(_ text: String, at url: URL, base: String, allowedRoot: URL? = nil, otherSide: String = "another device") throws -> SaveOutcome {
+        let target = try checkedURL(url, allowedRoot: allowedRoot)
+        return try FileCoordination.writing(target, options: .forReplacing) {
+            guard FileManager.default.fileExists(atPath: target.path) else { throw VaultCoreError.conflict(url) }
+            let disk = try decode(Data(contentsOf: target), at: url)
+            if disk == base { try replaceMarkdown(text, target: target, url: url, expectedContent: base, allowedRoot: allowedRoot); return .saved }
+            if disk == text { return .saved }
+            let merged = PageMerge.merge(base: base, local: text, disk: disk, localName: PageMerge.deviceName, diskName: otherSide).text
+            try replaceMarkdown(merged, target: target, url: url, expectedContent: disk, allowedRoot: allowedRoot)
+            return .merged(merged)
+        }
+    }
+    /// For a caller already holding a coordinated write on the file.
+    static func overwriteHeld(_ text: String, at url: URL, allowedRoot: URL?, previous: String) throws {
+        try replaceMarkdown(text, target: try checkedURL(url, allowedRoot: allowedRoot), url: url, expectedContent: previous, allowedRoot: allowedRoot)
     }
 
     private static func replaceMarkdown(_ text: String, target: URL, url: URL, expectedContent: String?, allowedRoot: URL?) throws {

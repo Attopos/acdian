@@ -441,6 +441,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let known = tabMemory[tab]?.stamp, root = index?.root, documentID = editorDocumentID
         diskCheckRunning = true
         DispatchQueue.global(qos:.utility).async {
+            if let root, entry.ext == "md" { try? PageMerge.resolveConflicts(at:entry.url,base:PageBases.standard.read(root:root,path:entry.relativePath),allowedRoot:root) }
             let current = FileStamp(of:entry.url)
             var disk: String?
             // Coordinated, so a page iCloud is replacing is never read halfway.
@@ -877,6 +878,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             do {
                 // The stamp is taken first, so a change made during the read
                 // still differs from it when the tab is next checked.
+                if let root { try? PageMerge.resolveConflicts(at:entry.url,base:PageBases.standard.read(root:root,path:entry.relativePath),allowedRoot:root) }
                 let stamp = FileStamp(of:entry.url)
                 let content = try VaultFileIO.readMarkdownSynced(at:entry.url,allowedRoot:root)
                 DispatchQueue.main.async {
@@ -906,10 +908,17 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         showInTab(tab,path:entry.relativePath)
         followModule(to:entry.relativePath)
         selected = entry; text = Self.body(content,entry); originalText = content; typedTitle = nil; clearDraftState(); anchor = fragment
+        if entry.ext == "md" { rememberBase(content,of:entry) }
         pdfPage = fragment.hasPrefix("page=") ? (Int(fragment.dropFirst(5)) ?? 1) : (activeTabID.flatMap { tabMemory[$0]?.pdfPage } ?? 1)
         pdfPageCount = 0; insertion = nil; loading = false; status = entry.relativePath; editorDocumentID = UUID()
         // A heading just dropped is saved like any other edit.
         if dirty { scheduleAutosave() }
+    }
+    /// Recorded for later merges, only for the real pages location (tests use their own).
+    private func rememberBase(_ text: String, of entry: VaultEntry) {
+        guard pagesRootOverride == nil, let root = index?.root else { return }
+        let path = entry.relativePath
+        DispatchQueue.global(qos:.utility).async { PageBases.standard.store(text,root:root,path:path) }
     }
     private func keepFrontText(_ text: String, stamp: FileStamp?) {
         guard let tab = activeTabID else { return }
@@ -1033,9 +1042,12 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         if isDraft { return saveDraft(automatically:automatically) }
         guard let selected, selected.ext == "md", dirty else { return true }
         do {
-            try VaultFileIO.saveMarkdown(text,at:selected.url,expectedContent:originalText,allowedRoot:index?.root)
+            let outcome = try VaultFileIO.saveMerging(text,at:selected.url,base:originalText,allowedRoot:index?.root)
+            // Another device changed the page: the editor shows the merged text.
+            if case .merged(let merged) = outcome { text = Self.body(merged,selected); refreshPending = true }
             attachmentsChanged(from:originalText,to:text,page:selected.relativePath)
             originalText = text; searchSaved(selected.id,text); keepFrontText(text,stamp:nil); statusValue = .saved(Date()); lastAutosaveError = nil
+            rememberBase(text,of:selected)
             return true
         } catch { reportSaveFailure(error,automatically:automatically); return false }
     }
@@ -1648,7 +1660,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         splitSaveTask?.cancel(); splitSaveTask = nil
         guard splitDirty, let entry = splitEntry else { return true }
         do {
-            try VaultFileIO.saveMarkdown(splitText,at:entry.url,expectedContent:splitOriginal,allowedRoot:index?.root)
+            if case .merged(let merged) = try VaultFileIO.saveMerging(splitText,at:entry.url,base:splitOriginal,allowedRoot:index?.root) { splitText = Self.body(merged,entry) }
             attachmentsChanged(from:splitOriginal,to:splitText,page:entry.relativePath)
             splitOriginal = splitText; searchSaved(entry.id,splitText); lastAutosaveError = nil
             return true
