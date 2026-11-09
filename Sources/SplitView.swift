@@ -11,27 +11,19 @@ struct SplitTabBar: View {
     @State private var hovering = false
     var body: some View {
         GeometryReader { geometry in
-            let leading: CGFloat = model.showSidebar || !atWindowEdge || model.fullScreen ? 10 : 78
-            HStack(spacing:2) {
-                HStack(spacing:2) {
-                    Text(AppModel.editableName(entry)).font(.system(size:12)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)
-                    Button { model.closeSplit() } label: { Image(systemName:"xmark").font(.system(size:8,weight:.bold)).frame(width:16,height:16).contentShape(Rectangle()) }
-                        .buttonStyle(.plain).opacity(model.splitFocused || hovering ? 1 : 0)
-                        .help(model.localized("关闭分屏")).accessibilityLabel(model.localized("关闭分屏"))
-                }
-                .foregroundStyle(Color.primary)
-                .padding(.leading,10).padding(.trailing,4).frame(width:min(200,max(36,geometry.size.width - leading - 44)),height:24)
-                .background(model.splitFocused ? Color.wash : .clear,in:RoundedRectangle(cornerRadius:6))
-                .contentShape(Rectangle())
-                .onTapGesture { model.splitFocused = true }
-                .onHover { hovering = $0 }
-                .help(entry.relativePath)
+            let leading: CGFloat = model.showSidebar || !atWindowEdge || model.fullScreen ? 8 : 76
+            HStack(alignment:.bottom,spacing:0) {
+                // The split page's tab is its column's front tab, so it always runs on into the page; its text greys while the other column is in use.
+                ChromeTab(title:AppModel.editableName(entry),symbol:FileRow.symbol(ext:entry.ext.lowercased()),active:true,dimmed:!model.splitFocused,hovering:hovering,width:min(ChromeTab.maxWidth,max(ChromeTab.minWidth,geometry.size.width - leading - 40)),closeLabel:model.localized("关闭分屏")) { model.closeSplit() }
+                    .onTapGesture { model.splitFocused = true }
+                    .onHover { hovering = $0 }
+                    .help(entry.relativePath)
                 Spacer(minLength:0)
-                Button { model.swapSplitSides() } label: { Image(systemName:"arrow.left.arrow.right").font(.system(size:11)).frame(width:24,height:22).contentShape(Rectangle()) }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                Button { model.swapSplitSides() } label: { Image(systemName:"arrow.left.arrow.right").font(.system(size:11)).frame(width:28,height:28).contentShape(Rectangle()) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).padding(.bottom,(ChromeTab.height - 28) / 2)
                     .help(model.localized("左右互换")).accessibilityLabel(model.localized("左右互换"))
-            }.padding(.leading,leading).padding(.trailing,8).padding(.top,4).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
-        }.contentShape(Rectangle()).clipped()
+            }.padding(.leading,leading).padding(.trailing,8).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.bottomLeading)
+        }.background(Color.rail).contentShape(Rectangle()).clipped()
     }
 }
 

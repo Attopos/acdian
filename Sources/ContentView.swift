@@ -68,7 +68,7 @@ struct ContentView: View {
                 // A hidden sidebar comes back with Control-Command-S or View > Show or hide sidebar.
                 if model.selected != nil, !model.showingTrash, !model.showingMarket { pageColumns }
                 else {
-                    TabStrip().frame(height:30)
+                    TabStrip().frame(height:TabStrip.height)
                     if model.showingTrash { TrashView(model:model) }
                     else if model.showingMarket { ComponentMarketView() }
                     else { HomeArea() }
@@ -117,8 +117,8 @@ struct ContentView: View {
     }
     @ViewBuilder private func pageColumn(_ split: VaultEntry?, main: Bool, atWindowEdge: Bool) -> some View {
         VStack(spacing:0) {
-            if main { TabStrip(atWindowEdge:atWindowEdge).frame(height:30); documentBody }
-            else if let split { SplitTabBar(entry:split,atWindowEdge:atWindowEdge).frame(height:30); SplitPane(entry:split) }
+            if main { TabStrip(atWindowEdge:atWindowEdge).frame(height:TabStrip.height); documentBody }
+            else if let split { SplitTabBar(entry:split,atWindowEdge:atWindowEdge).frame(height:TabStrip.height); SplitPane(entry:split) }
         }
         .frame(maxHeight:.infinity)
         .background(PaneClickWatcher { if model.splitFocused == main { model.splitFocused = !main } })
@@ -190,40 +190,127 @@ struct ContentView: View {
     }
 }
 
-// Tabs share the strip's width evenly, like browser tabs, up to a comfortable maximum.
+// Tabs look and size like Chrome's: they sit on the bottom of a strip in the
+// sidebar's colour, share its width evenly up to a comfortable maximum, and
+// the front tab takes the page's colour so it runs on into the page below.
 struct TabStrip: View {
     @EnvironmentObject var model: AppModel
     /// The strip starts at the window's left edge, under the window controls when the sidebar is hidden.
     var atWindowEdge = true
+    @State private var hoveredID: UUID?
+    static let height: CGFloat = 40
     var body: some View {
         GeometryReader { geometry in
-            let leading: CGFloat = model.showSidebar || !atWindowEdge || model.fullScreen ? 10 : 78
-            let width = model.tabs.isEmpty ? 0 : min(200,max(36,(geometry.size.width - leading - 10) / CGFloat(model.tabs.count) - 2))
-            HStack(spacing:2) {
-                ForEach(model.tabs) { tab in TabButton(tab:tab,active:tab.id == model.activeTabID && model.selected != nil && !model.showingTrash && !model.showingMarket,dimmed:model.splitEntry != nil && model.splitFocused).frame(width:width) }
-            }.padding(.leading,leading).padding(.top,4).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
-        }.contentShape(Rectangle()).clipped()
+            let leading: CGFloat = model.showSidebar || !atWindowEdge || model.fullScreen ? 8 : 76
+            let count = CGFloat(model.tabs.count)
+            // Neighbouring tabs overlap by their flares, so each tab gets back what it shares.
+            let room = geometry.size.width - leading - 8 - ChromeTab.newTabWidth
+            let width = model.tabs.isEmpty ? 0 : min(ChromeTab.maxWidth,max(ChromeTab.minWidth,(room + (count - 1) * ChromeTab.overlap) / count))
+            let activeID: UUID? = model.selected != nil && !model.showingTrash && !model.showingMarket ? model.activeTabID : nil
+            HStack(alignment:.bottom,spacing:0) {
+                HStack(alignment:.bottom,spacing:-ChromeTab.overlap) {
+                    ForEach(Array(model.tabs.enumerated()),id:\.element.id) { i, tab in
+                        let previous: UUID? = i > 0 ? model.tabs[i-1].id : nil
+                        // Like Chrome, a thin line parts two plain tabs and gives way next to the front or a hovered tab.
+                        let separator = i > 0 && tab.id != activeID && tab.id != hoveredID && previous != activeID && previous != hoveredID
+                        TabButton(tab:tab,active:tab.id == activeID,dimmed:model.splitEntry != nil && model.splitFocused,separator:separator,width:width,hovered:$hoveredID)
+                            .zIndex(tab.id == activeID ? 2 : tab.id == hoveredID ? 1 : 0)
+                    }
+                }
+                NewTabButton().padding(.leading,2).padding(.bottom,(ChromeTab.height - 28) / 2)
+            }.padding(.leading,leading).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.bottomLeading)
+        }.background(Color.rail).contentShape(Rectangle()).clipped()
     }
 }
 struct TabButton: View {
     @EnvironmentObject var model: AppModel
     let tab: PageTab
     let active: Bool
-    /// The front tab of the column that is not in use keeps its text but loses its background.
+    /// The front tab of the column that is not in use keeps its shape but greys its text.
     var dimmed = false
+    var separator = false
+    var width: CGFloat = ChromeTab.maxWidth
+    @Binding var hovered: UUID?
+    var body: some View {
+        let hovering = hovered == tab.id
+        ChromeTab(title:model.tabTitle(tab),symbol:FileRow.symbol(ext:((tab.path ?? "x.md") as NSString).pathExtension.lowercased()),active:active,dimmed:dimmed,hovering:hovering,separator:separator,width:width,closeLabel:model.localized("关闭标签页")) { model.closeTab(tab.id) }
+            .onTapGesture { model.splitFocused = false; model.selectTab(tab.id) }
+            .onHover { inside in if inside { hovered = tab.id } else if hovered == tab.id { hovered = nil } }
+            .help(tab.path ?? "")
+    }
+}
+/// One Chrome-style tab: an icon, the title and a round close button, on a
+/// shape with rounded top corners and outward flares at the bottom.
+struct ChromeTab: View {
+    static let height: CGFloat = 34
+    static let flare: CGFloat = 8
+    static let overlap: CGFloat = flare * 2
+    static let maxWidth: CGFloat = 256
+    static let minWidth: CGFloat = 64
+    static let newTabWidth: CGFloat = 30
+    let title: String
+    let symbol: String
+    let active: Bool
+    var dimmed = false
+    var hovering = false
+    var separator = false
+    var width: CGFloat = maxWidth
+    let closeLabel: String
+    let close: () -> Void
+    @State private var closeHovering = false
+    var body: some View {
+        // Narrow tabs keep the close button for the front and the hovered tab only, like Chrome.
+        let showClose = active || hovering || width >= 120
+        HStack(spacing:8) {
+            Image(systemName:symbol).font(.system(size:12)).frame(width:16,height:16)
+                .foregroundStyle(active && !dimmed ? Color.acPink : Color.secondary.opacity(0.8))
+            Text(title).font(.system(size:12.5)).lineLimit(1).truncationMode(.tail).frame(maxWidth:.infinity,alignment:.leading)
+            if showClose {
+                Button(action:close) { Image(systemName:"xmark").font(.system(size:9,weight:.bold)).frame(width:18,height:18).background(closeHovering ? Color.primary.opacity(0.12) : .clear,in:Circle()).contentShape(Circle()) }
+                    .buttonStyle(.plain).onHover { closeHovering = $0 }.accessibilityLabel(closeLabel)
+            }
+        }
+        .foregroundStyle(active && !dimmed ? Color.primary : Color.secondary)
+        .padding(.leading,Self.flare + 10).padding(.trailing,Self.flare + 6)
+        .frame(width:width,height:Self.height)
+        .background {
+            if active { ChromeTabShape(flare:Self.flare).fill(Color.canvas) }
+            else if hovering { RoundedRectangle(cornerRadius:8).fill(Color.primary.opacity(0.06)).padding(.horizontal,Self.flare).padding(.vertical,4) }
+        }
+        .overlay(alignment:.leading) { if separator { Rectangle().fill(Color.primary.opacity(0.15)).frame(width:1,height:18).offset(x:Self.flare - 0.5) } }
+        .contentShape(ChromeTabShape(flare:Self.flare))
+    }
+}
+/// Rounded top corners, and bottom corners that curve outwards into the strip.
+struct ChromeTabShape: Shape {
+    var flare: CGFloat = 8
+    var radius: CGFloat = 8
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height, f = flare, r = radius
+        var p = Path()
+        p.move(to:CGPoint(x:rect.minX,y:rect.minY + h))
+        p.addQuadCurve(to:CGPoint(x:rect.minX + f,y:rect.minY + h - f),control:CGPoint(x:rect.minX + f,y:rect.minY + h))
+        p.addLine(to:CGPoint(x:rect.minX + f,y:rect.minY + r))
+        p.addQuadCurve(to:CGPoint(x:rect.minX + f + r,y:rect.minY),control:CGPoint(x:rect.minX + f,y:rect.minY))
+        p.addLine(to:CGPoint(x:rect.minX + w - f - r,y:rect.minY))
+        p.addQuadCurve(to:CGPoint(x:rect.minX + w - f,y:rect.minY + r),control:CGPoint(x:rect.minX + w - f,y:rect.minY))
+        p.addLine(to:CGPoint(x:rect.minX + w - f,y:rect.minY + h - f))
+        p.addQuadCurve(to:CGPoint(x:rect.minX + w,y:rect.minY + h),control:CGPoint(x:rect.minX + w - f,y:rect.minY + h))
+        p.closeSubpath()
+        return p
+    }
+}
+/// The + after the last tab opens a new page in a new tab.
+struct NewTabButton: View {
+    @EnvironmentObject var model: AppModel
     @State private var hovering = false
     var body: some View {
-        HStack(spacing:2) {
-            Text(model.tabTitle(tab)).font(.system(size:12)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)
-            Button { model.closeTab(tab.id) } label: { Image(systemName:"xmark").font(.system(size:8,weight:.bold)).frame(width:16,height:16).contentShape(Rectangle()) }
-                .buttonStyle(.plain).opacity(active || hovering ? 1 : 0).accessibilityLabel(model.localized("关闭标签页"))
+        Button { model.splitFocused = false; model.newPageFromEditor() } label: {
+            Image(systemName:"plus").font(.system(size:13,weight:.medium)).frame(width:28,height:28)
+                .background(hovering ? Color.primary.opacity(0.08) : .clear,in:Circle()).contentShape(Circle())
         }
-        .foregroundStyle(active ? Color.primary : Color.secondary)
-        .padding(.leading,10).padding(.trailing,4).frame(height:24)
-        .background(active && !dimmed ? Color.wash : .clear,in:RoundedRectangle(cornerRadius:6))
-        .contentShape(Rectangle())
-        .onTapGesture { model.splitFocused = false; model.selectTab(tab.id) }
-        .onHover { hovering = $0 }
+        .buttonStyle(.plain).foregroundStyle(.secondary).onHover { hovering = $0 }
+        .help(model.localized("新建页面 ⌘N")).accessibilityLabel(model.localized("新建页面 ⌘N"))
     }
 }
 
@@ -455,7 +542,8 @@ struct FileRow: View {
     let entry: VaultEntry
     var indent: Int
     var showPath = false
-    var symbol: String { if entry.ext == "md" { return "doc.text" }; if entry.ext == "pdf" { return "doc.richtext" }; if AppModel.images.contains(entry.ext) { return "photo" }; if AppModel.videos.contains(entry.ext) { return "film" }; if entry.ext == ComponentStore.fileExtension { return "rectangle.grid.2x2" }; return "doc" }
+    var symbol: String { Self.symbol(ext:entry.ext) }
+    static func symbol(ext: String) -> String { if ext == "md" { return "doc.text" }; if ext == "pdf" { return "doc.richtext" }; if AppModel.images.contains(ext) { return "photo" }; if AppModel.videos.contains(ext) { return "film" }; if ext == ComponentStore.fileExtension { return "rectangle.grid.2x2" }; return "doc" }
     private var isCurrentPage: Bool { model.currentPagePath == entry.relativePath || model.splitPath == entry.relativePath }
     var body: some View {
         if model.renamingPath == entry.relativePath {
