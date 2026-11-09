@@ -126,6 +126,7 @@ html.light .cm-comment-badge { background: #ffffff; border-color: #0000001f; col
 html.light .cm-comment-badge.active { background: #f2c94c; color: #2a2830; }
 html.light .cm-comments-solved { color: #8d8893; }
 html.light .cm-comments-solved:hover { color: #2a2830; }
-html.light .cm-comments-panel, html.light .cm-comments-header { background: #f8f7fa; border-color: #0000001a; }
+html.light .cm-comments-panel, html.light .cm-comments-header { border-color: #0000001a; }
+html.light .cm-comments-header { background: #ffffff; }
 html.light .cm-comments-header { color: #2a2830; }
 html.light .cm-comments-opener { background: #ffffff; border-color: #0000001f; color: #b98c0c; }

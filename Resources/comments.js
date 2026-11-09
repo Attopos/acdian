@@ -186,7 +186,7 @@ const icons={
   edit:svg(['M12.5 4.5l3 3L8 15H5v-3z']),
   collapse:svg(['M5 6l4 4-4 4','M11 6l4 4-4 4'])
 };
-const WIDE=860,GAP=10,CARD=280,COLUMN=320,HEADER=52;
+const GAP=10,CARD=268,COLUMN=300,HEADER=52;
 const collapsedKey='acdian.commentsCollapsed';
 const storedCollapsed=()=>{try{return localStorage.getItem(collapsedKey)==='1';}catch{return false;}};
 
@@ -428,7 +428,9 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
       }
       items.push({id,top,height:card.dom.offsetHeight,whole:thread.whole});
     }
-    return {items,wide:scroller.clientWidth>=WIDE,column:scroller.clientWidth-COLUMN+scrollLeft,fixedTop:box.top,fixedRight:window.innerWidth-box.left-scroller.clientWidth,bottom:Math.max(scroller.scrollHeight,scroller.clientHeight),right:content.right-box.left+scrollLeft,textRight:content.right-box.left+scrollLeft-(parseFloat(style.paddingRight)||0),line:parseFloat(getComputedStyle(view.contentDOM).lineHeight)||27,footer:this.footer.offsetHeight};
+    // The column only shows where it fits beside the text: the text never moves for it.
+    const textRight=content.right-box.left+scrollLeft-(parseFloat(style.paddingRight)||0);
+    return {items,wide:scroller.clientWidth+scrollLeft-textRight>=COLUMN+16,clientRight:scroller.clientWidth+scrollLeft,column:scroller.clientWidth-COLUMN+scrollLeft,fixedTop:box.top,fixedRight:window.innerWidth-box.left-scroller.clientWidth,bottom:Math.max(scroller.scrollHeight,scroller.clientHeight),right:content.right-box.left+scrollLeft,textRight:content.right-box.left+scrollLeft-(parseFloat(style.paddingRight)||0),line:parseFloat(getComputedStyle(view.contentDOM).lineHeight)||27,footer:this.footer.offsetHeight};
   }
   place(m) {
     // On the scroller: CodeMirror rewrites the editor's own class list.
@@ -464,7 +466,7 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
       for(const item of items) {
         const badge=this.badges.get(item.id);
         shift=previous!==null&&Math.abs(previous-item.top)<4?shift+34:0;previous=item.top;
-        if(badge){badge.style.left=Math.round(m.textRight+8+shift)+'px';badge.style.top=Math.round(item.top+2)+'px';}
+        if(badge){badge.style.left=Math.round(Math.min(m.textRight+8+shift,m.clientRight-40-shift))+'px';badge.style.top=Math.round(item.top+2)+'px';}
         const card=this.cards.get(item.id).dom;
         if(item.id===active){card.style.left=Math.round(Math.max(8,m.right-width-12))+'px';card.style.top=Math.round(item.top+m.line+4)+'px';card.style.width=width+'px';}
       }

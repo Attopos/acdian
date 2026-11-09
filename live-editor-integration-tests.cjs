@@ -1522,7 +1522,8 @@ test('comment cards sit beside their text in a wide window and float below it in
     { id: 'b', from: second, to: second + 4, quote: '一条评论', created: 1, replies: [{ id: 'r3', text: '第二条', created: 3 }] }
   ] });
   const { page } = await editor(t, text, { documentID: 'doc', tabID: 'tab', pageTitle: '评论', comments, language: 'zh-Hans' });
-  await page.setViewportSize({ width: 1300, height: 760 });
+  await page.setViewportSize({ width: 1500, height: 760 });
+  const before = await page.evaluate(() => document.querySelector('.cm-content').getBoundingClientRect().left);
   await page.waitForFunction(() => document.querySelector('.cm-scroller').classList.contains('cm-comments-wide'));
   await page.waitForTimeout(250);
   const wide = await page.evaluate(() => {
@@ -1532,6 +1533,8 @@ test('comment cards sit beside their text in a wide window and float below it in
     return { contentRight: content.right, marks: marks.map(m => m.top), cards: cards.map(c => ({ top: c.top, left: c.left, bottom: c.bottom })) };
   });
   assert.equal(wide.cards.length, 2);
+  assert.equal(await page.evaluate(() => document.querySelector('.cm-content').getBoundingClientRect().left), before, 'the text does not move for the column');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.cm-comments-panel')).backgroundColor), 'rgba(0, 0, 0, 0)', 'the column has no colour of its own');
   assert.ok(wide.cards.every(card => card.left > wide.contentRight), 'cards sit in their own column, clear of the text');
   assert.ok(await page.evaluate(() => getComputedStyle(document.querySelector('.cm-comments-header')).display !== 'none'), 'the column has a header');
   assert.ok(Math.abs(wide.cards[0].top - wide.marks[0]) < 12, 'the first card lines up with its text');
