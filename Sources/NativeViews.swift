@@ -286,7 +286,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         // The task is only used back on the main thread, after the file is read.
         let pending = PendingTask(task:urlSchemeTask)
         DispatchQueue.global(qos:.userInitiated).async {
-            let result = Result { try Data(contentsOf:url) }
+            let result = Result { try CloudFiles.coordinatedRead(url,timeout:90) { try Data(contentsOf:$0) } }
             DispatchQueue.main.async {
                 let urlSchemeTask = pending.task
                 guard self.activeTasks.remove(taskID) != nil else { return }

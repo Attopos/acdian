@@ -46,6 +46,7 @@ final class PageTrash {
     private let root: URL
     private let rootDirectory: Directory
     private let nowDate: () -> Date
+    private let isSettled: (URL) -> Bool
     private let lock = NSRecursiveLock()
     private let storageName = ".acdian-trash"
     private let metadataName = "metadata.json"
@@ -54,7 +55,7 @@ final class PageTrash {
     // A trashed page's comments, kept with it and restored beside it.
     private let commentsName = "comments.json"
 
-    init(root: URL, nowDate: @escaping () -> Date = Date.init) throws {
+    init(root: URL, nowDate: @escaping () -> Date = Date.init, isSettled: @escaping (URL) -> Bool = CloudFiles.isSettled) throws {
         guard root.isFileURL else { throw VaultCoreError.notDirectory(root) }
         let canonical = root.standardizedFileURL.resolvingSymlinksInPath()
         let descriptor = Darwin.open(canonical.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -62,6 +63,7 @@ final class PageTrash {
         self.root = canonical
         self.rootDirectory = Directory(descriptor)
         self.nowDate = nowDate
+        self.isSettled = isSettled
     }
 
     private var storageURL: URL { root.appendingPathComponent(storageName, isDirectory: true) }
@@ -196,6 +198,10 @@ final class PageTrash {
                   let directory = try? openDirectory(storage.fd, name),
                   let entry = try? validatedEntry(id, in: directory.fd),
                   entry.expiresAt <= now else { continue }
+            // Something iCloud is still moving, for example a restore made on
+            // another device, is left alone and looked at again next time.
+            let entryURL = storageURL.appendingPathComponent(name, isDirectory: true)
+            guard isSettled(entryURL) else { continue }
             try FileCoordination.writing(storageURL.appendingPathComponent(name, isDirectory: true), options: .forDeleting) {
                 try removeNode(directory.fd, payloadName)
                 removeRecords(in: directory.fd)

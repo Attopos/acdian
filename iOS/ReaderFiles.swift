@@ -42,11 +42,7 @@ enum ReaderFiles {
         var rootConfig: Set<String> = []
     }
 
-    /// `.Name.md.icloud` is how iCloud stands in for a file it has not downloaded.
-    static func logicalName(ofPlaceholder name: String) -> String? {
-        guard name.hasPrefix("."), name.hasSuffix(".icloud"), name.count > 8 else { return nil }
-        return String(name.dropFirst().dropLast(7))
-    }
+    private static func logicalName(ofPlaceholder name: String) -> String? { CloudFiles.logicalName(ofPlaceholder:name) }
     private static let resourceKeys: Set<URLResourceKey> = [.isDirectoryKey,.isRegularFileKey,.isSymbolicLinkKey,.contentModificationDateKey,.fileSizeKey,.ubiquitousItemDownloadingStatusKey]
     private static func notDownloaded(_ values: URLResourceValues) -> Bool { values.ubiquitousItemDownloadingStatus == .notDownloaded }
 
@@ -114,27 +110,11 @@ enum ReaderFiles {
     }
     static func startDownloading(_ url: URL) { try? FileManager.default.startDownloadingUbiquitousItem(at:url) }
 
-    private final class Outcome<T>: @unchecked Sendable { var value: Result<T,Error>? }
-
-    /// Reads through NSFileCoordinator, asking iCloud for the file first. Blocks
-    /// the caller, so never call it on the main thread. The coordinator waits
-    /// for the download; past the timeout the read is cancelled and throws.
+    /// Reads through NSFileCoordinator after asking iCloud for the file, which also
+    /// fetches a newer version. Never on the main thread.
     static func coordinatedRead<T>(_ url: URL, timeout: TimeInterval, _ body: @escaping (URL) throws -> T) throws -> T {
         startDownloading(url)
-        let coordinator = NSFileCoordinator(filePresenter:nil), finished = DispatchSemaphore(value:0), outcome = Outcome<T>()
-        DispatchQueue.global(qos:.userInitiated).async {
-            var failure: NSError?
-            coordinator.coordinate(readingItemAt:url,options:[],error:&failure) { actual in outcome.value = Result { try body(actual) } }
-            if let failure { outcome.value = .failure(failure) }
-            finished.signal()
-        }
-        if finished.wait(timeout:.now() + timeout) == .timedOut {
-            coordinator.cancel()
-            _ = finished.wait(timeout:.now() + 2)
-            throw ReadError.timedOut
-        }
-        guard let value = outcome.value else { throw ReadError.notAvailable }
-        return try value.get()
+        return try CloudFiles.coordinatedRead(url,timeout:timeout,body)
     }
 
     static func data(_ url: URL, timeout: TimeInterval = 90) async throws -> Data {

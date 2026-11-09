@@ -74,11 +74,20 @@ struct VaultIndex {
 
         func scan(_ directory: URL, prefix: String) throws -> [VaultEntry] {
             let children = try FileManager.default.contentsOfDirectory(
-                at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]
+                at: directory, includingPropertiesForKeys: Array(keys), options: []
             )
             var result: [VaultEntry] = []
             for child in children {
                 let name = child.lastPathComponent
+                // A file iCloud has not downloaded is listed under its real name.
+                if let logical = CloudFiles.logicalName(ofPlaceholder: name), !logical.hasPrefix(".") {
+                    let real = directory.appendingPathComponent(logical)
+                    guard !FileManager.default.fileExists(atPath: real.path), let info = try? child.resourceValues(forKeys: keys), info.isRegularFile == true else { continue }
+                    let entry = VaultEntry(relativePath: prefix.isEmpty ? logical : "\(prefix)/\(logical)", url: real, name: logical,
+                                           isDirectory: false, children: nil, modified: info.contentModificationDate, size: 0)
+                    result.append(entry); collected.append(entry)
+                    continue
+                }
                 guard !name.hasPrefix(".") else { continue }
                 let physical = child.standardizedFileURL.resolvingSymlinksInPath()
                 guard Self.contains(physical, in: canonicalRoot) else { continue }
@@ -392,6 +401,7 @@ struct VaultIndex {
         #if !os(macOS)
         return entry.url
         #else
+        if access(CloudFiles.placeholder(of: entry.url).path, F_OK) == 0, !FileManager.default.fileExists(atPath: entry.url.path) { return entry.url }
         let physical = entry.url.standardizedFileURL.resolvingSymlinksInPath()
         guard Self.contains(physical, in: root),
               (try? physical.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return nil }
@@ -503,6 +513,73 @@ struct FileStamp: Equatable {
     }
 }
 
+/// What the pages folder looks like when iCloud holds a file's content instead
+/// of this device: either a hidden `.Name.md.icloud` stub, or a "dataless" file
+/// under the real name whose bytes arrive when something reads it.
+enum CloudFiles {
+    static func logicalName(ofPlaceholder name: String) -> String? {
+        guard name.hasPrefix("."), name.hasSuffix(".icloud"), name.count > 8 else { return nil }
+        return String(name.dropFirst().dropLast(7))
+    }
+    static func placeholder(of url: URL) -> URL {
+        url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".icloud")
+    }
+    /// True when the file's content is not on this device yet. Cheap: it never
+    /// opens the file, so asking does not start a download.
+    static func isNotDownloaded(_ url: URL) -> Bool {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { return access(placeholder(of: url).path, F_OK) == 0 }
+        let dataless: UInt32 = 0x40000000 // SF_DATALESS
+        return info.st_flags & dataless != 0
+    }
+    static func requestDownload(_ url: URL) { try? FileManager.default.startDownloadingUbiquitousItem(at: url) }
+
+    /// True when iCloud has finished with an item and everything inside it: all
+    /// of it is here, nothing is moving, nothing is in conflict. Anything it
+    /// cannot tell counts as not settled. Missing content is asked for, so a
+    /// later check can succeed.
+    static func isSettled(_ url: URL) -> Bool {
+        func settled(_ item: URL) -> Bool {
+            if logicalName(ofPlaceholder: item.lastPathComponent) != nil { return false }
+            if isNotDownloaded(item) { requestDownload(item); return false }
+            guard let values = try? item.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemIsDownloadingKey, .ubiquitousItemIsUploadingKey, .ubiquitousItemIsUploadedKey, .ubiquitousItemHasUnresolvedConflictsKey]) else { return false }
+            guard values.isUbiquitousItem == true else { return true }
+            return values.ubiquitousItemIsDownloading != true && values.ubiquitousItemIsUploading != true
+                && values.ubiquitousItemIsUploaded != false && values.ubiquitousItemHasUnresolvedConflicts != true
+        }
+        guard settled(url) else { return false }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return true }
+        guard let walk = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in false }) else { return false }
+        for case let item as URL in walk where !settled(item) { return false }
+        return true
+    }
+
+    private final class Outcome<T>: @unchecked Sendable { var value: Result<T, Error>? }
+    enum ReadError: LocalizedError { case timedOut }
+
+    /// Reads through NSFileCoordinator, which waits for iCloud to deliver the
+    /// file. Blocks the caller, so never on the main thread; past the timeout
+    /// the read is cancelled and throws.
+    static func coordinatedRead<T>(_ url: URL, timeout: TimeInterval, _ body: @escaping (URL) throws -> T) throws -> T {
+        if isNotDownloaded(url) { requestDownload(url) }
+        let coordinator = NSFileCoordinator(filePresenter: nil), finished = DispatchSemaphore(value: 0), outcome = Outcome<T>()
+        DispatchQueue.global(qos: .userInitiated).async {
+            var failure: NSError?
+            coordinator.coordinate(readingItemAt: url, options: [], error: &failure) { actual in outcome.value = Result { try body(actual) } }
+            if let failure { outcome.value = .failure(failure) }
+            finished.signal()
+        }
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
+            coordinator.cancel()
+            _ = finished.wait(timeout: .now() + 2)
+            throw ReadError.timedOut
+        }
+        guard let value = outcome.value else { throw ReadError.timedOut }
+        return try value.get()
+    }
+}
+
 /// Writes in the pages folder go through NSFileCoordinator, so the iCloud sync
 /// daemon never sees or replaces a file halfway through a change.
 enum FileCoordination {
@@ -549,6 +626,11 @@ enum VaultFileIO {
         return try decode(Data(contentsOf: target), at: url)
     }
 
+    /// Reads a page that iCloud may still be delivering or updating. Off the main thread only.
+    static func readMarkdownSynced(at url: URL, allowedRoot: URL? = nil, timeout: TimeInterval = 120) throws -> String {
+        try CloudFiles.coordinatedRead(url, timeout: timeout) { try readMarkdown(at: $0, allowedRoot: allowedRoot) }
+    }
+
     /// expectedContent is the original decoded text. nil permits creating a new
     /// file only. Existing UTF-8 BOMs are preserved on save.
     static func saveMarkdown(_ text: String, at url: URL, expectedContent: String?, allowedRoot: URL? = nil) throws {
@@ -564,7 +646,8 @@ enum VaultFileIO {
 
     private static func replaceMarkdown(_ text: String, target: URL, url: URL, expectedContent: String?, allowedRoot: URL?) throws {
         let fm = FileManager.default
-        let exists = fm.fileExists(atPath: target.path)
+        // A name iCloud has not downloaded yet is still taken.
+        let exists = fm.fileExists(atPath: target.path) || fm.fileExists(atPath: CloudFiles.placeholder(of: target).path)
         let originalData: Data?
         if let expectedContent {
             guard exists else { throw VaultCoreError.conflict(url) }
@@ -792,10 +875,14 @@ struct PageOrganizer {
     /// The names in a folder as the sidebar shows them.
     func currentOrder(of folder: String, order: [String: [String]]) -> [String] {
         let url = folder.isEmpty ? root : root.appendingPathComponent(folder, isDirectory: true)
-        let children = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
-        let entries = children.filter { !$0.lastPathComponent.hasPrefix(".") }.map {
-            VaultEntry(relativePath: $0.lastPathComponent, url: $0, name: $0.lastPathComponent,
-                       isDirectory: (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true, children: nil, modified: nil, size: 0)
+        let children = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: [])) ?? []
+        var names = Set<String>()
+        var entries: [VaultEntry] = []
+        for child in children {
+            let name = CloudFiles.logicalName(ofPlaceholder: child.lastPathComponent) ?? child.lastPathComponent
+            guard !name.hasPrefix("."), names.insert(name).inserted else { continue }
+            entries.append(VaultEntry(relativePath: name, url: child, name: name,
+                                      isDirectory: (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true, children: nil, modified: nil, size: 0))
         }
         return Self.arrange(entries.sorted(by: Self.defaultOrder), names: order[folder], name: \.name).map(\.name)
     }

@@ -777,6 +777,7 @@ struct SettingsButton: View {
 }
 struct SettingsPanel: View {
     @EnvironmentObject var model: AppModel
+    @State private var confirmingMove = false
     var body: some View {
         VStack(alignment:.leading,spacing:18) {
             section("图标") {
@@ -797,7 +798,24 @@ struct SettingsPanel: View {
             section("外观") {
                 SettingsSegments(options:AppAppearance.allCases,selection:model.appearance,title:{ model.localized($0.title) }) { model.appearance = $0 }
             }
+            if model.canMoveToICloud || model.movingToICloud {
+                section("iCloud") {
+                    Text(model.localized("把所有页面复制到 iCloud 云盘，校验每个文件后改用 iCloud 里的这份。原文件夹保持不动，作为备份。")).font(.system(size:11)).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+                    if model.movingToICloud { HStack(spacing:6) { ProgressView().controlSize(.small); Text(model.localized("正在复制到 iCloud…")).font(.system(size:11)) } }
+                    else { Button(model.localized("移到 iCloud")) { confirmingMove = true }.buttonStyle(.bordered) }
+                }
+            }
+            if let backup = model.pagesBackupPath {
+                section("iCloud") {
+                    Text(model.localized("原文件夹保留在：")).font(.system(size:11)).foregroundStyle(.secondary)
+                    Text(backup).font(.system(size:11)).textSelection(.enabled).fixedSize(horizontal:false,vertical:true)
+                }
+            }
         }.padding(18).frame(width:330,alignment:.leading).tint(.acPink)
+        .alert(model.localized("移动页面到 iCloud？"),isPresented:$confirmingMove) {
+            Button(model.localized("移动")) { model.movePagesToICloud() }
+            Button(model.localized("取消"),role:.cancel) {}
+        } message: { Text(model.localized("把所有页面复制到 iCloud 云盘，校验每个文件后改用 iCloud 里的这份。原文件夹保持不动，作为备份。")) }
     }
     private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment:.leading,spacing:8) {

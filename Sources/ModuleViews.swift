@@ -324,7 +324,7 @@ struct AttachmentsView: View {
             case .all: return true
             case .images: return MediaKinds.images.contains(file.ext)
             case .videos: return MediaKinds.videos.contains(file.ext)
-            case .unused: return counted && usage[file.relativePath] == nil
+            case .unused: return counted && model.allPagesSearched && usage[file.relativePath] == nil
             }
         }
         VStack(alignment:.leading,spacing:16) {

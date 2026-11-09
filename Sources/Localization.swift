@@ -31,6 +31,16 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     private static let translations: [String:(english:String,spanish:String)] = [
         "好": ("OK", "Aceptar"),
+        "正在从 iCloud 下载 %@…": ("Downloading %@ from iCloud…", "Descargando %@ de iCloud…"),
+        "移到 iCloud": ("Move Pages to iCloud", "Mover páginas a iCloud"),
+        "正在复制到 iCloud…": ("Copying to iCloud…", "Copiando a iCloud…"),
+        "把所有页面复制到 iCloud 云盘，校验每个文件后改用 iCloud 里的这份。原文件夹保持不动，作为备份。": ("Copies every page to iCloud Drive, checks each file, then switches to the iCloud copy. The original folder stays as it is, as a backup.", "Copia todas las páginas a iCloud Drive, comprueba cada archivo y pasa a usar la copia de iCloud. La carpeta original no cambia y queda como copia de seguridad."),
+        "移动页面到 iCloud？": ("Move pages to iCloud?", "¿Mover las páginas a iCloud?"),
+        "移动": ("Move", "Mover"),
+        "原文件夹保留在：": ("The original folder is kept at:", "La carpeta original sigue en:"),
+        "iCloud 的 ACdian 文件夹里已经有内容，为避免覆盖，没有移动。": ("The ACdian folder in iCloud already has files in it, so nothing was moved, to avoid overwriting them.", "La carpeta ACdian de iCloud ya contiene archivos, así que no se movió nada para no sobrescribirlos."),
+        "有文件还没有从 iCloud 下载到本机，没有移动。": ("Some files haven't downloaded from iCloud to this Mac yet, so nothing was moved.", "Algunos archivos aún no se han descargado de iCloud a este Mac, así que no se movió nada."),
+        "复制后的文件校验不一致，没有切换，也没有留下副本。": ("A copied file didn't match its original, so ACdian didn't switch and removed the copy.", "Un archivo copiado no coincidía con el original, así que ACdian no cambió de carpeta y eliminó la copia."),
         "iCloud 不可用，正在显示本机文件夹。": ("iCloud isn't available, so this shows the folder on this device.", "iCloud no está disponible; se muestra la carpeta de este dispositivo."),
         "正在从 iCloud 下载…": ("Downloading from iCloud…", "Descargando de iCloud…"),
         "这个文件还在 iCloud 里，连上网络后会自动显示。": ("This file is still in iCloud. It will appear once you're online.", "Este archivo sigue en iCloud. Aparecerá cuando tengas conexión."),
@@ -220,7 +230,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 }
 
 enum AppStatus {
-    case ready, readingPages, openedPages(Int), refreshed, trashed, restored, attachmentsCleaned, imported(Int), opening(String), saving, saveFailed, saved(Date), path(String)
+    case ready, readingPages, openedPages(Int), refreshed, trashed, restored, attachmentsCleaned, imported(Int), opening(String), downloading(String), saving, saveFailed, saved(Date), path(String)
     func localized(_ language: AppLanguage) -> String {
         switch self {
         case .ready: return language.localized("就绪")
@@ -232,6 +242,7 @@ enum AppStatus {
         case .attachmentsCleaned: return language.localized("未被引用的附件已移到垃圾桶")
         case .imported(let count): return count == 1 ? language.localized("已复制 1 个项目") : language.localized("已复制 %@ 个项目",arguments:[language.number(count)])
         case .opening(let name): return language.localized("正在打开 %@…",arguments:[name])
+        case .downloading(let name): return language.localized("正在从 iCloud 下载 %@…",arguments:[name])
         case .saving: return language.localized("正在保存…")
         case .saveFailed: return language.localized("无法自动保存")
         case .saved(let date): return language.localized("已保存 · %@",arguments:[language.time(date)])

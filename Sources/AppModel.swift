@@ -228,6 +228,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     var wordCount: Int { facts.count }
     func localized(_ source: String, _ arguments: CVarArg...) -> String { language.localized(source,arguments:arguments) }
     func localizedError(_ error: Error) -> String {
+        if let error = error as? PagesStorage.MoveError { return localized(error.errorDescription ?? "") }
         if let error = error as? VaultCoreError {
             switch error {
             case .notDirectory(let url): return localized("无法打开页面文件夹：%@",url.lastPathComponent)
@@ -288,6 +289,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         else { argumentRoot = nil }
         self.pagesRootOverride = pagesRoot ?? argumentRoot
         self.language = AppLanguage.stored(in:preferences)
+        self.pagesBackupPath = preferences.string(forKey:"pagesBackupPath")
         guard loadInitialVault else { return }
         watchOpenPage()
         do { loadPages(try resolvePageStorage()) }
@@ -327,6 +329,45 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             } catch { DispatchQueue.main.async { guard self.loadID == request else { return }; self.loading = false; self.error = self.localizedError(error) } }
         }
     }
+    // MARK: Moving the pages to iCloud
+    @Published var movingToICloud = false
+    /// Where the original folder was left, once the pages have moved.
+    @Published var pagesBackupPath: String?
+    /// Offered once the iCloud folder exists, and until the pages live in it.
+    var canMoveToICloud: Bool {
+        var directory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath:iCloudTarget.path,isDirectory:&directory), directory.boolValue, let root = index?.root ?? pageStorageRoot else { return false }
+        return !VaultIndex.contains(root,in:iCloudTarget) && root.standardizedFileURL.path != iCloudTarget.standardizedFileURL.path
+    }
+    /// Separate from the real location so tests can use a temporary one.
+    var iCloudTarget = PagesStorage.iCloudDocuments
+    /// Saves the open page, copies everything to iCloud, checks it, and only
+    /// then switches. The original folder is only read and stays as a backup.
+    func movePagesToICloud(completion: ((Bool) -> Void)? = nil) {
+        guard ensurePageStorage(), let source = index?.root, canMoveToICloud, !movingToICloud else { completion?(false); return }
+        let target = iCloudTarget
+        withEditorSnapshot {
+            guard self.leavePage() else { completion?(false); return }
+            self.movingToICloud = true
+            DispatchQueue.global(qos:.userInitiated).async {
+                let result = Result { try PagesStorage.copyPages(from:source,to:target) }
+                DispatchQueue.main.async {
+                    self.movingToICloud = false
+                    switch result {
+                    case .success:
+                        PagesStorage.adopt(target,preferences:self.preferences)
+                        self.preferences.set(source.path,forKey:"pagesBackupPath")
+                        self.pagesBackupPath = source.path
+                        self.loadPages(target)
+                        completion?(true)
+                    case .failure(let failure):
+                        self.error = self.localizedError(failure)
+                        completion?(false)
+                    }
+                }
+            }
+        }
+    }
     deinit { trashTimer?.invalidate(); cleanupTimer?.invalidate(); diskTimer?.invalidate(); autosaveTask?.cancel() }
 
     // MARK: Changes made to the open page by other apps
@@ -357,7 +398,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         DispatchQueue.global(qos:.utility).async {
             let current = FileStamp(of:entry.url)
             var disk: String?
-            if current != nil, current != known { disk = try? VaultFileIO.readMarkdown(at:entry.url,allowedRoot:root) }
+            // Coordinated, so a page iCloud is replacing is never read halfway.
+            if current != nil, current != known { disk = try? VaultFileIO.readMarkdownSynced(at:entry.url,allowedRoot:root,timeout:30) }
             DispatchQueue.main.async {
                 self.diskCheckRunning = false
                 guard let disk, self.editorDocumentID == documentID, self.activeTabID == tab, self.selected?.relativePath == entry.relativePath, !self.loading else { return }
@@ -662,7 +704,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 if let text = previous[file.id], previousStamps[file.id] == stamp {
                     cache[file.id] = text; folded[file.id] = previousFolded[file.id] ?? Self.searchFold(text) as NSString; stamps[file.id] = stamp; continue
                 }
-                guard let value = try? VaultFileIO.readMarkdown(at:file.url,allowedRoot:index.root) else { continue }
+                // Reading would download it; the page stays searchable by name.
+                guard !CloudFiles.isNotDownloaded(file.url), let value = try? VaultFileIO.readMarkdown(at:file.url,allowedRoot:index.root) else { continue }
                 let foldedValue = Self.searchFold(value) as NSString
                 cache[file.id] = value; folded[file.id] = foldedValue; stamps[file.id] = stamp; batch[file.id] = value; foldedBatch[file.id] = foldedValue
                 // Large batches: each one redraws the sidebar.
@@ -775,6 +818,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let needsText = entry.ext == "md" || Self.textExtensions.contains(entry.ext)
         let request = UUID(); openID = request
         let root = index?.root
+        if CloudFiles.isNotDownloaded(entry.url) { fetchThenOpen(entry,fragment:fragment,inPlace:inPlace,request:request); return }
         if !needsText { install(entry,content:"",fragment:fragment,tab:tab); return }
         guard entry.size < 20_000_000 else { error = localized("文件较大，无法作为文本打开。"); return }
         if !fromDisk, let tab, tabs.contains(where: { $0.id == tab && $0.path == entry.relativePath }), let kept = tabMemory[tab]?.text {
@@ -789,13 +833,28 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                 // The stamp is taken first, so a change made during the read
                 // still differs from it when the tab is next checked.
                 let stamp = FileStamp(of:entry.url)
-                let content = try VaultFileIO.readMarkdown(at:entry.url,allowedRoot:root)
+                let content = try VaultFileIO.readMarkdownSynced(at:entry.url,allowedRoot:root)
                 DispatchQueue.main.async {
                     guard self.openID == request else { return }
                     self.install(entry,content:content,fragment:fragment,tab:tab)
                     self.keepFrontText(content,stamp:stamp)
                 }
             } catch { DispatchQueue.main.async { guard self.openID == request else { return }; self.loading = false; self.error = self.localizedError(error) } }
+        }
+    }
+    /// The file is still in iCloud: the current page stays up and the status
+    /// line says it is downloading. Being offline only means trying again.
+    private func fetchThenOpen(_ entry: VaultEntry, fragment: String, inPlace: Bool, request: UUID) {
+        statusValue = .downloading(entry.name)
+        DispatchQueue.global(qos:.userInitiated).async {
+            let arrived = (try? CloudFiles.coordinatedRead(entry.url,timeout:120) { _ in !CloudFiles.isNotDownloaded(entry.url) }) ?? false
+            DispatchQueue.main.async {
+                guard self.openID == request else { return }
+                if arrived { self.openAfterSnapshot(entry,fragment:fragment,skipConfirmation:true,fromDisk:true,inPlace:inPlace); return }
+                DispatchQueue.main.asyncAfter(deadline:.now() + 5) {
+                    if self.openID == request { self.fetchThenOpen(entry,fragment:fragment,inPlace:inPlace,request:request) }
+                }
+            }
         }
     }
     private func install(_ entry: VaultEntry, content: String, fragment: String, tab: UUID?) {
@@ -819,7 +878,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         DispatchQueue.global(qos:.utility).async {
             let current = FileStamp(of:entry.url)
             if let stamp, current == stamp { return }
-            guard let disk = try? VaultFileIO.readMarkdown(at:entry.url,allowedRoot:root) else { return }
+            guard let disk = try? VaultFileIO.readMarkdownSynced(at:entry.url,allowedRoot:root,timeout:30) else { return }
             DispatchQueue.main.async {
                 guard self.tabMemory[tab]?.text?.sameBytes(kept) == true else { return }
                 self.tabMemory[tab]?.text = disk; self.tabMemory[tab]?.stamp = current
@@ -1263,6 +1322,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     /// Text of the pages read for search, for counting attachment links.
     var searchedPages: [(path: String, text: String)] { searchCache.map { ($0.key,$0.value) } }
+    /// False while some page's text is not known, so "unused" cannot be decided.
+    var allPagesSearched: Bool { (index?.files.filter { $0.ext == "md" && $0.size < 2_000_000 }.count ?? 0) <= searchCache.count }
     var searchedPageCount: Int { searchCache.count }
 
     // MARK: Attachment cleanup
@@ -1282,6 +1343,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         for path in removed { pendingCleanup[path] = due }
         scheduleAttachmentCleanup()
     }
+    private static let cleanupRetryDelay: TimeInterval = 30
     private func scheduleAttachmentCleanup() {
         cleanupTimer?.invalidate(); cleanupTimer = nil
         guard let next = pendingCleanup.values.min() else { return }
@@ -1300,13 +1362,20 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         var editing: [(path: String, text: String)] = []
         if selected?.ext == "md" { editing.append((currentPagePath ?? selected!.relativePath,isDraft ? draftContent : text)) }
         DispatchQueue.global(qos:.utility).async {
-            let pages = AttachmentReferences.pagesOnDisk(index) + editing
-            let unused = due.filter { path in
+            // A page that cannot be read yet may link to any of these, so they wait.
+            let readable = AttachmentReferences.pagesOnDisk(index)
+            let pages = (readable ?? []) + editing
+            let unused = readable == nil ? [] : due.filter { path in
                 FileManager.default.fileExists(atPath:root.appendingPathComponent(path).path)
                     && !AttachmentReferences.isReferenced(path,pages:pages,index:index,folder:folder)
             }
             DispatchQueue.main.async {
                 defer { self.scheduleAttachmentCleanup(); completion?() }
+                if readable == nil {
+                    let retry = self.trashNow().addingTimeInterval(max(self.attachmentCleanupDelay,Self.cleanupRetryDelay))
+                    for path in due where self.pendingCleanup[path] == nil { self.pendingCleanup[path] = retry }
+                    return
+                }
                 guard self.index?.root == root, !unused.isEmpty else { return }
                 do {
                     let trash = try PageTrash(root:root,nowDate:self.trashNow)
@@ -1486,7 +1555,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         splitLoading = true
         let root = index?.root
         DispatchQueue.global(qos:.userInitiated).async {
-            let result = Result { try VaultFileIO.readMarkdown(at:entry.url,allowedRoot:root) }
+            let result = Result { try VaultFileIO.readMarkdownSynced(at:entry.url,allowedRoot:root) }
             DispatchQueue.main.async {
                 guard self.splitDocumentID == request else { return }
                 switch result {

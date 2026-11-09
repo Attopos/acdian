@@ -144,10 +144,18 @@ enum AttachmentReferences {
         }
         return false
     }
-    /// The text of every page and canvas in the vault, read from disk.
-    static func pagesOnDisk(_ index: VaultIndex) -> [(path: String, text: String)] {
-        index.files.filter { ["md","markdown","canvas"].contains($0.ext) }.compactMap { file in
-            (try? VaultFileIO.readMarkdown(at:file.url,allowedRoot:index.root)).map { (file.relativePath,$0) }
+    /// The text of every page and canvas in the vault, or nil when any of them
+    /// cannot be read yet. A page that cannot be read may link to anything, so
+    /// no rule may decide from this that something is unused. Pages still in
+    /// iCloud are asked for, so a later try can succeed.
+    static func pagesOnDisk(_ index: VaultIndex) -> [(path: String, text: String)]? {
+        var pages: [(path: String, text: String)] = []
+        var complete = true
+        for file in index.files where ["md","markdown","canvas"].contains(file.ext) {
+            if CloudFiles.isNotDownloaded(file.url) { CloudFiles.requestDownload(file.url); complete = false; continue }
+            guard let text = try? VaultFileIO.readMarkdown(at:file.url,allowedRoot:index.root) else { complete = false; continue }
+            pages.append((file.relativePath,text))
         }
+        return complete ? pages : nil
     }
 }

@@ -34,6 +34,8 @@ ACdian 自动准备本地页面的保存位置，打开后即可使用，无需�
 隐藏的配置目录不显示。非 Markdown、图片、PDF 文件可用系统默认应用打开。
 支持常用 Markdown/GFM、Wiki 双向链接、图片嵌入、表格、提示块、高亮和块公式；不运行外部插件、Dataview 或 Mermaid。
 
+页面文件夹可以放在 iCloud 里：所有写入都经过 NSFileCoordinator；还没下载的页面仍以真名显示，打开时状态栏显示下载中，搜索先跳过读不到的正文；只要有页面读不到，就不判定附件没被引用；垃圾桶到期的内容在 iCloud 同步完成前不会删除。iCloud 文件夹存在时，设置里出现“移到 iCloud”：复制整个页面文件夹（含隐藏文件和垃圾桶），逐个校验 SHA-256，再切换到 iCloud 里的这份。原文件夹原样保留作为备份，路径显示在设置里；目标文件夹不是空的就拒绝。
+
 ## 构建
 
 安装 Xcode Command Line Tools 后，在本目录执行 `./build.sh`。
@@ -74,6 +76,13 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/Vau
 ```sh
 xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Sources/Components.swift Tests/EditorSnapshotTests.swift -o .build/snapshot-tests
 .build/snapshot-tests
+```
+
+iCloud 同步（未下载的页面、等待的清理、移到 iCloud）验证：
+
+```sh
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Sources/Components.swift Tests/CloudSyncTests.swift -o .build/cloud-sync-tests
+.build/cloud-sync-tests
 ```
 
 新页面与首次自动保存验证：
