@@ -64,8 +64,20 @@ final class PageTrash {
         self.nowDate = nowDate
     }
 
+    private var storageURL: URL { root.appendingPathComponent(storageName, isDirectory: true) }
+
+    /// The directory-descriptor work below keeps its no-follow guarantees; the
+    /// coordination only tells the sync daemon which items are being changed.
     @discardableResult func moveToTrash(relativePath: String) throws -> Entry {
         lock.lock(); defer { lock.unlock() }
+        _ = try checkedComponents(relativePath)
+        let source = root.appendingPathComponent(relativePath)
+        return try FileCoordination.writing([(source, .forMoving), (PageComments.sidecar(of: source), .forMoving), (storageURL, .forMerging)]) { _ in
+            try coordinatedMoveToTrash(relativePath: relativePath)
+        }
+    }
+
+    private func coordinatedMoveToTrash(relativePath: String) throws -> Entry {
         let components = try checkedComponents(relativePath)
         let parent = try sourceParent(components, create: false)
         let name = components.last!
@@ -136,6 +148,14 @@ final class PageTrash {
     /// occupied. Missing parents are recreated without traversing symlinks.
     @discardableResult func restore(_ id: UUID) throws -> URL {
         lock.lock(); defer { lock.unlock() }
+        var items: [(url: URL, options: NSFileCoordinator.WritingOptions)] = [(storageURL.appendingPathComponent(id.uuidString, isDirectory: true), .forMoving)]
+        if let storage = try? trashDirectory(create: false), let directory = try? openDirectory(storage.fd, id.uuidString), let entry = try? validatedEntry(id, in: directory.fd) {
+            items.append((root.appendingPathComponent(entry.originalRelativePath).deletingLastPathComponent(), .forMerging))
+        }
+        return try FileCoordination.writing(items) { _ in try coordinatedRestore(id) }
+    }
+
+    private func coordinatedRestore(_ id: UUID) throws -> URL {
         guard let storage = try trashDirectory(create: false) else { throw TrashError.missingEntry }
         guard let item = try node(storage.fd, id.uuidString) else { throw TrashError.missingEntry }
         guard Self.isDirectory(item) else { throw TrashError.invalidEntry }
@@ -176,10 +196,12 @@ final class PageTrash {
                   let directory = try? openDirectory(storage.fd, name),
                   let entry = try? validatedEntry(id, in: directory.fd),
                   entry.expiresAt <= now else { continue }
-            try removeNode(directory.fd, payloadName)
-            removeRecords(in: directory.fd)
-            // Unexpected files in an entry directory are left untouched.
-            _ = unlinkat(storage.fd, name, AT_REMOVEDIR)
+            try FileCoordination.writing(storageURL.appendingPathComponent(name, isDirectory: true), options: .forDeleting) {
+                try removeNode(directory.fd, payloadName)
+                removeRecords(in: directory.fd)
+                // Unexpected files in an entry directory are left untouched.
+                _ = unlinkat(storage.fd, name, AT_REMOVEDIR)
+            }
             removed.append(id)
         }
         if !removed.isEmpty { _ = fsync(storage.fd) }

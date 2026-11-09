@@ -287,7 +287,10 @@ struct VaultIndex {
     }
 
     /// The same index without an item and, for a folder, everything inside it.
-    func removing(_ relativePath: String) -> VaultIndex {
+    func removing(_ path: String) -> VaultIndex {
+        // A rescan spells names as the disk does, which can differ in Unicode
+        // form from a name just typed, so the listed spelling is the one matched.
+        let relativePath = Self.find(path, in: entries)?.relativePath ?? path
         // Compared as bytes, like the paths in `updating`.
         func gone(_ path: String) -> Bool { path.utf8.starts(with: relativePath.utf8) && (path.utf8.count == relativePath.utf8.count || path.utf8.dropFirst(relativePath.utf8.count).first == UInt8(ascii: "/")) }
         // Only the folders on the way to the item are rebuilt.
@@ -500,6 +503,46 @@ struct FileStamp: Equatable {
     }
 }
 
+/// Writes in the pages folder go through NSFileCoordinator, so the iCloud sync
+/// daemon never sees or replaces a file halfway through a change.
+enum FileCoordination {
+    /// Runs `body` while holding coordinated write access to every item. Several
+    /// items are taken together, so no other process gets in between them.
+    @discardableResult
+    static func writing<T>(_ items: [(url: URL, options: NSFileCoordinator.WritingOptions)], _ body: (NSFileCoordinator) throws -> T) throws -> T {
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        return try withoutActuallyEscaping(body) { body in
+            var outcome: Result<T, Error>?
+            var failure: NSError?
+            func hold(_ index: Int) {
+                guard index < items.count else { outcome = Result { try body(coordinator) }; return }
+                var error: NSError?
+                coordinator.coordinate(writingItemAt: items[index].url, options: items[index].options, error: &error) { _ in hold(index + 1) }
+                if let error, outcome == nil { failure = error }
+            }
+            if items.count > 1 {
+                coordinator.prepare(forReadingItemsAt: [], options: [], writingItemsAt: items.map(\.url), options: [], error: &failure) { done in hold(0); done() }
+            } else { hold(0) }
+            if let outcome { return try outcome.get() }
+            throw failure ?? CocoaError(.fileWriteUnknown)
+        }
+    }
+    @discardableResult
+    static func writing<T>(_ url: URL, options: NSFileCoordinator.WritingOptions = [], _ body: () throws -> T) throws -> T {
+        try writing([(url, options)]) { _ in try body() }
+    }
+    /// Moves items as one coordinated operation; `body` does the renames.
+    static func moving(_ pairs: [(from: URL, to: URL)], _ body: () throws -> Void) throws {
+        try writing(pairs.flatMap { [($0.from, NSFileCoordinator.WritingOptions.forMoving), ($0.to, NSFileCoordinator.WritingOptions.forReplacing)] }) { coordinator in
+            try body()
+            for pair in pairs where FileManager.default.fileExists(atPath: pair.to.path) { coordinator.item(at: pair.from, didMoveTo: pair.to) }
+        }
+    }
+    static func write(_ data: Data, to url: URL, options: Data.WritingOptions = .atomic) throws {
+        try writing(url, options: .forReplacing) { try data.write(to: url, options: options) }
+    }
+}
+
 enum VaultFileIO {
     static func readMarkdown(at url: URL, allowedRoot: URL? = nil) throws -> String {
         let target = try checkedURL(url, allowedRoot: allowedRoot)
@@ -512,6 +555,14 @@ enum VaultFileIO {
         // Write to the physical file so atomic replacement preserves an in-vault
         // symbolic link rather than replacing the link itself with a plain file.
         let target = try checkedURL(url, allowedRoot: allowedRoot)
+        // The read, compare and replace share one coordinated write, so the
+        // compare also holds against the sync daemon.
+        try FileCoordination.writing(target, options: .forReplacing) {
+            try replaceMarkdown(text, target: target, url: url, expectedContent: expectedContent, allowedRoot: allowedRoot)
+        }
+    }
+
+    private static func replaceMarkdown(_ text: String, target: URL, url: URL, expectedContent: String?, allowedRoot: URL?) throws {
         let fm = FileManager.default
         let exists = fm.fileExists(atPath: target.path)
         let originalData: Data?
@@ -532,10 +583,12 @@ enum VaultFileIO {
         }
         data.append(contentsOf: text.utf8)
         if let originalData {
-            let temporary = target.deletingLastPathComponent()
-                .appendingPathComponent(".acdian-\(UUID().uuidString).tmp")
+            // Prepared outside the pages folder, so sync never picks it up, but
+            // on the target's own volume, so the replacement stays atomic.
+            let folder = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true)
+            defer { try? fm.removeItem(at: folder) }
+            let temporary = folder.appendingPathComponent(UUID().uuidString)
             try data.write(to: temporary, options: .withoutOverwriting)
-            defer { try? fm.removeItem(at: temporary) }
             // Recheck after preparing the replacement, immediately before the
             // atomic operation. Other editors do not share a compare-and-swap
             // protocol, so callers should still avoid simultaneous editing.
@@ -556,7 +609,7 @@ enum VaultFileIO {
 
     /// Replaces a small data file inside the pages folder in one step.
     static func checkedWrite(_ data: Data, to url: URL, allowedRoot: URL) throws {
-        try data.write(to: try checkedURL(url, allowedRoot: allowedRoot), options: .atomic)
+        try FileCoordination.write(data, to: try checkedURL(url, allowedRoot: allowedRoot))
     }
 
     private static func checkedURL(_ url: URL, allowedRoot: URL?) throws -> URL {
@@ -616,7 +669,7 @@ struct PageOrganizer {
     }
     func saveOrder(_ order: [String: [String]]) throws {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(order).write(to: root.appendingPathComponent(Self.orderFileName), options: .atomic)
+        try FileCoordination.write(encoder.encode(order), to: root.appendingPathComponent(Self.orderFileName))
     }
 
     /// Moves `path` to `target` and records its place. Returns the new relative path.
@@ -645,8 +698,9 @@ struct PageOrganizer {
                 let candidate = destination.appendingPathComponent(name)
                 if !FileManager.default.fileExists(atPath: candidate.path) {
                     do {
-                        try FileManager.default.moveItem(at: source, to: candidate)
-                        if !isDirectory.boolValue { PageComments.follow(from: source, to: candidate) }
+                        try PageComments.movingPage(from: source, to: candidate, isDirectory: isDirectory.boolValue) {
+                            try FileManager.default.moveItem(at: source, to: candidate)
+                        }
                         break
                     }
                     catch let error as CocoaError where error.code == .fileWriteFileExists { }
@@ -684,7 +738,8 @@ struct PageOrganizer {
         while true {
             let candidate = Self.numberedName(name, isDirectory: true, number: number)
             do {
-                try FileManager.default.createDirectory(at: parent.appendingPathComponent(candidate), withIntermediateDirectories: false)
+                let folderURL = parent.appendingPathComponent(candidate)
+                try FileCoordination.writing(folderURL) { try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: false) }
                 var order = Self.loadOrder(root: root)
                 var names = currentOrder(of: folder, order: order).filter { $0 != candidate }
                 if let anchor, let index = names.firstIndex(of: anchor) { names.insert(candidate, at: index + 1) }
@@ -711,12 +766,15 @@ struct PageOrganizer {
         // A case-only change on a case-insensitive disk names the same item.
         func inode(_ url: URL) -> Int? { (try? FileManager.default.attributesOfItem(atPath: url.path))?[.systemFileNumber] as? Int }
         let sameItem = inode(destination) != nil && inode(destination) == inode(source)
-        let result = sameItem ? Darwin.rename(source.path, destination.path) : renamex_np(source.path, destination.path, UInt32(RENAME_EXCL))
-        if result != 0 {
-            if errno == EEXIST { throw VaultCoreError.nameTaken(destination) }
-            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: source.path])
+        var isDirectory: ObjCBool = false
+        _ = FileManager.default.fileExists(atPath: source.path, isDirectory: &isDirectory)
+        try PageComments.movingPage(from: source, to: destination, isDirectory: isDirectory.boolValue) {
+            let result = sameItem ? Darwin.rename(source.path, destination.path) : renamex_np(source.path, destination.path, UInt32(RENAME_EXCL))
+            if result != 0 {
+                if errno == EEXIST { throw VaultCoreError.nameTaken(destination) }
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: source.path])
+            }
         }
-        PageComments.follow(from: source, to: destination)
         let saved = Self.loadOrder(root: root)
         var order = saved
         if let index = order[folder]?.firstIndex(of: components.last!) { order[folder]![index] = name }
@@ -789,17 +847,28 @@ enum PageComments {
         let url = sidecar(of: pageURL)
         if let link = try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink, link { throw VaultCoreError.unsafeLocation(url) }
         guard let json, !json.isEmpty else {
-            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            try FileCoordination.writing(url, options: .forDeleting) {
+                if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            }
             return
         }
         let data = Data(json.utf8)
         guard data.count <= maximumSize else { throw VaultCoreError.unsafeLocation(url) }
-        try data.write(to: url, options: .atomic)
+        try FileCoordination.write(data, to: url)
+    }
+    /// Runs `move`, which moves a page, and takes the page's comments along,
+    /// all in one coordinated operation.
+    static func movingPage(from old: URL, to new: URL, isDirectory: Bool, _ move: () throws -> Void) throws {
+        let pairs: [(from: URL, to: URL)] = isDirectory ? [(old, new)] : [(old, new), (sidecar(of: old), sidecar(of: new))]
+        try FileCoordination.moving(pairs) {
+            try move()
+            if !isDirectory { follow(from: old, to: new) }
+        }
     }
     /// Moves a page's comments after the page itself moved from `old` to `new`.
     /// A comments file already at the new name belongs to no page, as the page
     /// could only move to a free name, so it is replaced.
-    static func follow(from old: URL, to new: URL) {
+    private static func follow(from old: URL, to new: URL) {
         let source = sidecar(of: old), destination = sidecar(of: new)
         guard source.path != destination.path, FileManager.default.fileExists(atPath: source.path) else { return }
         _ = Darwin.rename(source.path, destination.path)

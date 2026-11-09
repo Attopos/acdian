@@ -1130,7 +1130,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let (base,ext) = Self.attachmentName(name)
         var dest = directory.appendingPathComponent(ext.isEmpty ? base : base + "." + ext), n = 2
         while FileManager.default.fileExists(atPath:dest.path) { dest = directory.appendingPathComponent("\(base)-\(n)" + (ext.isEmpty ? "" : "." + ext)); n += 1 }
-        try write(dest)
+        try FileCoordination.writing(dest) { try write(dest) }
         // The new file joins the sidebar and link lookup without rescanning the vault.
         if var updated = index {
             if Self.entry(folder,in:updated.entries) == nil { updated = updated.addingFolder(folder) }
@@ -1376,7 +1376,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             while true {
                 let filename = PageOrganizer.numberedName(name + "." + ComponentStore.fileExtension,isDirectory:false,number:number)
                 let url = directory.appendingPathComponent(filename)
-                do { try data.write(to:url,options:.withoutOverwriting); path = folder.isEmpty ? filename : folder + "/" + filename; break }
+                do { try FileCoordination.write(data,to:url,options:.withoutOverwriting); path = folder.isEmpty ? filename : folder + "/" + filename; break }
                 catch let error as CocoaError where error.code == .fileWriteFileExists { number += 1 }
             }
             let url = root.appendingPathComponent(path), stamp = FileStamp(of:url)
@@ -1402,7 +1402,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             // The component file itself may have moved with the folder.
             let path = file.relativePath == old || file.relativePath.hasPrefix(old + "/") ? new + file.relativePath.dropFirst(old.count) : file.relativePath
             guard let root = index?.root, let data = try? ComponentStore.encode(updated) else { continue }
-            try? data.write(to:root.appendingPathComponent(path),options:.atomic)
+            try? FileCoordination.write(data,to:root.appendingPathComponent(path))
         }
         componentMemo = (-1,[])
     }

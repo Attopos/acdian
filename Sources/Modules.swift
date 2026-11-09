@@ -59,7 +59,7 @@ enum ModuleStore {
     }
     static func save(_ modules: [PageModule], root: URL) throws {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted,.sortedKeys,.withoutEscapingSlashes]
-        try encoder.encode(File(modules:modules)).write(to:root.appendingPathComponent(fileName),options:.atomic)
+        try FileCoordination.write(encoder.encode(File(modules:modules)),to:root.appendingPathComponent(fileName))
     }
     static func discover(root: URL) -> [PageModule] {
         let folders = PageOrganizer(root:root).currentOrder(of:"",order:PageOrganizer.loadOrder(root:root)).filter { name in
