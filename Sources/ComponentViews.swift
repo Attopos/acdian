@@ -93,8 +93,8 @@ struct CardIndexView: View {
         // "All" and "Saved" first, then each first letter present.
         let groups = [Self.all,Self.starred] + Array(Set(cards.map(\.group))).sorted()
         let needle = AppModel.searchFold(query.trimmingCharacters(in:.whitespaces))
-        // Opens on the saved cards when there are any, otherwise on every card.
-        let current = group.flatMap { groups.contains($0) ? $0 : nil } ?? (saved.isEmpty ? Self.all : Self.starred)
+        // Always opens on the saved cards.
+        let current = group.flatMap { groups.contains($0) ? $0 : nil } ?? Self.starred
         let savedKeys = Set(saved)
         // Saved cards in the order they were starred; pages since deleted are skipped.
         let byKey: [String:Card] = current == Self.starred ? Dictionary(cards.map { ($0.key,$0) },uniquingKeysWith: { first,_ in first }) : [:]
@@ -146,6 +146,8 @@ struct CardIndexView: View {
         .background(Color.canvas)
         .onChange(of:initialColumns) { columnCount = nil }
         .onChange(of:initialSaved) { savedList = nil }
+        // Each time the Card Index is shown again, it goes back to the saved cards.
+        .onAppear { group = nil; query = "" }
         .task(id:"\(folder)-\(model.searchedPageCount)") {
             let pages = model.searchedPages.filter { $0.path.hasPrefix(prefix) }
             notes = await Task.detached(priority:.userInitiated) { Dictionary(pages.map { ($0.path,ComponentStore.cardNote($0.text)) },uniquingKeysWith: { first,_ in first }) }.value
