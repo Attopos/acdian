@@ -1,0 +1,20 @@
+/* Loaded only by the iOS app, on top of the Mac editor's styles. */
+html,body { -webkit-text-size-adjust:100%; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+
+/* Comments are not shown in the read-only reader. */
+.cm-comments,.cm-comments-panel,.cm-comments-header,.cm-comments-opener,.cm-comments-solved,.cm-comment-badge { display:none!important; }
+
+@media (hover:none) {
+  /* Fold arrows appear on hover, so on touch only the ones already folded remain. */
+  .cm-editor .cm-fold-toggle:not(.cm-fold-closed) { display:none; }
+}
+
+/* The Mac's wide margins are too much for a phone column. */
+@media (max-width:640px) {
+  .cm-editor .cm-page-title { --page-side:20px; padding-top:12px; font-size:1.75em; }
+  .cm-editor .cm-content { padding:8px 20px 96px; }
+}
+@media (min-width:641px) and (max-width:1000px) {
+  .cm-editor .cm-page-title { --page-side:36px; padding-top:24px; }
+  .cm-editor .cm-content { padding:16px 36px 96px; }
+}

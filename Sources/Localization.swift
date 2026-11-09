@@ -31,6 +31,10 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     private static let translations: [String:(english:String,spanish:String)] = [
         "好": ("OK", "Aceptar"),
+        "iCloud 不可用，正在显示本机文件夹。": ("iCloud isn't available, so this shows the folder on this device.", "iCloud no está disponible; se muestra la carpeta de este dispositivo."),
+        "正在从 iCloud 下载…": ("Downloading from iCloud…", "Descargando de iCloud…"),
+        "这个文件还在 iCloud 里，连上网络后会自动显示。": ("This file is still in iCloud. It will appear once you're online.", "Este archivo sigue en iCloud. Aparecerá cuando tengas conexión."),
+        "重试": ("Try Again", "Reintentar"),
         "每行卡片数": ("Cards per row", "Tarjetas por fila"),
         "收藏": ("Save", "Guardar"),
         "取消收藏": ("Remove from Saved", "Quitar de Guardados"),

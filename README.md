@@ -42,6 +42,12 @@ ACdian 自动准备本地页面的保存位置，打开后即可使用，无需�
 
 安装到本机请执行 `./install.sh`：构建后退出正在运行的 ACdian，用新版替换 `/Applications/ACdian.app`，再重新打开。本机只保留这一份，不留旧版本和备份；旧版本可从 git 重新构建。
 
+## iPhone 与 iPad
+
+`iOS/` 是只读阅读器（iPhone 与 iPad 同一个应用，iOS 17+），和 Mac 共用 `Sources/` 里的六个核心文件和 `Resources/` 里的网页编辑器。页面来自 iCloud Drive 的 ACdian 文件夹（Mac 上是 `~/Library/Mobile Documents/iCloud~com~acdian~reader/Documents`）；iCloud 不可用时显示应用自己的 Documents 文件夹。应用不会写入、移动或删除页面文件夹里的任何内容。
+
+需要完整的 Xcode 和 `xcodegen`（`brew install xcodegen`）。`./ios-build.sh` 生成 `ACdian.xcodeproj` 并构建模拟器版和已配对设备版；`./ios-build.sh simulator` 或 `./ios-build.sh device` 只构建其一。工程文件由 `project.yml` 生成，不提交。Mac 版仍由 `build.sh` 构建，不依赖这个工程。
+
 ## 模块
 
 页面文件夹里的每个顶层文件夹是一个模块，像启动台里的应用一样以圆角图标显示。没有打开页面时主区域显示所有模块；点开模块后，侧栏、搜索和 ⌘N 新页面都只在该文件夹内。右键模块可编辑名称、图标和颜色，隐藏或从启动台移除（文件夹保留），点“新建模块”新建。模块列表保存在页面文件夹的 `.acdian-modules.json`。

@@ -6,3 +6,5 @@ node_modules
 core-tests
 *.orig
 *.rej
+ACdian.xcodeproj/
+iOS/Generated/
