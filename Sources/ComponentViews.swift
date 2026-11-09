@@ -1,6 +1,9 @@
 import SwiftUI
 import AppKit
 
+/// The Card Index and its rail are drawn this much larger than the base sizes below.
+private let zoom: CGFloat = 1.15
+
 /// A vertical letter index like the one in Contacts. Click a letter, or press
 /// and drag along the rail to run through them. Reusable: it only knows the
 /// group names and the selection.
@@ -9,15 +12,15 @@ struct IndexRail: View {
     @Binding var selection: String?
     /// Text shown for a group, when it differs from the group's name.
     var labels: [String:String] = [:]
-    private let rowHeight: CGFloat = 20
+    private let rowHeight: CGFloat = 20*zoom
     var body: some View {
         VStack(spacing:0) {
             ForEach(groups,id:\.self) { group in
                 let selected = group == selection
-                Text(labels[group] ?? group).font(.system(size:11,weight:.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(labels[group] ?? group).font(.system(size:11*zoom,weight:.semibold)).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(selected ? Color.white : Color.secondary)
-                    .frame(width:30,height:rowHeight)
-                    .background(selected ? Color.acPink : .clear,in:RoundedRectangle(cornerRadius:6,style:.continuous))
+                    .frame(width:30*zoom,height:rowHeight)
+                    .background(selected ? Color.acPink : .clear,in:RoundedRectangle(cornerRadius:6*zoom,style:.continuous))
             }
         }
         .contentShape(Rectangle())
@@ -90,55 +93,56 @@ struct CardIndexView: View {
         // "All" and "Saved" first, then each first letter present.
         let groups = [Self.all,Self.starred] + Array(Set(cards.map(\.group))).sorted()
         let needle = AppModel.searchFold(query.trimmingCharacters(in:.whitespaces))
-        let current = group.flatMap { groups.contains($0) ? $0 : nil } ?? groups.first
+        // Opens on the saved cards when there are any, otherwise on every card.
+        let current = group.flatMap { groups.contains($0) ? $0 : nil } ?? (saved.isEmpty ? Self.all : Self.starred)
         let savedKeys = Set(saved)
         // Saved cards in the order they were starred; pages since deleted are skipped.
         let byKey: [String:Card] = current == Self.starred ? Dictionary(cards.map { ($0.key,$0) },uniquingKeysWith: { first,_ in first }) : [:]
         let starredCards: [Card] = saved.compactMap { byKey[$0] }
         let shown: [Card] = needle.isEmpty ? (current == Self.all ? cards : current == Self.starred ? starredCards : cards.filter { $0.group == current }) : Array(cards.filter { AppModel.searchFold($0.name).contains(needle) || AppModel.searchFold(notes[$0.id] ?? "").contains(needle) }
             .sorted { AppModel.searchFold($0.name).hasPrefix(needle) && !AppModel.searchFold($1.name).hasPrefix(needle) }.prefix(500))
-        HStack(alignment:.top,spacing:18) {
+        HStack(alignment:.top,spacing:18*zoom) {
             if !cards.isEmpty {
-                IndexRail(groups:groups,selection:Binding(get:{ needle.isEmpty ? current : nil },set:{ group = $0; query = "" }),labels:[Self.all:model.localized("全部"),Self.starred:"★"]).padding(.top,92)
+                IndexRail(groups:groups,selection:Binding(get:{ needle.isEmpty ? current : nil },set:{ group = $0; query = "" }),labels:[Self.all:model.localized("全部"),Self.starred:"★"]).padding(.top,92*zoom)
                     .help(model.localized("★ 是收藏的卡片，按收藏先后排列"))
             }
-            VStack(alignment:.leading,spacing:14) {
-                HStack(alignment:.firstTextBaseline,spacing:10) {
-                    Text(title).font(.system(size:28,weight:.bold))
-                    Text(model.language.noteCount(cards.count)).font(.system(size:12)).foregroundStyle(.secondary)
+            VStack(alignment:.leading,spacing:14*zoom) {
+                HStack(alignment:.firstTextBaseline,spacing:10*zoom) {
+                    Text(title).font(.system(size:28*zoom,weight:.bold))
+                    Text(model.language.noteCount(cards.count)).font(.system(size:12*zoom)).foregroundStyle(.secondary)
                     Spacer()
                     // Cards per row; the cards stay square, so more per row means smaller cards.
-                    HStack(spacing:2) {
-                        Button { setColumns(perRow - 1) } label: { Image(systemName:"minus").frame(width:22,height:20).contentShape(Rectangle()) }
+                    HStack(spacing:2*zoom) {
+                        Button { setColumns(perRow - 1) } label: { Image(systemName:"minus").frame(width:22*zoom,height:20*zoom).contentShape(Rectangle()) }
                             .disabled(perRow <= ComponentInstance.columnRange.lowerBound)
-                        Label(model.language.number(perRow),systemImage:"square.grid.3x3").font(.system(size:11).monospacedDigit()).frame(minWidth:44)
-                        Button { setColumns(perRow + 1) } label: { Image(systemName:"plus").frame(width:22,height:20).contentShape(Rectangle()) }
+                        Label(model.language.number(perRow),systemImage:"square.grid.3x3").font(.system(size:11*zoom).monospacedDigit()).frame(minWidth:44*zoom)
+                        Button { setColumns(perRow + 1) } label: { Image(systemName:"plus").frame(width:22*zoom,height:20*zoom).contentShape(Rectangle()) }
                             .disabled(perRow >= ComponentInstance.columnRange.upperBound)
                     }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,4).padding(.vertical,3)
-                    .background(Color.wash,in:RoundedRectangle(cornerRadius:7)).overlay(RoundedRectangle(cornerRadius:7).strokeBorder(Color.faint))
+                    .buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,4*zoom).padding(.vertical,3*zoom)
+                    .background(Color.wash,in:RoundedRectangle(cornerRadius:7*zoom)).overlay(RoundedRectangle(cornerRadius:7*zoom).strokeBorder(Color.faint))
                     .help(model.localized("每行卡片数"))
                 }
-                HStack(spacing:8) {
-                    Image(systemName:"magnifyingglass").font(.system(size:12)).foregroundStyle(.secondary)
-                    TextField(model.localized("搜索"),text:$query).textFieldStyle(.plain).font(.system(size:13))
+                HStack(spacing:8*zoom) {
+                    Image(systemName:"magnifyingglass").font(.system(size:12*zoom)).foregroundStyle(.secondary)
+                    TextField(model.localized("搜索"),text:$query).textFieldStyle(.plain).font(.system(size:13*zoom))
                         .onSubmit { if let first = shown.first { model.open(first.page) } }
                     if !query.isEmpty { Button { query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
-                    Text(model.language.number(shown.count)).font(.system(size:11).monospacedDigit()).foregroundStyle(.tertiary)
-                }.padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:9)).overlay(RoundedRectangle(cornerRadius:9).strokeBorder(Color.faint))
+                    Text(model.language.number(shown.count)).font(.system(size:11*zoom).monospacedDigit()).foregroundStyle(.tertiary)
+                }.padding(10*zoom).background(Color.wash,in:RoundedRectangle(cornerRadius:9*zoom)).overlay(RoundedRectangle(cornerRadius:9*zoom).strokeBorder(Color.faint))
                 ScrollView {
-                    LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:10,alignment:.top),count:perRow),spacing:10) {
+                    LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:10*zoom,alignment:.top),count:perRow),spacing:10*zoom) {
                         ForEach(shown) { card in
                             IndexCard(name:card.name,note:notes[card.id] ?? "",perRow:perRow,saved:savedKeys.contains(card.key),toggleSaved:{ toggleSaved(card.key) }) { model.open(card.page) }
                         }
-                    }.padding(.bottom,24)
+                    }.padding(.bottom,24*zoom)
                     if shown.isEmpty {
-                        Text(model.localized(needle.isEmpty && current == Self.starred ? "还没有收藏。点卡片右上角的星标收藏。" : "没有找到匹配的文件")).font(.system(size:12)).foregroundStyle(.tertiary).padding(.top,40)
+                        Text(model.localized(needle.isEmpty && current == Self.starred ? "还没有收藏。点卡片右上角的星标收藏。" : "没有找到匹配的文件")).font(.system(size:12*zoom)).foregroundStyle(.tertiary).padding(.top,40*zoom)
                     }
                 }.id((current ?? "") + "|" + needle)
             }
         }
-        .padding(.horizontal,36).padding(.top,30).frame(maxWidth:1100,maxHeight:.infinity,alignment:.topLeading).frame(maxWidth:.infinity)
+        .padding(.horizontal,36*zoom).padding(.top,30*zoom).frame(maxWidth:1100*zoom,maxHeight:.infinity,alignment:.topLeading).frame(maxWidth:.infinity)
         .background(Color.canvas)
         .onChange(of:initialColumns) { columnCount = nil }
         .onChange(of:initialSaved) { savedList = nil }
@@ -174,11 +178,11 @@ struct IndexCard: View {
             card
             // The star sits over the card, not inside its button, so it gets its own clicks.
             Button(action:toggleSaved) {
-                Image(systemName:saved ? "star.fill" : "star").font(.system(size:compact ? 11 : 13,weight:.semibold))
+                Image(systemName:saved ? "star.fill" : "star").font(.system(size:(compact ? 11 : 13)*zoom,weight:.semibold))
                     .foregroundStyle(saved ? Color.acPink : Color.secondary.opacity(hovering ? 0.9 : 0.35))
-                    .frame(width:compact ? 22 : 26,height:compact ? 22 : 26).contentShape(Rectangle())
+                    .frame(width:(compact ? 22 : 26)*zoom,height:(compact ? 22 : 26)*zoom).contentShape(Rectangle())
             }
-            .buttonStyle(.plain).padding(compact ? 3 : 5)
+            .buttonStyle(.plain).padding((compact ? 3 : 5)*zoom)
             .help(model.localized(saved ? "取消收藏" : "收藏"))
             .accessibilityLabel(model.localized(saved ? "取消收藏" : "收藏"))
         }
@@ -189,17 +193,17 @@ struct IndexCard: View {
             // A square card: the name on top, the note filling the rest.
             // Text and padding shrink with the card, so small cards stay readable.
             let compact = perRow >= 7, roomy = perRow <= 4
-            VStack(alignment:.leading,spacing:compact ? 4 : 8) {
-                Text(name).font(.system(size:roomy ? 23 : compact ? 16 : 19,weight:.bold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
-                    .padding(.trailing,compact ? 16 : 20)
+            VStack(alignment:.leading,spacing:(compact ? 4 : 8)*zoom) {
+                Text(name).font(.system(size:(roomy ? 23 : compact ? 16 : 19)*zoom,weight:.bold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
+                    .padding(.trailing,(compact ? 16 : 20)*zoom)
                 // The note fills the rest of the square and is cut off with "…" only where it runs out of room.
-                Text(note).font(.system(size:compact ? 10.5 : 12)).foregroundStyle(.secondary).lineLimit(nil).multilineTextAlignment(.leading)
+                Text(note).font(.system(size:(compact ? 10.5 : 12)*zoom).foregroundStyle(.secondary).lineLimit(nil).multilineTextAlignment(.leading)
                     .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
             }
-            .padding(compact ? 9 : 12).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
+            .padding((compact ? 9 : 12)*zoom).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
             .aspectRatio(1,contentMode:.fit)
-            .background(Color.wash,in:RoundedRectangle(cornerRadius:10,style:.continuous))
-            .overlay(RoundedRectangle(cornerRadius:10,style:.continuous).strokeBorder(hovering ? Color.acPink.opacity(0.6) : Color.faint))
+            .background(Color.wash,in:RoundedRectangle(cornerRadius:10*zoom,style:.continuous))
+            .overlay(RoundedRectangle(cornerRadius:10*zoom,style:.continuous).strokeBorder(hovering ? Color.acPink.opacity(0.6) : Color.faint))
             .contentShape(Rectangle())
         }.buttonStyle(.plain).help(name)
     }
