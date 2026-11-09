@@ -52,7 +52,8 @@ struct RouteScreen: View {
         case .folder(let path):
             if let folder = store.folder(path) { FolderScreen(folder:folder) } else { missing }
         case .file(let path,let fragment):
-            if let file = store.file(path) { FileScreen(file:file,fragment:fragment) } else { missing }
+            // The id gives each page its own loader when one page replaces another in the same column.
+            if let file = store.file(path) { FileScreen(file:file,fragment:fragment).id(route) } else { missing }
         }
     }
     private var missing: some View { ReaderEmptyState(icon:"questionmark.folder",message:store.localized("没有找到匹配的文件")) }

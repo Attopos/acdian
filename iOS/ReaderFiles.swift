@@ -14,6 +14,10 @@ enum ReaderFiles {
     /// thread: the first ubiquity lookup can take a while.
     static func pagesRoot() -> (root: URL, iCloud: Bool) {
         let manager = FileManager.default
+        #if DEBUG
+        // The UI tour reads a copy of the test fixtures, never the real pages.
+        if CommandLine.arguments.contains("--local-pages") { return (manager.urls(for:.documentDirectory,in:.userDomainMask)[0],false) }
+        #endif
         if let container = manager.url(forUbiquityContainerIdentifier:containerID) {
             let documents = container.appendingPathComponent("Documents",isDirectory:true)
             if !manager.fileExists(atPath:documents.path) { try? manager.createDirectory(at:documents,withIntermediateDirectories:true) }

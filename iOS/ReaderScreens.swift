@@ -213,12 +213,12 @@ struct CardIndexScreen: View {
                     }
                 }.padding(.leading,14).padding(.vertical,8)
                 if shown.isEmpty { Text(store.localized("没有找到匹配的文件")).font(.footnote).foregroundStyle(.tertiary).padding(.top,40) }
-            }.refreshable { await store.reload() }
+            }.frame(maxWidth:.infinity).refreshable { await store.reload() }
             if needle.isEmpty && cards.count > 0 {
                 CardRail(groups:groups,selection:current,labels:[Self.all:store.localized("全部"),Self.starred:"★"]) { group = $0 }.padding(.trailing,2)
             }
         }
-        .background(Color.canvas)
+        .frame(maxWidth:.infinity,maxHeight:.infinity).background(Color.canvas)
         .navigationTitle((file.name as NSString).deletingPathExtension).navigationBarTitleDisplayMode(.inline)
         .searchable(text:$query,prompt:store.localized("搜索"))
         .autocorrectionDisabled()

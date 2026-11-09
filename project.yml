@@ -19,6 +19,9 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
+    scheme:
+      testTargets:
+        - ACdianUITests
     sources:
       - path: Sources/VaultCore.swift
       - path: Sources/PageTrash.swift
@@ -82,3 +85,16 @@ targets:
             NSUbiquitousContainerIsDocumentScopePublic: true
             NSUbiquitousContainerName: ACdian
             NSUbiquitousContainerSupportedFolderLevels: Any
+  ACdianUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: iOSUITests
+    dependencies:
+      - target: ACdian
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.acdian.reader.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
