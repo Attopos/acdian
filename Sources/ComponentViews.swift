@@ -44,8 +44,8 @@ struct ComponentPage: View {
         let title = (file.name as NSString).deletingPathExtension
         if let instance = ComponentStore.read(file.url) {
             switch instance.component {
-            case .cardIndex: CardIndexView(title:title,folder:instance.source,initialColumns:instance.columns) { columns in
-                var updated = instance; updated.columns = columns; model.updateComponent(file,updated)
+            case .cardIndex: CardIndexView(title:title,folder:instance.source,initialColumns:instance.columns,initialSaved:instance.saved) { columns,saved in
+                var updated = instance; updated.columns = columns; updated.saved = saved; model.updateComponent(file,updated)
             }
             }
         } else {
@@ -64,33 +64,43 @@ struct CardIndexView: View {
     let title: String
     let folder: String
     var initialColumns = ComponentInstance.defaultColumns
-    var saveColumns: (Int) -> Void = { _ in }
+    var initialSaved: [String] = []
+    /// Writes the cards per row and the starred pages back to the component file.
+    var save: (_ columns: Int, _ saved: [String]) -> Void = { _,_ in }
     @State private var columnCount: Int?
+    @State private var savedList: [String]?
     @State private var group: String?
     @State private var query = ""
     @State private var notes: [String:String] = [:]
-    private struct Card: Identifiable { let page: VaultEntry; let name: String; let group: String; var id: String { page.relativePath } }
+    /// `key` is the page's path inside the folder without ".md", as kept in the saved list.
+    private struct Card: Identifiable { let page: VaultEntry; let name: String; let key: String; let group: String; var id: String { page.relativePath } }
     private var perRow: Int { columnCount ?? initialColumns }
-    /// The rail entry that shows every card; letters never take this name.
-    static let all = "\u{2217}all"
+    private var saved: [String] { savedList ?? initialSaved }
+    /// The rail entries that show every card and the starred cards; letters never take these names.
+    static let all = "\u{2217}all", starred = "\u{2217}saved"
     var body: some View {
         let prefix = folder + "/"
         // Built once per scan of the pages folder, not on every redraw.
         let cards: [Card] = model.memo("cards:" + folder) {
             (model.index?.files ?? []).filter { $0.relativePath.hasPrefix(prefix) && $0.ext == "md" }.map { page in
                 let name = String(page.name.dropLast(3)), first = name.prefix(1).uppercased()
-                return Card(page:page,name:name,group:first.range(of:"^[A-Z]$",options:.regularExpression) != nil ? first : "#")
+                return Card(page:page,name:name,key:String(page.relativePath.dropFirst(prefix.count).dropLast(3)),group:first.range(of:"^[A-Z]$",options:.regularExpression) != nil ? first : "#")
             }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         }
-        // "All" first, then each first letter present.
-        let groups = [Self.all] + Array(Set(cards.map(\.group))).sorted()
+        // "All" and "Saved" first, then each first letter present.
+        let groups = [Self.all,Self.starred] + Array(Set(cards.map(\.group))).sorted()
         let needle = AppModel.searchFold(query.trimmingCharacters(in:.whitespaces))
         let current = group.flatMap { groups.contains($0) ? $0 : nil } ?? groups.first
-        let shown: [Card] = needle.isEmpty ? (current == Self.all ? cards : cards.filter { $0.group == current }) : Array(cards.filter { AppModel.searchFold($0.name).contains(needle) || AppModel.searchFold(notes[$0.id] ?? "").contains(needle) }
+        let savedKeys = Set(saved)
+        // Saved cards in the order they were starred; pages since deleted are skipped.
+        let byKey: [String:Card] = current == Self.starred ? Dictionary(cards.map { ($0.key,$0) },uniquingKeysWith: { first,_ in first }) : [:]
+        let starredCards: [Card] = saved.compactMap { byKey[$0] }
+        let shown: [Card] = needle.isEmpty ? (current == Self.all ? cards : current == Self.starred ? starredCards : cards.filter { $0.group == current }) : Array(cards.filter { AppModel.searchFold($0.name).contains(needle) || AppModel.searchFold(notes[$0.id] ?? "").contains(needle) }
             .sorted { AppModel.searchFold($0.name).hasPrefix(needle) && !AppModel.searchFold($1.name).hasPrefix(needle) }.prefix(500))
         HStack(alignment:.top,spacing:18) {
-            if groups.count > 2 {
-                IndexRail(groups:groups,selection:Binding(get:{ needle.isEmpty ? current : nil },set:{ group = $0; query = "" }),labels:[Self.all:model.localized("全部")]).padding(.top,92)
+            if !cards.isEmpty {
+                IndexRail(groups:groups,selection:Binding(get:{ needle.isEmpty ? current : nil },set:{ group = $0; query = "" }),labels:[Self.all:model.localized("全部"),Self.starred:"★"]).padding(.top,92)
+                    .help(model.localized("★ 是收藏的卡片，按收藏先后排列"))
             }
             VStack(alignment:.leading,spacing:14) {
                 HStack(alignment:.firstTextBaseline,spacing:10) {
@@ -118,15 +128,20 @@ struct CardIndexView: View {
                 }.padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:9)).overlay(RoundedRectangle(cornerRadius:9).strokeBorder(Color.faint))
                 ScrollView {
                     LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:10,alignment:.top),count:perRow),spacing:10) {
-                        ForEach(shown) { card in IndexCard(name:card.name,note:notes[card.id] ?? "",perRow:perRow) { model.open(card.page) } }
+                        ForEach(shown) { card in
+                            IndexCard(name:card.name,note:notes[card.id] ?? "",perRow:perRow,saved:savedKeys.contains(card.key),toggleSaved:{ toggleSaved(card.key) }) { model.open(card.page) }
+                        }
                     }.padding(.bottom,24)
-                    if shown.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.system(size:12)).foregroundStyle(.tertiary).padding(.top,40) }
+                    if shown.isEmpty {
+                        Text(model.localized(needle.isEmpty && current == Self.starred ? "还没有收藏。点卡片右上角的星标收藏。" : "没有找到匹配的文件")).font(.system(size:12)).foregroundStyle(.tertiary).padding(.top,40)
+                    }
                 }.id((current ?? "") + "|" + needle)
             }
         }
         .padding(.horizontal,36).padding(.top,30).frame(maxWidth:1100,maxHeight:.infinity,alignment:.topLeading).frame(maxWidth:.infinity)
         .background(Color.canvas)
         .onChange(of:initialColumns) { columnCount = nil }
+        .onChange(of:initialSaved) { savedList = nil }
         .task(id:"\(folder)-\(model.searchedPageCount)") {
             let pages = model.searchedPages.filter { $0.path.hasPrefix(prefix) }
             notes = await Task.detached(priority:.userInitiated) { Dictionary(pages.map { ($0.path,ComponentStore.cardNote($0.text)) },uniquingKeysWith: { first,_ in first }) }.value
@@ -137,22 +152,46 @@ extension CardIndexView {
     fileprivate func setColumns(_ value: Int) {
         let clamped = min(max(value,ComponentInstance.columnRange.lowerBound),ComponentInstance.columnRange.upperBound)
         guard clamped != perRow else { return }
-        columnCount = clamped; saveColumns(clamped)
+        columnCount = clamped; save(clamped,saved)
+    }
+    fileprivate func toggleSaved(_ key: String) {
+        let updated = ComponentInstance.toggled(key,in:saved)
+        savedList = updated; save(perRow,updated)
     }
 }
 struct IndexCard: View {
     let name: String
     let note: String
     var perRow = ComponentInstance.defaultColumns
+    var saved = false
+    var toggleSaved: () -> Void = {}
     let open: () -> Void
     @State private var hovering = false
+    @EnvironmentObject private var model: AppModel
     var body: some View {
+        let compact = perRow >= 7
+        ZStack(alignment:.topTrailing) {
+            card
+            // The star sits over the card, not inside its button, so it gets its own clicks.
+            Button(action:toggleSaved) {
+                Image(systemName:saved ? "star.fill" : "star").font(.system(size:compact ? 11 : 13,weight:.semibold))
+                    .foregroundStyle(saved ? Color.acPink : Color.secondary.opacity(hovering ? 0.9 : 0.35))
+                    .frame(width:compact ? 22 : 26,height:compact ? 22 : 26).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).padding(compact ? 3 : 5)
+            .help(model.localized(saved ? "取消收藏" : "收藏"))
+            .accessibilityLabel(model.localized(saved ? "取消收藏" : "收藏"))
+        }
+        .offset(y:hovering ? -1 : 0).onHover { hovering = $0 }
+    }
+    private var card: some View {
         Button(action:open) {
             // A square card: the name on top, the note filling the rest.
             // Text and padding shrink with the card, so small cards stay readable.
             let compact = perRow >= 7, roomy = perRow <= 4
             VStack(alignment:.leading,spacing:compact ? 4 : 8) {
                 Text(name).font(.system(size:roomy ? 23 : compact ? 16 : 19,weight:.bold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
+                    .padding(.trailing,compact ? 16 : 20)
                 // The note fills the rest of the square and is cut off with "…" only where it runs out of room.
                 Text(note).font(.system(size:compact ? 10.5 : 12)).foregroundStyle(.secondary).lineLimit(nil).multilineTextAlignment(.leading)
                     .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
@@ -161,8 +200,8 @@ struct IndexCard: View {
             .aspectRatio(1,contentMode:.fit)
             .background(Color.wash,in:RoundedRectangle(cornerRadius:10,style:.continuous))
             .overlay(RoundedRectangle(cornerRadius:10,style:.continuous).strokeBorder(hovering ? Color.acPink.opacity(0.6) : Color.faint))
-            .offset(y:hovering ? -1 : 0).contentShape(Rectangle())
-        }.buttonStyle(.plain).onHover { hovering = $0 }.help(name)
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain).help(name)
     }
 }
 

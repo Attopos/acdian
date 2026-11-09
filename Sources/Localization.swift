@@ -32,6 +32,10 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     private static let translations: [String:(english:String,spanish:String)] = [
         "好": ("OK", "Aceptar"),
         "每行卡片数": ("Cards per row", "Tarjetas por fila"),
+        "收藏": ("Save", "Guardar"),
+        "取消收藏": ("Remove from Saved", "Quitar de Guardados"),
+        "★ 是收藏的卡片，按收藏先后排列": ("★ shows saved cards, in the order you saved them", "★ muestra las tarjetas guardadas, en el orden en que las guardaste"),
+        "还没有收藏。点卡片右上角的星标收藏。": ("Nothing saved yet. Click the star at a card's top right to save it.", "Aún no hay nada guardado. Haz clic en la estrella arriba a la derecha de una tarjeta para guardarla."),
         "已复制 1 个项目": ("Copied 1 item", "Se copió 1 elemento"),
         "已复制 %@ 个项目": ("Copied %@ items", "Se copiaron %@ elementos"),
         "组件": ("Components", "Componentes"),

@@ -34,10 +34,13 @@ struct ComponentInstance: Codable, Equatable {
     /// Cards per row in a Card Index; the cards stay square.
     var columns = ComponentInstance.defaultColumns
     static let defaultColumns = 6, columnRange = 2...10
+    /// Pages starred in a Card Index, oldest first, as paths inside the source
+    /// folder without ".md", so the list follows the folder when it moves.
+    var saved: [String] = []
 
-    private enum CodingKeys: String, CodingKey { case component, source, hideSource, columns }
-    init(component: ComponentKind, source: String, hideSource: Bool = false, columns: Int = ComponentInstance.defaultColumns) {
-        self.component = component; self.source = source; self.hideSource = hideSource; self.columns = columns
+    private enum CodingKeys: String, CodingKey { case component, source, hideSource, columns, saved }
+    init(component: ComponentKind, source: String, hideSource: Bool = false, columns: Int = ComponentInstance.defaultColumns, saved: [String] = []) {
+        self.component = component; self.source = source; self.hideSource = hideSource; self.columns = columns; self.saved = saved
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy:CodingKeys.self)
@@ -45,6 +48,17 @@ struct ComponentInstance: Codable, Equatable {
         source = try values.decodeIfPresent(String.self,forKey:.source) ?? ""
         hideSource = try values.decodeIfPresent(Bool.self,forKey:.hideSource) ?? false
         columns = min(max(try values.decodeIfPresent(Int.self,forKey:.columns) ?? Self.defaultColumns,Self.columnRange.lowerBound),Self.columnRange.upperBound)
+        saved = try values.decodeIfPresent([String].self,forKey:.saved) ?? []
+    }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy:CodingKeys.self)
+        try values.encode(component,forKey:.component); try values.encode(source,forKey:.source)
+        try values.encode(hideSource,forKey:.hideSource); try values.encode(columns,forKey:.columns)
+        if !saved.isEmpty { try values.encode(saved,forKey:.saved) }
+    }
+    /// Stars a page that is not saved, adding it at the end; unstars one that is.
+    static func toggled(_ key: String, in saved: [String]) -> [String] {
+        saved.contains(key) ? saved.filter { $0 != key } : saved + [key]
     }
 }
 

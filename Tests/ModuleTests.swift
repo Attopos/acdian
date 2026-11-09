@@ -180,6 +180,11 @@ struct ModuleTests {
         try check(fm.fileExists(atPath:root.appendingPathComponent("Lenguas/Words.acdian").path) && app.currentPagePath == "Lenguas/Words.acdian","The component is saved as a small file and opens")
         try check(ComponentStore.read(root.appendingPathComponent("Lenguas/Words.acdian")) == ComponentInstance(component:.cardIndex,source:"Lenguas/English/GRE",hideSource:true),"The component file records its kind and folder")
         try check(app.componentInstances.count == 1 && app.componentHiddenFolders == ["Lenguas/English/GRE"],"The app lists the component and the folder it hides")
+        // Starred cards keep the order they were starred in; starring again removes one.
+        try check(ComponentInstance.toggled("b",in:ComponentInstance.toggled("a",in:[])) == ["a","b"] && ComponentInstance.toggled("a",in:["a","b"]) == ["b"],"Saved cards are kept in the order they were starred")
+        guard let words = app.index?.files.first(where: { $0.relativePath == "Lenguas/Words.acdian" }) else { throw NSError(domain:"ModuleTest",code:4,userInfo:[NSLocalizedDescriptionKey:"Missing the component file"]) }
+        app.updateComponent(words,ComponentInstance(component:.cardIndex,source:"Lenguas/English/GRE",hideSource:true,saved:["abate","lucid"]))
+        try check(ComponentStore.read(root.appendingPathComponent("Lenguas/Words.acdian"))?.saved == ["abate","lucid"],"The saved cards are written to the component file")
         try check(!app.createComponent(.cardIndex,name:"a/b",in:"",source:"Teaching",hideSource:false),"Names with / are refused")
         app.error = nil
         try check(app.createComponent(.cardIndex,name:"Words",in:"Lenguas",source:"Teaching",hideSource:false) && fm.fileExists(atPath:root.appendingPathComponent("Lenguas/Words 2.acdian").path),"A taken name gets a number")
