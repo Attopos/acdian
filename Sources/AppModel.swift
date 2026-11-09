@@ -117,10 +117,16 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     // What a tab keeps while another one is in front: the page text as last
     // read from or written to disk, with the file stamp seen before reading it,
     // so the tab comes back without waiting for the disk; and where the reader was.
-    private struct TabMemory { var text: String?; var stamp: FileStamp?; var view: EditorViewState?; var pdfPage: Int?; var facts: TextFacts? }
+    private struct TabMemory { var text: String?; var stamp: FileStamp?; var view: EditorViewState?; var pdfPage: Int?; var facts: TextFacts?; var cardGroup: String? }
     private var tabMemory: [UUID:TabMemory] = [:]
     /// Where the reader was in the front tab, for an editor starting that page afresh.
     var frontTabView: EditorViewState? { activeTabID.flatMap { tabMemory[$0]?.view } }
+    /// The view picked in a Card Index in the front tab (★, All or a letter), kept
+    /// while the tab stays open so switching tabs and back does not reset it.
+    var frontTabCardGroup: String? {
+        get { activeTabID.flatMap { tabMemory[$0]?.cardGroup } }
+        set { if let tab = activeTabID { tabMemory[tab,default:TabMemory()].cardGroup = newValue } }
+    }
     @Published var query = ""
     // Modules: top-level folders shown as tiles in the launcher. The active
     // module scopes the sidebar, search and new pages to its folder.

@@ -93,8 +93,8 @@ struct CardIndexView: View {
         // "All" and "Saved" first, then each first letter present.
         let groups = [Self.all,Self.starred] + Array(Set(cards.map(\.group))).sorted()
         let needle = AppModel.searchFold(query.trimmingCharacters(in:.whitespaces))
-        // Always opens on the saved cards.
-        let current = group.flatMap { groups.contains($0) ? $0 : nil } ?? Self.starred
+        // A newly opened Card Index starts on the saved cards; its tab remembers the view picked after that.
+        let current = (group ?? model.frontTabCardGroup).flatMap { groups.contains($0) ? $0 : nil } ?? Self.starred
         let savedKeys = Set(saved)
         // Saved cards in the order they were starred; pages since deleted are skipped.
         let byKey: [String:Card] = current == Self.starred ? Dictionary(cards.map { ($0.key,$0) },uniquingKeysWith: { first,_ in first }) : [:]
@@ -103,7 +103,7 @@ struct CardIndexView: View {
             .sorted { AppModel.searchFold($0.name).hasPrefix(needle) && !AppModel.searchFold($1.name).hasPrefix(needle) }.prefix(500))
         HStack(alignment:.top,spacing:18*zoom) {
             if !cards.isEmpty {
-                IndexRail(groups:groups,selection:Binding(get:{ needle.isEmpty ? current : nil },set:{ group = $0; query = "" }),labels:[Self.all:model.localized("全部"),Self.starred:"★"]).padding(.top,92*zoom)
+                IndexRail(groups:groups,selection:Binding(get:{ needle.isEmpty ? current : nil },set:{ group = $0; model.frontTabCardGroup = $0; query = "" }),labels:[Self.all:model.localized("全部"),Self.starred:"★"]).padding(.top,92*zoom)
                     .help(model.localized("★ 是收藏的卡片，按收藏先后排列"))
             }
             VStack(alignment:.leading,spacing:14*zoom) {
@@ -146,8 +146,6 @@ struct CardIndexView: View {
         .background(Color.canvas)
         .onChange(of:initialColumns) { columnCount = nil }
         .onChange(of:initialSaved) { savedList = nil }
-        // Each time the Card Index is shown again, it goes back to the saved cards.
-        .onAppear { group = nil; query = "" }
         .task(id:"\(folder)-\(model.searchedPageCount)") {
             let pages = model.searchedPages.filter { $0.path.hasPrefix(prefix) }
             notes = await Task.detached(priority:.userInitiated) { Dictionary(pages.map { ($0.path,ComponentStore.cardNote($0.text)) },uniquingKeysWith: { first,_ in first }) }.value
