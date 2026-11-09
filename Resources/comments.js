@@ -183,9 +183,12 @@ const icons={
   resolve:svg(['M4.5 10.5l3.5 3.5 7.5-8']),
   reopen:svg(['M5 9a5 5 0 1 1 1.5 4.5','M5 5v4h4']),
   remove:svg(['M5 6h10','M8 6V4.5h4V6','M6.5 6l.7 9.5h5.6l.7-9.5']),
-  edit:svg(['M12.5 4.5l3 3L8 15H5v-3z'])
+  edit:svg(['M12.5 4.5l3 3L8 15H5v-3z']),
+  collapse:svg(['M5 6l4 4-4 4','M11 6l4 4-4 4'])
 };
-const WIDE=900,GAP=10,CARD=280;
+const WIDE=860,GAP=10,CARD=280,COLUMN=320,HEADER=52;
+const collapsedKey='acdian.commentsCollapsed';
+const storedCollapsed=()=>{try{return localStorage.getItem(collapsedKey)==='1';}catch{return false;}};
 
 function timeLabel(ms,language,strings) {
   const seconds=(Date.now()-ms)/1000;
@@ -206,7 +209,18 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     this.dom=document.createElement('div');this.dom.className='cm-comments';
     this.footer=document.createElement('button');this.footer.type='button';this.footer.className='cm-comments-solved';
     this.footer.addEventListener('click',()=>{this.showSolved=!this.showSolved;this.render(true);});
-    this.dom.append(this.footer);
+    // The column: a panel docked to the right edge with its own header. The
+    // cards scroll with the text over it, beside the line they belong to.
+    this.panel=document.createElement('div');this.panel.className='cm-comments-panel';
+    this.header=document.createElement('div');this.header.className='cm-comments-header';
+    this.heading=document.createElement('span');
+    this.collapse=document.createElement('button');this.collapse.type='button';this.collapse.className='cm-comment-tool cm-comments-collapse';this.collapse.innerHTML=icons.collapse;
+    this.collapse.addEventListener('click',()=>this.setCollapsed(true));
+    this.header.append(this.heading,this.collapse);
+    this.opener=document.createElement('button');this.opener.type='button';this.opener.className='cm-comments-opener';
+    this.opener.addEventListener('click',()=>this.setCollapsed(false));
+    this.collapsed=storedCollapsed();
+    this.dom.append(this.panel,this.footer,this.header,this.opener);
     // Clicks in the cards stay out of the editor's own mouse handling.
     this.dom.addEventListener('mousedown',event=>event.stopPropagation());
     view.scrollDOM.append(this.dom);
@@ -248,6 +262,11 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     this.resize.disconnect();this.dom.remove();
     this.view.scrollDOM.classList.remove('cm-comments-wide','cm-comments-narrow');
   }
+  setCollapsed(collapsed) {
+    this.collapsed=collapsed;
+    try{localStorage.setItem(collapsedKey,collapsed?'1':'0');}catch{}
+    this.schedule();
+  }
   strings(){return messagesForLanguage(this.view.state.facet(editorLanguage)).comments;}
   dispatch(...effects){this.view.dispatch({effects,annotations:outside});}
   thread(id){return this.view.state.field(commentsField).threads.find(thread=>thread.id===id);}
@@ -265,6 +284,10 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
       if(!badge){badge=document.createElement('button');badge.type='button';badge.className='cm-comment-badge';badge.addEventListener('click',()=>this.dispatch(setActive.of(this.view.state.field(commentsField).active===thread.id?null:thread.id)));this.badges.set(thread.id,badge);this.dom.append(badge);}
       badge.innerHTML=commentIcon;badge.append(String(thread.replies.length||''));badge.title=strings.show;badge.classList.toggle('active',thread.id===active);
     }
+    const open=threads.filter(thread=>!thread.solved&&thread.replies.length).length;
+    this.heading.textContent=strings.title.replace('%d',open);
+    this.collapse.title=strings.collapse;this.collapse.setAttribute('aria-label',strings.collapse);
+    this.opener.innerHTML=commentIcon;this.opener.append(String(open||''));this.opener.title=strings.expand;this.opener.setAttribute('aria-label',strings.expand);
     this.footer.hidden=!solved;
     this.footer.textContent=(this.showSolved?strings.hideSolved:strings.showSolved).replace('%d',solved);
     if(focusRequest&&this.cards.has(focusRequest)) {
@@ -405,27 +428,30 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
       }
       items.push({id,top,height:card.dom.offsetHeight,whole:thread.whole});
     }
-    return {items,wide:scroller.clientWidth>=WIDE,right:content.right-box.left+scrollLeft,textRight:content.right-box.left+scrollLeft-(parseFloat(style.paddingRight)||0),line:parseFloat(getComputedStyle(view.contentDOM).lineHeight)||27,footer:this.footer.offsetHeight};
+    return {items,wide:scroller.clientWidth>=WIDE,column:scroller.clientWidth-COLUMN+scrollLeft,fixedTop:box.top,fixedRight:window.innerWidth-box.left-scroller.clientWidth,bottom:Math.max(scroller.scrollHeight,scroller.clientHeight),right:content.right-box.left+scrollLeft,textRight:content.right-box.left+scrollLeft-(parseFloat(style.paddingRight)||0),line:parseFloat(getComputedStyle(view.contentDOM).lineHeight)||27,footer:this.footer.offsetHeight};
   }
   place(m) {
     // On the scroller: CodeMirror rewrites the editor's own class list.
     const classes=this.view.scrollDOM.classList,any=m.items.length>0;
-    const mode=any?(m.wide?'wide':'narrow'):null;
+    const mode=any?(m.wide&&!this.collapsed?'wide':'narrow'):null;
     classes.toggle('cm-comments-wide',mode==='wide');classes.toggle('cm-comments-narrow',mode==='narrow');
+    for(const element of [this.panel,this.header]){element.style.top=m.fixedTop+'px';element.style.right=m.fixedRight+'px';element.style.width=COLUMN+'px';}
+    this.opener.style.top=(m.fixedTop+12)+'px';this.opener.style.right=(m.fixedRight+16)+'px';
+    this.opener.hidden=!(any&&m.wide&&this.collapsed);
     // The text moves over to make room, so the places are read again.
     if(mode!==this.mode){this.mode=mode;requestAnimationFrame(()=>this.schedule());return;}
     const active=this.view.state.field(commentsField).active;
     const items=m.items.sort((a,b)=>(b.whole-a.whole)||(a.top-b.top));
     let bottom=0;
     if(mode==='wide') {
-      const left=Math.round(m.right-24),tops=items.map(item=>item.top);
+      const left=Math.round(m.column+(COLUMN-CARD)/2),tops=items.map(item=>Math.max(item.top,HEADER+12));
       const pinned=items.findIndex(item=>item.id===active);
       const start=pinned<0?0:pinned;
       for(let i=start+1;i<items.length;i++)tops[i]=Math.max(items[i].top,tops[i-1]+items[i-1].height+GAP);
-      if(pinned<0&&items.length)tops[0]=Math.max(tops[0],0);
+
       for(let i=start-1;i>=0;i--)tops[i]=Math.min(items[i].top,tops[i+1]-items[i].height-GAP);
       // Cards pushed above the top of the page come back down, below one another.
-      if(tops.length&&tops[0]<0){tops[0]=0;for(let i=1;i<items.length;i++)tops[i]=Math.max(tops[i],tops[i-1]+items[i-1].height+GAP);}
+      if(tops.length&&tops[0]<HEADER+12){tops[0]=HEADER+12;for(let i=1;i<items.length;i++)tops[i]=Math.max(tops[i],tops[i-1]+items[i-1].height+GAP);}
       items.forEach((item,i)=>{
         const card=this.cards.get(item.id).dom;
         card.style.left=left+'px';card.style.top=Math.round(tops[i])+'px';card.style.width=CARD+'px';

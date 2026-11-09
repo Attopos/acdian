@@ -1515,7 +1515,7 @@ test('a disk refresh is dropped when the page was typed in after it was sent', a
 });
 
 test('comment cards sit beside their text in a wide window and float below it in a narrow one', async t => {
-  const text = '第一段文字，对应日期写入失败，应补预建和检查重试链路。\n\n第二段，也有一条评论。\n';
+  const text = '第一段文字，对应日期写入失败，应补预建和检查重试链路。\n\n' + '填充段落。\n\n'.repeat(6) + '第二段，也有一条评论。\n';
   const at = text.indexOf('日期写入失败'), second = text.indexOf('一条评论');
   const comments = JSON.stringify({ version: 1, threads: [
     { id: 'a', from: at, to: at + 6, quote: '日期写入失败', created: 1, replies: [{ id: 'r1', text: 'Commit 1', created: 1 }, { id: 'r2', text: 'Commit 2', created: 2 }] },
@@ -1532,7 +1532,8 @@ test('comment cards sit beside their text in a wide window and float below it in
     return { contentRight: content.right, marks: marks.map(m => m.top), cards: cards.map(c => ({ top: c.top, left: c.left, bottom: c.bottom })) };
   });
   assert.equal(wide.cards.length, 2);
-  assert.ok(wide.cards.every(card => card.left > wide.contentRight - 40), 'cards are to the right of the text');
+  assert.ok(wide.cards.every(card => card.left > wide.contentRight), 'cards sit in their own column, clear of the text');
+  assert.ok(await page.evaluate(() => getComputedStyle(document.querySelector('.cm-comments-header')).display !== 'none'), 'the column has a header');
   assert.ok(Math.abs(wide.cards[0].top - wide.marks[0]) < 12, 'the first card lines up with its text');
   assert.ok(wide.cards[1].top >= wide.cards[0].bottom, 'cards never overlap');
   await page.click('.cm-comment-mark >> nth=1');

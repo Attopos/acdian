@@ -255,11 +255,11 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-comment-mark { background:#f2c94c17; border-bottom:2px solid #f2c94c80; padding-bottom:1px; }
 .cm-editor .cm-comment-mark .cm-comment-mark { background:#f2c94c26; }
 .cm-editor .cm-comment-mark.cm-comment-active { background:#f2c94c38; border-bottom-color:#f2c94c; }
-.cm-editor .cm-scroller.cm-comments-wide .cm-content { max-width:min(860px,calc(100% - 300px)); margin-left:max(0px,round(down,(100% - 1160px) / 2,1px)); }
-.cm-editor .cm-scroller.cm-comments-wide .cm-page-title { flex-basis:min(860px,calc(100% - 300px)); margin-left:max(0px,round(down,(100% - 1160px) / 2,1px)); padding-left:var(--page-side); padding-right:var(--page-side); }
+.cm-editor .cm-scroller.cm-comments-wide .cm-content { max-width:min(860px,calc(100% - 320px)); margin-left:max(0px,round(down,(100% - 1180px) / 2,1px)); }
+.cm-editor .cm-scroller.cm-comments-wide .cm-page-title { flex-basis:min(860px,calc(100% - 320px)); margin-left:max(0px,round(down,(100% - 1180px) / 2,1px)); padding-left:var(--page-side); padding-right:var(--page-side); }
 .cm-comments { position:absolute; top:0; left:0; width:0; height:0; z-index:3; font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; }
-.cm-comment-card { position:absolute; box-sizing:border-box; padding:9px 12px 10px; border:1px solid #ffffff1c; border-radius:10px; background:#1b1a1f; color:#e5e3e8; box-shadow:0 2px 10px #0000002e; cursor:default; transition:top .18s ease,box-shadow .15s ease; user-select:text; -webkit-user-select:text; }
-.cm-comment-card.active { border-top:3px solid #f2c94c; padding-top:7px; box-shadow:0 10px 30px #00000066; z-index:1; }
+.cm-comment-card { position:absolute; z-index:2; box-sizing:border-box; padding:9px 12px 10px; border:1px solid #ffffff1c; border-radius:10px; background:#1b1a1f; color:#e5e3e8; box-shadow:0 2px 10px #0000002e; cursor:default; transition:top .18s ease,box-shadow .15s ease; user-select:text; -webkit-user-select:text; }
+.cm-comment-card.active { border-top:3px solid #f2c94c; padding-top:7px; box-shadow:0 10px 30px #00000066; z-index:3; }
 .cm-comment-card.solved { opacity:.6; }
 .cm-comments-narrow .cm-comment-card:not(.active) { display:none; }
 .cm-editor .cm-scroller.cm-comments-narrow .cm-content { padding-right:72px; }
@@ -281,10 +281,22 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-comment-input::placeholder { color:#68616e; }
 .cm-comment-composer { margin-top:6px; }
 .cm-comment-card:not(.active):not(.draft) .cm-comment-composer { display:none; }
-.cm-comments-solved { position:absolute; display:none; width:280px; margin:0; padding:4px 0; border:0; background:transparent; color:#918a98; font:inherit; font-size:12px; text-align:left; cursor:pointer; }
+.cm-comments-solved { position:absolute; z-index:2; display:none; width:280px; margin:0; padding:4px 0; border:0; background:transparent; color:#918a98; font:inherit; font-size:12px; text-align:left; cursor:pointer; }
 .cm-comments-wide .cm-comments-solved:not([hidden]) { display:block; }
 .cm-comments-solved:hover { color:#e5e3e8; }
 .cm-comment-badge { position:absolute; display:none; align-items:center; gap:2px; height:22px; margin:0; padding:0 5px; border:1px solid #ffffff1f; border-radius:11px; background:#1b1a1f; color:#c9a73c; font:600 11px/1 -apple-system,BlinkMacSystemFont,sans-serif; cursor:pointer; }
 .cm-comments-narrow .cm-comment-badge { display:inline-flex; }
 .cm-comment-badge.active { background:#f2c94c; color:#1b1a1f; border-color:#f2c94c; }
 .cm-format-comment svg { width:18px; height:18px; }
+.cm-comments-panel, .cm-comments-header { position:fixed; display:none; box-sizing:border-box; border-left:1px solid #ffffff14; background:#151518; }
+.cm-comments-panel { bottom:0; z-index:1; }
+.cm-comments-header { height:52px; z-index:5; align-items:center; justify-content:space-between; padding:0 10px 0 18px; border-bottom:1px solid #ffffff14; font-size:15px; font-weight:600; color:#e5e3e8; }
+.cm-comments-wide .cm-comments-panel { display:block; }
+.cm-comments-wide .cm-comments-header { display:flex; }
+.cm-comments-collapse { flex-basis:28px; width:28px; height:28px; }
+.cm-comments-opener { position:fixed; z-index:5; display:inline-flex; align-items:center; gap:4px; height:28px; margin:0; padding:0 9px; border:1px solid #ffffff1f; border-radius:14px; background:#1b1a1f; color:#c9a73c; font:600 12px/1 -apple-system,BlinkMacSystemFont,sans-serif; cursor:pointer; }
+.cm-comments-opener[hidden] { display:none; }
+.cm-comments-opener svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+/* The selection toolbar keeps a little air between itself and the text. */
+.cm-editor .cm-tooltip.cm-format-toolbar.cm-tooltip-above { margin-top:-8px; }
+.cm-editor .cm-tooltip.cm-format-toolbar.cm-tooltip-below { margin-top:8px; }
