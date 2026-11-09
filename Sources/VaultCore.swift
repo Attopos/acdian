@@ -384,10 +384,16 @@ struct VaultIndex {
     }
 
     private func secureURL(_ entry: VaultEntry) -> URL? {
+        // A listing-built index (iOS) names files iCloud may not have downloaded
+        // yet, so nothing is on disk to check; its builder admits no links.
+        #if !os(macOS)
+        return entry.url
+        #else
         let physical = entry.url.standardizedFileURL.resolvingSymlinksInPath()
         guard Self.contains(physical, in: root),
               (try? physical.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return nil }
         return entry.url
+        #endif
     }
 
     static func contains(_ url: URL, in root: URL) -> Bool {
@@ -418,6 +424,57 @@ struct VaultIndex {
         return parts.joined(separator: "/")
     }
 }
+
+#if !os(macOS)
+/// One item the platform lists in the pages folder, downloaded or not.
+struct VaultListing {
+    let relativePath: String
+    let isDirectory: Bool
+    let modified: Date?
+    let size: Int
+}
+
+extension VaultIndex {
+    /// Builds the index from a listing instead of walking the disk, so a page
+    /// still in iCloud appears under its real name. Folders that hold listed
+    /// items need no entry of their own; empty ones do.
+    init(root: URL, listing: [VaultListing]) {
+        final class Folder { var folders: [String: Folder] = [:]; var files: [VaultListing] = []; var modified: Date? }
+        let canonicalRoot = root.standardizedFileURL.resolvingSymlinksInPath()
+        let order = PageOrganizer.loadOrder(root: canonicalRoot)
+        let top = Folder()
+        func folder(_ parts: ArraySlice<String>) -> Folder {
+            parts.reduce(top) { current, name in
+                if let existing = current.folders[name] { return existing }
+                let made = Folder(); current.folders[name] = made; return made
+            }
+        }
+        for item in listing {
+            let parts = item.relativePath.split(separator: "/").map(String.init)
+            guard !parts.isEmpty else { continue }
+            if item.isDirectory { folder(parts[...]).modified = item.modified }
+            else { folder(parts.dropLast()).files.append(item) }
+        }
+        var collected: [VaultEntry] = []
+        func entries(of current: Folder, prefix: String) -> [VaultEntry] {
+            var result = current.folders.map { name, child -> VaultEntry in
+                let path = prefix.isEmpty ? name : prefix + "/" + name
+                return VaultEntry(relativePath: path, url: canonicalRoot.appendingPathComponent(path, isDirectory: true), name: name,
+                                  isDirectory: true, children: entries(of: child, prefix: path), modified: child.modified, size: 0)
+            }
+            for item in current.files {
+                let entry = VaultEntry(relativePath: item.relativePath, url: canonicalRoot.appendingPathComponent(item.relativePath),
+                                       name: (item.relativePath as NSString).lastPathComponent, isDirectory: false, children: nil,
+                                       modified: item.modified, size: item.size)
+                result.append(entry); collected.append(entry)
+            }
+            return PageOrganizer.arrange(result.sorted(by: PageOrganizer.defaultOrder), names: order[prefix], name: \.name)
+        }
+        let scanned = entries(of: top, prefix: "")
+        self.init(canonicalRoot: canonicalRoot, entries: scanned, files: collected)
+    }
+}
+#endif
 
 /// A file's modification date and size, read without opening it: a cheap way
 /// to tell whether text read earlier may no longer be what is on disk.

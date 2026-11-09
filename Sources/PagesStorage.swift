@@ -8,6 +8,16 @@ enum PagesStorage {
         /// Ownership of an opened security scope passes to the caller.
         let securityScopedURL: URL?
     }
+    // Security-scoped bookmarks exist only on macOS.
+    #if os(macOS)
+    private static let bookmarkCreation: URL.BookmarkCreationOptions = .withSecurityScope
+    private static let bookmarkResolution: URL.BookmarkResolutionOptions = [.withSecurityScope]
+    private static var homeDirectory: URL { FileManager.default.homeDirectoryForCurrentUser }
+    #else
+    private static let bookmarkCreation: URL.BookmarkCreationOptions = []
+    private static let bookmarkResolution: URL.BookmarkResolutionOptions = []
+    private static var homeDirectory: URL { URL(fileURLWithPath:NSHomeDirectory(),isDirectory:true) }
+    #endif
 
     static func resolve(preferences: UserDefaults = .standard, override: URL? = nil, adjacentRoot: URL? = nil, fallbackRoot: URL? = nil) throws -> Location {
         if let override {
@@ -17,7 +27,7 @@ enum PagesStorage {
         func remember(_ location: Location, originalBookmark: Data? = nil) -> Location {
             preferences.set(location.root.path,forKey:"pagesPath")
             let bookmarkURL = location.securityScopedURL ?? location.root
-            if let bookmark = try? bookmarkURL.bookmarkData(options:.withSecurityScope,includingResourceValuesForKeys:nil,relativeTo:nil) {
+            if let bookmark = try? bookmarkURL.bookmarkData(options:bookmarkCreation,includingResourceValuesForKeys:nil,relativeTo:nil) {
                 preferences.set(bookmark,forKey:"pagesBookmark")
             } else if let originalBookmark { preferences.set(originalBookmark,forKey:"pagesBookmark") }
             else { preferences.removeObject(forKey:"pagesBookmark") }
@@ -45,14 +55,14 @@ enum PagesStorage {
             return remember(Location(root:root,securityScopedURL:nil))
         }
         let support = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support",isDirectory:true)
+            ?? homeDirectory.appendingPathComponent("Library/Application Support",isDirectory:true)
         let fallback = fallbackRoot ?? support.appendingPathComponent("acdian/Pages",isDirectory:true)
         return remember(Location(root:try createRoot(fallback),securityScopedURL:nil))
     }
 
     private static func bookmarkedRoot(_ data: Data) -> Location? {
         var stale = false
-        guard let url = try? URL(resolvingBookmarkData:data,options:[.withSecurityScope],relativeTo:nil,bookmarkDataIsStale:&stale) else { return nil }
+        guard let url = try? URL(resolvingBookmarkData:data,options:bookmarkResolution,relativeTo:nil,bookmarkDataIsStale:&stale) else { return nil }
         let scoped = url.startAccessingSecurityScopedResource()
         guard let root = existingRoot(url) else {
             if scoped { url.stopAccessingSecurityScopedResource() }
