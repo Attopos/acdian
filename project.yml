@@ -29,6 +29,7 @@ targets:
       - path: Sources/Components.swift
       - path: Sources/Localization.swift
       - path: Sources/PagesStorage.swift
+      - path: Sources/AppModel.swift
       - path: iOS
         excludes:
           - "Generated/**"

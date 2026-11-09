@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import Combine
 import UniformTypeIdentifiers
 import ImageIO
@@ -8,8 +12,46 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     case system, light, dark
     var id: String { rawValue }
     var title: String { switch self { case .system: return "跟随系统"; case .light: return "浅色"; case .dark: return "深色" } }
+    #if os(macOS)
     var nsAppearance: NSAppearance? { switch self { case .system: return nil; case .light: return NSAppearance(named:.aqua); case .dark: return NSAppearance(named:.darkAqua) } }
+    #endif
 }
+
+/// What the page model needs from the system it runs on. The model itself holds
+/// no AppKit or UIKit calls, so the Mac app and the iPad app share it.
+@MainActor protocol PlatformServices: AnyObject {
+    var isActive: Bool { get }
+    var becameActive: Notification.Name { get }
+    func applyAppearance(_ appearance: AppAppearance)
+    func closeFrontWindow()
+    func confirm(title: String, detail: String, action: String, cancel: String, _ answer: @escaping (Bool) -> Void)
+    func open(_ url: URL)
+    func reveal(_ url: URL)
+    func pickFiles(message: String, imagesOnly: Bool, _ picked: @escaping ([URL]) -> Void)
+}
+
+#if os(macOS)
+@MainActor final class MacPlatformServices: PlatformServices {
+    var isActive: Bool { NSApp?.isActive ?? true }
+    var becameActive: Notification.Name { NSApplication.didBecomeActiveNotification }
+    func applyAppearance(_ appearance: AppAppearance) { NSApp?.appearance = appearance.nsAppearance }
+    func closeFrontWindow() { NSApp?.mainWindow?.performClose(nil) }
+    func confirm(title: String, detail: String, action: String, cancel: String, _ answer: @escaping (Bool) -> Void) {
+        let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
+        alert.addButton(withTitle:action); alert.addButton(withTitle:cancel)
+        answer(alert.runModal() == .alertFirstButtonReturn)
+    }
+    func open(_ url: URL) { NSWorkspace.shared.open(url) }
+    func reveal(_ url: URL) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+    func pickFiles(message: String, imagesOnly: Bool, _ picked: @escaping ([URL]) -> Void) {
+        let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = true; panel.message = message
+        if imagesOnly { panel.allowedContentTypes = [.image] }
+        guard panel.runModal() == .OK else { return }
+        picked(panel.urls)
+    }
+}
+@MainActor func makePlatformServices() -> PlatformServices { MacPlatformServices() }
+#endif
 /// The two ACdian icon colourings. Pink with a black mark is the bundle's own icon.
 enum AppIconStyle: String, CaseIterable, Identifiable {
     case pink, black
@@ -19,6 +61,7 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
     /// Swaps the Dock icon of the running app, and gives the installed bundle a
     /// matching Finder icon so the Dock and Finder keep it while the app is closed.
     func apply(toBundle: Bool = true) {
+        #if os(macOS)
         guard NSApp != nil else { return }
         if let url = Bundle.main.url(forResource:self == .pink ? "AppIcon-Pink" : "AppIcon-Black",withExtension:"png"), let image = NSImage(contentsOf:url) { NSApp.applicationIconImage = image }
         guard toBundle else { return }
@@ -29,6 +72,7 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
         } else if self == .pink, customIcon {
             NSWorkspace.shared.setIcon(nil,forFile:bundle.path,options:[])
         }
+        #endif
     }
 }
 /// Where a sidebar drag would land, shown while hovering a row.
@@ -70,6 +114,7 @@ extension String {
 struct PageTab: Identifiable { let id = UUID(); var path: String? }
 
 @MainActor final class AppModel: ObservableObject {
+    let services: PlatformServices = makePlatformServices()
     @Published var index: VaultIndex? { didSet { indexGeneration &+= 1; followSplitEntry() } }
     private var indexGeneration = 0
     @Published var loading = false {
@@ -157,7 +202,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     @Published var error: String?
     private let preferences: UserDefaults
     @Published var appearance: AppAppearance = AppAppearance(rawValue:UserDefaults.standard.string(forKey:"appAppearance") ?? "") ?? .system {
-        didSet { UserDefaults.standard.set(appearance.rawValue,forKey:"appAppearance"); NSApp?.appearance = appearance.nsAppearance }
+        didSet { UserDefaults.standard.set(appearance.rawValue,forKey:"appAppearance"); services.applyAppearance(appearance) }
     }
     @Published var iconStyle: AppIconStyle = AppIconStyle.stored() {
         didSet { UserDefaults.standard.set(iconStyle.rawValue,forKey:"appIconStyle"); iconStyle.apply() }
@@ -381,9 +426,9 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// front, and as soon as it comes back to the front.
     private func watchOpenPage() {
         diskTimer = Timer.scheduledTimer(withTimeInterval:1.5,repeats:true) { [weak self] _ in
-            MainActor.assumeIsolated { if NSApp?.isActive ?? true { self?.checkOpenPageOnDisk() } }
+            MainActor.assumeIsolated { if self?.services.isActive == true { self?.checkOpenPageOnDisk() } }
         }
-        activationObserver = NotificationCenter.default.addObserver(forName:NSApplication.didBecomeActiveNotification,object:nil,queue:.main) { [weak self] _ in
+        activationObserver = NotificationCenter.default.addObserver(forName:services.becameActive,object:nil,queue:.main) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkOpenPageOnDisk() }
         }
     }
@@ -981,7 +1026,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func closeCurrentTab() {
         if splitFocused, splitEntry != nil, selected != nil { closeSplit(); return }
         if let activeTabID, selected != nil { closeTab(activeTabID) }
-        else { NSApp?.mainWindow?.performClose(nil) }
+        else { services.closeFrontWindow() }
     }
     @discardableResult func save(automatically: Bool = false) -> Bool {
         cancelAutosave()
@@ -1001,12 +1046,10 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private func reloadAfterSnapshot() {
         guard let selected = persistedPage else { return }
         cancelAutosave()
-        if dirty {
-            let alert = NSAlert(); alert.messageText = localized("放弃本地修改并重新载入？"); alert.informativeText = localized("未保存的修改将丢失，重新读取磁盘中的最新文件。")
-            alert.addButton(withTitle:localized("重新载入")); alert.addButton(withTitle:localized("取消"))
-            guard alert.runModal() == .alertFirstButtonReturn else { scheduleAutosave(); return }
+        guard dirty else { open(selected,skipConfirmation:true,fromDisk:true); return }
+        services.confirm(title:localized("放弃本地修改并重新载入？"),detail:localized("未保存的修改将丢失，重新读取磁盘中的最新文件。"),action:localized("重新载入"),cancel:localized("取消")) { reload in
+            if reload { self.open(selected,skipConfirmation:true,fromDisk:true) } else { self.scheduleAutosave() }
         }
-        open(selected,skipConfirmation:true,fromDisk:true)
     }
     func navigate(_ raw: String) {
         if raw.hasPrefix("#") { anchor = String(raw.dropFirst()); return }
@@ -1021,7 +1064,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     func external(_ raw: String) {
         guard let url = URL(string:raw), ["https","http","mailto"].contains(url.scheme?.lowercased() ?? "") else { return }
-        NSWorkspace.shared.open(url)
+        services.open(url)
     }
     func newPageFromEditor(inTab reused: UUID? = nil, completion: (() -> Void)? = nil) {
         guard ensurePageStorage() else { return }
@@ -1130,10 +1173,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// them at the caret. The image picker of the slash command offers only images.
     func importAttachment(imagesOnly: Bool = false) {
         guard index != nil, selected?.ext == "md" else { return }
-        let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = true; panel.message = localized("附件会复制到页面的 Attachments 文件夹，并插入链接。")
-        if imagesOnly { panel.allowedContentTypes = [.image] }
-        guard panel.runModal() == .OK else { return }
-        insertAttachments(panel.urls)
+        services.pickFiles(message:localized("附件会复制到页面的 Attachments 文件夹，并插入链接。"),imagesOnly:imagesOnly) { self.insertAttachments($0) }
     }
     /// Whether files and pictures can be pasted or dropped into the open page now.
     var acceptsAttachments: Bool { index != nil && selected?.ext == "md" && !loading }
@@ -1151,6 +1191,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         catch { self.error = self.localizedError(error); return false }
     }
     /// Puts a picture from the page on the clipboard, as the file and as an image.
+    #if os(macOS)
     func copyImage(_ target: String,from page: String,to pasteboard: NSPasteboard = .general) {
         guard let url = index?.resolve(target,from:page) else { return }
         pasteboard.clearContents()
@@ -1158,9 +1199,15 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         if let image = NSImage(contentsOf:url) { items.append(image) }
         pasteboard.writeObjects(items)
     }
+    #else
+    func copyImage(_ target: String,from page: String) {
+        guard let url = index?.resolve(target,from:page), let data = try? Data(contentsOf:url), let image = UIImage(data:data) else { return }
+        UIPasteboard.general.image = image
+    }
+    #endif
     func revealImage(_ target: String,from page: String) {
         guard let url = index?.resolve(target,from:page) else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        services.reveal(url)
     }
     /// A screenshot from a Retina screen holds twice the pixels it showed, so it
     /// is embedded at the width it had on screen rather than twice as large.
