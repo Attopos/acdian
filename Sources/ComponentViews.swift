@@ -139,7 +139,7 @@ struct CardIndexView: View {
                     if shown.isEmpty {
                         Text(model.localized(needle.isEmpty && current == Self.starred ? "还没有收藏。点卡片右上角的星标收藏。" : "没有找到匹配的文件")).font(.system(size:12*zoom)).foregroundStyle(.tertiary).padding(.top,40*zoom)
                     }
-                }.id((current ?? "") + "|" + needle)
+                }.id(current + "|" + needle)
             }
         }
         .padding(.horizontal,36*zoom).padding(.top,30*zoom).frame(maxWidth:1100*zoom,maxHeight:.infinity,alignment:.topLeading).frame(maxWidth:.infinity)
@@ -197,7 +197,7 @@ struct IndexCard: View {
                 Text(name).font(.system(size:(roomy ? 23 : compact ? 16 : 19)*zoom,weight:.bold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
                     .padding(.trailing,(compact ? 16 : 20)*zoom)
                 // The note fills the rest of the square and is cut off with "…" only where it runs out of room.
-                Text(note).font(.system(size:(compact ? 10.5 : 12)*zoom).foregroundStyle(.secondary).lineLimit(nil).multilineTextAlignment(.leading)
+                Text(note).font(.system(size:(compact ? 10.5 : 12)*zoom)).foregroundStyle(.secondary).lineLimit(nil).multilineTextAlignment(.leading)
                     .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
             }
             .padding((compact ? 9 : 12)*zoom).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
