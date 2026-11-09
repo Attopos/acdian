@@ -7,6 +7,9 @@ import UniformTypeIdentifiers
 /// instead of loading a new web page, so a page appears without a blank frame.
 struct LiveMarkdownEditor: NSViewRepresentable {
     @ObservedObject var model: AppModel
+    /// How far right of the window's middle the editor's own middle sits; the
+    /// text column moves left by this much so it stays in the window's middle.
+    var centerShift: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
@@ -16,7 +19,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     func updateNSView(_ container: NSView,context: Context) {
         let host = LiveEditorHost.shared
         host.model = model; host.appearance = colorScheme == .light ? "light" : "dark"
-        host.attach(to:container); host.render()
+        host.attach(to:container); host.centerShift = centerShift; host.render()
     }
     static func dismantleNSView(_ container: NSView,coordinator: ()) { LiveEditorHost.shared.detach(from:container) }
 }
@@ -31,6 +34,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     let view: EditorWebView
     weak var model: AppModel? { didSet { if model !== oldValue { attachBridge() } } }
     var appearance = "dark"
+    var centerShift: CGFloat = 0 { didSet { if centerShift != oldValue { applyCenterShift() } } }
     private var ready = false
     // The document the page was last sent, and the per-document bridge state.
     private var documentID: UUID?
@@ -66,6 +70,10 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     private func load() {
         ready = false; documentID = nil; documentInstalled = false
         if let url = Bundle.main.url(forResource:"live-editor",withExtension:"html") { view.loadFileURL(url,allowingReadAccessTo:url.deletingLastPathComponent()) }
+    }
+    private func applyCenterShift() {
+        guard ready else { return }
+        view.evaluateJavaScript("document.documentElement.style.setProperty('--center-shift','\(Int(centerShift.rounded(.down)))px');window.dispatchEvent(new Event('acdian-relayout'));",completionHandler:nil)
     }
     func attach(to container: NSView) {
         guard view.superview !== container else { return }
@@ -183,7 +191,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     }
     func userContentController(_ userContentController: WKUserContentController,didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let value = message.body as? [String:Any], let type = value["type"] as? String else { return }
-        if type == "ready" { ready = true; render(); return }
+        if type == "ready" { ready = true; applyCenterShift(); render(); return }
         // Comments name their page by path and may arrive after it was left.
         if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
         guard isCurrent, let model, let documentID, value["documentID"] as? String == documentID.uuidString else { return }

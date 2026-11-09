@@ -225,6 +225,8 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     this.dom.addEventListener('mousedown',event=>event.stopPropagation());
     view.scrollDOM.append(this.dom);
     this.resize=new ResizeObserver(()=>this.schedule());this.resize.observe(view.scrollDOM);
+    // The text moves without the editor changing size when the window centres it anew.
+    this.relayout=()=>this.schedule();window.addEventListener('acdian-relayout',this.relayout);
     this.path=config.path();this.saved=serializeComments(view.state);this.saveTimer=null;this.pendingPath=null;
     this.render(true);
   }
@@ -259,7 +261,7 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
   }
   destroy() {
     if(this.saveTimer)this.save();
-    this.resize.disconnect();this.dom.remove();
+    this.resize.disconnect();window.removeEventListener('acdian-relayout',this.relayout);this.dom.remove();
     this.view.scrollDOM.classList.remove('cm-comments-wide','cm-comments-narrow');
   }
   setCollapsed(collapsed) {

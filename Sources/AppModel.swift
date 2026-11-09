@@ -137,6 +137,11 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private var draftFolder = ""
     @Published var showOutline = true
     @Published var showSidebar = true
+    /// The sidebar's width, dragged at its edge and kept between launches.
+    static let sidebarWidths: ClosedRange<Double> = 200...420
+    static let defaultSidebarWidth: Double = 256
+    @Published var sidebarWidth: Double = { let stored = UserDefaults.standard.double(forKey:"sidebarWidth"); return stored == 0 ? AppModel.defaultSidebarWidth : min(max(stored,AppModel.sidebarWidths.lowerBound),AppModel.sidebarWidths.upperBound) }()
+    func storeSidebarWidth() { UserDefaults.standard.set(sidebarWidth,forKey:"sidebarWidth") }
     /// In full screen the window controls are gone, so nothing has to keep clear of them.
     @Published var fullScreen = false
     @Published var showingTrash = false { didSet { if showingTrash { showingMarket = false } } }

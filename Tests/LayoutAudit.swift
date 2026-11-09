@@ -41,7 +41,14 @@ struct LayoutAudit {
             func n(_ key: String) -> Double { (m[key] as? NSNumber)?.doubleValue ?? .nan }
             checks += 1
             if abs(n("titleLeft") - n("textLeft")) > 1.5 { problems.append("\(label): title at \(n("titleLeft")), text at \(n("textLeft"))") }
-            if abs(n("contentMiddle") - n("w") / 2) > 8 { problems.append("\(label): column centre \(n("contentMiddle")) of \(n("w"))") }
+            // The main page's column sits in the window's middle where the page has room for it.
+            let shift = web === LiveEditorHost.shared.view ? LiveEditorHost.shared.centerShift : 0
+            let middle = ContentView.pageLeft(n("w"),shift:shift) + min(860,n("w")) / 2
+            if abs(n("contentMiddle") - middle) > 8 { problems.append("\(label): column centre \(n("contentMiddle")) of \(n("w")), expected \(middle)") }
+            if shift > 0, ContentView.pageLeft(n("w"),shift:shift) > 0, let window = web.window {
+                let inWindow = web.convert(web.bounds,to:nil).minX + n("contentMiddle")
+                if abs(inWindow - window.contentLayoutRect.width / 2) > 8 { problems.append("\(label): column centre \(inWindow) in a window \(window.contentLayoutRect.width) wide") }
+            }
             if n("titleBottom") > n("contentTop") + 1 { problems.append("\(label): title overlaps text") }
             if n("titleTop") != 0 { problems.append("\(label): blank above the title \(n("titleTop"))") }
             if n("scrollX") > 0 || n("pageX") > 0 || n("titleRight") > 0 { problems.append("\(label): runs past the page \(n("scrollX")) \(n("pageX")) \(n("titleRight"))") }
@@ -50,8 +57,9 @@ struct LayoutAudit {
         func outlineClear(_ label: String) async throws {
             guard model.splitEntry == nil, model.showOutline else { return }
             let width = LiveEditorHost.shared.view.bounds.width
-            let textLeft = max(0,(width - 860) / 2) + 58
-            if width >= ContentView.outlineFitWidth, textLeft < 232 - 0.5 { problems.append("\(label): outline over the text, text at \(textLeft)") }
+            let shift = LiveEditorHost.shared.centerShift
+            let textLeft = ContentView.pageLeft(width,shift:shift) + 58
+            if width >= ContentView.outlineFitWidth + 2 * shift, textLeft < 232 - 0.5 { problems.append("\(label): outline over the text, text at \(textLeft)") }
         }
         let sizes: [(CGFloat,CGFloat)] = [(920,620),(1000,700),(1100,720),(1260,840),(1440,900),(1512,982),(1728,1117),(1920,1080),(2560,1440),(3440,1440),(5120,1440)]
         let states: [(String,(AppModel) -> Void)] = [

@@ -149,6 +149,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "1 篇笔记": ("1 note", "1 nota"),
         "搜索笔记与内容": ("Search notes and content", "Buscar notas y contenido"),
         "清除搜索": ("Clear search", "Borrar búsqueda"),
+        "调整侧栏宽度": ("Resize sidebar", "Cambiar el ancho de la barra lateral"),
         "所有笔记": ("All notes", "Todas las notas"),
         "搜索结果 · %@": ("Search results · %@", "Resultados · %@"),
         "刷新文件目录": ("Refresh file list", "Actualizar la lista de archivos"),

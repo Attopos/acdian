@@ -61,7 +61,11 @@ struct ContentView: View {
     @State private var outlineFloating = false
     var body: some View {
         HStack(spacing:0) {
-            if model.showSidebar { SidebarView().frame(minWidth:220,idealWidth:256,maxWidth:300); Rectangle().fill(Color.faint).frame(width:1) }
+            if model.showSidebar {
+                SidebarView().frame(width:model.sidebarWidth)
+                    .overlay(alignment:.trailing) { SidebarResizer().offset(x:4) }
+                Rectangle().fill(Color.faint).frame(width:1)
+            }
             VStack(spacing:0) {
                 // No top bar: open pages sit as tabs in a transparent strip that
                 // keeps clear of the window controls and still drags the window.
@@ -131,11 +135,12 @@ struct ContentView: View {
                     // outline floats in the left margin when it fits there, and
                     // otherwise opens over the text from a » button.
                     GeometryReader { geometry in
-                        let fits = geometry.size.width >= Self.outlineFitWidth
+                        let shift = centerShift
+                        let fits = geometry.size.width >= Self.outlineFitWidth + 2 * shift
                         ZStack(alignment:.topLeading) {
                             VStack(spacing:0) {
-                                if model.isDraft { DraftTitleView(model:model,side:Self.pageSide(geometry.size.width)).id(model.editorDocumentID) }
-                                LiveMarkdownEditor(model:model).frame(maxWidth:.infinity,maxHeight:.infinity)
+                                if model.isDraft { DraftTitleView(model:model,side:Self.pageSide(geometry.size.width),left:Self.pageLeft(geometry.size.width,shift:shift)).id(model.editorDocumentID) }
+                                LiveMarkdownEditor(model:model,centerShift:shift).frame(maxWidth:.infinity,maxHeight:.infinity)
                             }
                             if model.showOutline && (fits || outlineFloating) {
                                 outline(title:model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent,floating:!fits)
@@ -159,6 +164,12 @@ struct ContentView: View {
     // The editor column is at most 860 wide with 58 of empty padding inside each
     // edge; the outline (220) fits when the margin left of the text holds it plus a gap.
     static let outlineFitWidth: CGFloat = 860 + 2 * (220 + 12 - 58)
+    // The text column sits in the middle of the window, not of the space the
+    // sidebar leaves: the editor moves it left by half the sidebar. A split page
+    // shares the window, so each column keeps its text in its own middle.
+    private var centerShift: CGFloat { model.showSidebar && model.splitEntry == nil ? CGFloat(model.sidebarWidth + 1) / 2 : 0 }
+    // Where the 860-wide column starts in a page of this width, as --page-left in live-editor.css.
+    static func pageLeft(_ width: CGFloat, shift: CGFloat) -> CGFloat { max(0,((width - 860) / 2 - shift).rounded(.down)) }
     // The empty space beside the text, by the page's width, as in live-editor.css.
     static func pageSide(_ width: CGFloat) -> CGFloat { width > 700 ? 58 : width > 450 ? 28 : 19 }
     private func outline(title: String, floating: Bool) -> some View {
@@ -314,6 +325,24 @@ struct NewTabButton: View {
     }
 }
 
+/// The sidebar's right edge. Dragging it sets the sidebar's width; a double
+/// click puts the width back to where it started.
+struct SidebarResizer: View {
+    @EnvironmentObject var model: AppModel
+    @State private var start: Double?
+    var body: some View {
+        Color.clear.frame(width:8).frame(maxHeight:.infinity).contentShape(Rectangle())
+            .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance:1,coordinateSpace:.global)
+                .onChanged { drag in
+                    let origin = start ?? model.sidebarWidth; start = origin
+                    model.sidebarWidth = min(max((origin + drag.translation.width).rounded(),AppModel.sidebarWidths.lowerBound),AppModel.sidebarWidths.upperBound)
+                }
+                .onEnded { _ in start = nil; model.storeSidebarWidth() })
+            .simultaneousGesture(TapGesture(count:2).onEnded { model.sidebarWidth = AppModel.defaultSidebarWidth; model.storeSidebarWidth() })
+            .accessibilityLabel(model.localized("调整侧栏宽度"))
+    }
+}
 struct SidebarToggle: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
@@ -324,6 +353,7 @@ struct SidebarToggle: View {
 struct DraftTitleView: View {
     @ObservedObject var model: AppModel
     var side: CGFloat = 58
+    var left: CGFloat = 0
     @FocusState private var titleFocused: Bool
     var body: some View {
         TextField("",text:$model.draftTitle,prompt:Text("New Page").foregroundColor(Color.primary.opacity(0.25)))
@@ -337,7 +367,8 @@ struct DraftTitleView: View {
             .onChange(of:titleFocused) { _,focused in if !focused { model.draftTitleEnded() } }
             .padding(.horizontal,side).padding(.top,43).padding(.bottom,8)
             .frame(maxWidth:860,alignment:.leading)
-            .frame(maxWidth:.infinity)
+            .padding(.leading,left)
+            .frame(maxWidth:.infinity,alignment:.leading)
             .onAppear { titleFocused = true }
     }
 }
@@ -346,6 +377,8 @@ struct DraftTitleView: View {
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @FocusState private var searchFocused: Bool
+    /// The search field shows only once ⌘F asks for it, or while a search is on.
+    @State private var searching = false
     @State private var rootDropTargeted = false
     @State private var editingModule: ModuleEditorTarget?
     var body: some View {
@@ -354,7 +387,9 @@ struct SidebarView: View {
         VStack(spacing:0) {
             HStack(spacing:10) { BrandMark(size:30,style:model.iconStyle); Text("ACdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer(); SidebarToggle() }.padding(.horizontal,20).frame(height:68)
             ModuleBar()
-            HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused); if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) } else { Text("⌘F").font(.system(size:10)).foregroundStyle(.tertiary) } }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
+            if searching || !model.query.isEmpty {
+                HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused).onExitCommand { model.query = ""; searching = false }; Button { model.query = ""; searching = false } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
+            } else { Color.clear.frame(height:8) }
             if home {
                 HStack { Text(model.localized("模块")).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(Color.secondary.opacity(0.6)); Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { editingModule = .new } label: { Image(systemName:"plus") }.help(model.localized("新建模块")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             } else {
@@ -391,7 +426,12 @@ struct SidebarView: View {
             HStack(spacing:14) { SettingsButton(); Spacer() }.padding(.horizontal,20).padding(.vertical,14)
         }.background(Color.rail)
         .sheet(item:$editingModule) { target in ModuleEditor(target:target).environmentObject(model) }
-        .onReceive(NotificationCenter.default.publisher(for:Notification.Name("acdianSearch"))) { _ in searchFocused = true; model.showSidebar = true }
+        .onChange(of:searchFocused) { _,focused in if !focused && model.query.isEmpty { searching = false } }
+        .onReceive(NotificationCenter.default.publisher(for:Notification.Name("acdianSearch"))) { _ in
+            model.showSidebar = true; searching = true
+            // The field is new on this pass, so it takes focus on the next.
+            DispatchQueue.main.async { searchFocused = true }
+        }
     }
 }
 /// The folder tree as one flat, lazily drawn list, so folders with thousands
