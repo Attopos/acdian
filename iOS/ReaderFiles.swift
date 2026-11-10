@@ -21,6 +21,11 @@ enum ReaderFiles {
         if let container = manager.url(forUbiquityContainerIdentifier:containerID) {
             let documents = container.appendingPathComponent("Documents",isDirectory:true)
             if !manager.fileExists(atPath:documents.path) { try? manager.createDirectory(at:documents,withIntermediateDirectories:true) }
+            // Until something asks for it, iOS leaves a container's folder empty on
+            // this device and the metadata query finds nothing. Asking once fixes both.
+            try? manager.startDownloadingUbiquitousItem(at:documents)
+            var failure: NSError?
+            NSFileCoordinator(filePresenter:nil).coordinate(readingItemAt:documents,options:[],error:&failure) { _ in }
             return (documents,true)
         }
         return (manager.urls(for:.documentDirectory,in:.userDomainMask)[0],false)

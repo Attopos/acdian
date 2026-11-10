@@ -49,7 +49,7 @@ extension AppLanguage {
     private func startQuery() {
         let query = NSMetadataQuery()
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
-        query.predicate = NSPredicate(format:"%K LIKE '*'",NSMetadataItemFSNameKey)
+        query.predicate = NSPredicate(value:true)
         query.notificationBatchingInterval = 0.5
         for name in [NSNotification.Name.NSMetadataQueryDidFinishGathering,.NSMetadataQueryDidUpdate] {
             observers.append(NotificationCenter.default.addObserver(forName:name,object:query,queue:.main) { [weak self] _ in
