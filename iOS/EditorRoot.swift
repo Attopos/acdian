@@ -186,13 +186,20 @@ struct SidebarList: View {
                     }
                 }
                 Section { OutlineGroup(rows,children:\.children) { entry in row(entry) } }
-                Section {
-                    Button { model.showTrash() } label: { Label(model.localized("垃圾桶"),systemImage:"trash") }
-                    Button { sheet = .settings } label: { Label(model.localized("设置"),systemImage:"gearshape") }
-                }
             }
         }
         .listStyle(.sidebar).refreshable { model.refresh() }
+        // Trash and Settings stay at the bottom of the sidebar, below the scrolling list, as on the Mac.
+        .safeAreaInset(edge:.bottom,spacing:0) {
+            VStack(alignment:.leading,spacing:0) {
+                Divider()
+                Button { model.showTrash() } label: { Label(model.localized("垃圾桶"),systemImage:"trash").frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,11).contentShape(Rectangle()) }
+                    .accessibilityIdentifier("Trash")
+                Button { sheet = .settings } label: { Label(model.localized("设置"),systemImage:"gearshape").frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,11).contentShape(Rectangle()) }
+                    .accessibilityIdentifier("Settings")
+            }
+            .buttonStyle(.plain).foregroundStyle(Color.ink).padding(.horizontal,20).padding(.bottom,8).background(.bar)
+        }
         .searchable(text:$model.query,isPresented:$searching,prompt:model.localized("搜索"))
         .navigationTitle(model.activeModule?.name ?? model.localized("模块"))
         .toolbar {

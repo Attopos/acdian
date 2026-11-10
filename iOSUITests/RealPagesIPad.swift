@@ -26,4 +26,21 @@ final class RealPagesIPad: XCTestCase {
         XCTAssertTrue(app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH 'row-'")).count > 0,"The search finds pages")
         shot("p3-search")
     }
+
+    /// Trash and Settings sit at the bottom of the sidebar, in both orientations. Read-only.
+    func testSidebarBottom() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad only") }
+        let app = XCUIApplication(); app.launchArguments = ["-appLanguage","en"]; app.launch()
+        func shot(_ name: String) { Thread.sleep(forTimeInterval:2); let a = XCTAttachment(screenshot:XCUIScreen.main.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a) }
+        for orientation in [UIDeviceOrientation.landscapeLeft,.portrait] {
+            XCUIDevice.shared.orientation = orientation; Thread.sleep(forTimeInterval:2)
+            let trash = app.buttons["Trash"]
+            if !(trash.exists && trash.isHittable) { app.navigationBars.buttons.matching(NSPredicate(format:"label CONTAINS[c] 'sidebar'")).firstMatch.tap(); Thread.sleep(forTimeInterval:1.5) }
+            XCTAssertTrue(trash.waitForExistence(timeout:20),"Trash is shown")
+            let window = app.windows.firstMatch.frame
+            XCTAssertGreaterThan(trash.frame.minY,window.height * 0.75,"Trash is at the bottom")
+            XCTAssertGreaterThan(app.buttons["Settings"].frame.minY,trash.frame.minY,"Settings is below Trash")
+            shot(orientation == .portrait ? "s2-portrait" : "s1-landscape")
+        }
+    }
 }
