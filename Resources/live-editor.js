@@ -6,6 +6,7 @@ import { syntaxTree, ensureSyntaxTree, syntaxHighlighting, defaultHighlightStyle
 import { GFM } from '@lezer/markdown';
 import { slashCommands } from './slash-commands.js';
 import { formatToolbar } from './format-toolbar.js';
+import { touchInput, installTouchCommands, composing } from './touch-input.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { comments, loadComments, commentsTest } from './comments.js';
@@ -744,7 +745,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
   }
   const set=Decoration.set(list,true);blockWidgets.set(set,blocks);return set;
 }
-const liveField=StateField.define({create:state=>decorations(state),update(value,tr){return tr.docChanged||tr.selection||tr.startState.field(windowField)!==tr.state.field(windowField)||tr.startState.field(inputBlankField)!==tr.state.field(inputBlankField)||tr.startState.facet(editorLanguage)!==tr.state.facet(editorLanguage)||syntaxTree(tr.startState)!==syntaxTree(tr.state)?decorations(tr.state,reusableBlocks(value,tr)):value;},provide:field=>[EditorView.decorations.from(field),EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>value.spec.block===true}))]});
+const liveField=StateField.define({create:state=>decorations(state),update(value,tr){if(composing(tr))return value.map(tr.changes);return tr.docChanged||tr.selection||tr.startState.field(windowField)!==tr.state.field(windowField)||tr.startState.field(inputBlankField)!==tr.state.field(inputBlankField)||tr.startState.facet(editorLanguage)!==tr.state.facet(editorLanguage)||syntaxTree(tr.startState)!==syntaxTree(tr.state)?decorations(tr.state,reusableBlocks(value,tr)):value;},provide:field=>[EditorView.decorations.from(field),EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>value.spec.block===true}))]});
 // The caret is hidden while the selection rests on a divider, which shows as selected instead.
 const dividerCaret=EditorView.editorAttributes.compute(['selection',liveField],state=>{
   if(!state.selection.ranges.every(range=>range.empty))return {};
@@ -930,7 +931,7 @@ function simpleListBackspace(view) {
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
   history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
-  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),markdownInput(),comments({post,path:()=>metadata.currentPath}),
+  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
   keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'ArrowUp',run:intoTitle},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
@@ -950,6 +951,7 @@ configureRichText({post,uiText,currentPath:()=>metadata.currentPath,headings:hea
 // The text fills what the title leaves of the window, so a short page does not scroll.
 new ResizeObserver(()=>document.documentElement.style.setProperty('--page-title-height',titleBlock.offsetHeight+'px')).observe(titleBlock);
 window.acdianEditor=view;
+installTouchCommands(view);
 // One editor serves every tab. A tab put in the back keeps its whole editor
 // state (text, selection, undo history) and scroll place here; it comes back
 // as it was when the native side sends the same text again, or else starts

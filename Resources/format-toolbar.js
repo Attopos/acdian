@@ -357,6 +357,8 @@ export function setBlock(id,toggle=false) {
 const setPointer=StateEffect.define(),setFocus=StateEffect.define(),setMode=StateEffect.define(),dismiss=StateEffect.define();
 function toolbarVisible(state,value) {
   const range=state.selection.main;
+  // On touch the formatting buttons sit above the keyboard instead.
+  if(globalThis.acdianTouch===true)return false;
   if(state.readOnly||value.pointer||value.dismissed||!(value.focused||value.mode))return false;
   if(state.selection.ranges.length!==1||range.empty||!state.sliceDoc(range.from,range.to).trim())return false;
   return segments(state,range.from,range.to).length>0;
