@@ -35,7 +35,7 @@ struct LayoutAudit {
         func file(_ name: String) -> VaultEntry { model.index!.files.first { $0.relativePath == "Notes/\(name).md" }! }
         model.open(file("Main"),skipConfirmation:true)
         try await wait(2)
-        var problems: [String] = [], checks = 0
+        var problems: [String] = [], checks = 0, pushed: [String] = []
         func read(_ web: WKWebView, _ label: String) async throws {
             guard let json = try await web.evaluateJavaScript(measure) as? String, let m = try JSONSerialization.jsonObject(with:Data(json.utf8)) as? [String:Any] else { problems.append("\(label): no measure"); return }
             func n(_ key: String) -> Double { (m[key] as? NSNumber)?.doubleValue ?? .nan }
@@ -56,12 +56,17 @@ struct LayoutAudit {
         // AppKit views of the window, to find what overlaps what.
         func outlineClear(_ label: String) async throws {
             guard model.splitEntry == nil, model.showOutline else { return }
-            let width = LiveEditorHost.shared.view.bounds.width
-            let shift = LiveEditorHost.shared.centerShift
-            let textLeft = ContentView.pageLeft(width,shift:shift) + 58
-            // The docked outline keeps a gap to the text; otherwise only the rail shows, inside the margin.
-            if let dock = ContentView.outlineDockWidth(width,shift:shift) { if textLeft < dock + ContentView.outlineGap - 0.5 { problems.append("\(label): outline over the text, text at \(textLeft)") } }
+            let web = LiveEditorHost.shared.view
+            let article = window.contentLayoutRect.width - (model.showSidebar ? CGFloat(model.sidebarWidth + 1) : 0)
+            let shift = model.showSidebar ? CGFloat(model.sidebarWidth + 1) / 2 : 0
+            let layout = ContentView.outlineLayout(article,shift:shift,showOutline:true)
+            // Where the text starts in the article area, from where the editor really is.
+            let editorLeft = web.convert(web.bounds,to:nil).minX - (model.showSidebar ? CGFloat(model.sidebarWidth + 1) : 0)
+            if abs(editorLeft - layout.reserve) > 1 { problems.append("\(label): editor at \(editorLeft), expected \(layout.reserve)") }
+            let textLeft = editorLeft + ContentView.pageLeft(web.bounds.width,shift:LiveEditorHost.shared.centerShift) + ContentView.pageSide(web.bounds.width)
+            if let docked = layout.outline { if textLeft < docked + ContentView.outlineGap - 0.5 { problems.append("\(label): outline over the text, text at \(textLeft)") } }
             else if textLeft < 4 + 22 { problems.append("\(label): outline rail over the text, text at \(textLeft)") }
+            if layout.reserve > 0 { pushed.append(label) }
         }
         let sizes: [(CGFloat,CGFloat)] = [(920,620),(1000,700),(1100,720),(1260,840),(1440,900),(1512,982),(1728,1117),(1920,1080),(2560,1440),(3440,1440),(5120,1440)]
         let states: [(String,(AppModel) -> Void)] = [
@@ -93,7 +98,7 @@ struct LayoutAudit {
             if model.splitOnLeft { model.swapSplitSides() }
             model.closeSplit(); try await wait(0.3)
         }
-        print("checks",checks)
+        print("checks",checks); print("text pushed right for the outline:",pushed.joined(separator:", "))
         if CommandLine.arguments.count > 1 {
             let folder = URL(fileURLWithPath:CommandLine.arguments[1])
             func shot(_ name: String) throws {
