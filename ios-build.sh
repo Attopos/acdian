@@ -44,7 +44,7 @@ if (( SIMULATOR )); then
     exit 0
 fi
 
-DEVICES=(${(f)"$(xcrun devicectl list devices 2>/dev/null | awk '/available \(paired\)/ && !/simulated/' | grep -oE '[0-9A-F]{8}-[0-9A-F]{16}' || true)"})
+DEVICES=(${(f)"$(xcrun devicectl list devices 2>/dev/null | awk '(/available \(paired\)/ || / connected /) && !/simulated/' | grep -oE '[0-9A-F]{8}-[0-9A-F]{16}' || true)"})
 xcodebuild -quiet -project ACdian.xcodeproj -scheme ACdian -configuration Debug \
     -destination 'generic/platform=iOS' -derivedDataPath "$DERIVED" -allowProvisioningUpdates build
 APP="$DERIVED/Build/Products/Debug-iphoneos/ACdian.app"
