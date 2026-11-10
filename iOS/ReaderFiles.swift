@@ -54,6 +54,33 @@ enum ReaderFiles {
     /// Lists the pages folder from the disk and from the metadata query
     /// together: either may know of files the other has not heard about yet.
     /// Hidden items and the trash stay out, apart from root config files.
+    /// Drops what has been deleted since a saved listing was made: an item stays
+    /// if it, or its iCloud placeholder, is still there. Folders are checked first,
+    /// so a deleted folder takes everything in it without a check per file.
+    static func withoutDeleted(_ scan: Scan, root: URL) -> Scan {
+        let manager = FileManager.default
+        func exists(_ path: String) -> Bool {
+            let url = root.appendingPathComponent(path)
+            if manager.fileExists(atPath:url.path) { return true }
+            let placeholder = url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".icloud")
+            return manager.fileExists(atPath:placeholder.path)
+        }
+        var gone = Set<String>()
+        for item in scan.listing where item.isDirectory {
+            let parent = (item.relativePath as NSString).deletingLastPathComponent
+            if !parent.isEmpty, gone.contains(parent) || !exists(item.relativePath) { gone.insert(item.relativePath) }
+            else if parent.isEmpty, !exists(item.relativePath) { gone.insert(item.relativePath) }
+        }
+        var result = scan
+        result.listing = scan.listing.filter { item in
+            let parent = (item.relativePath as NSString).deletingLastPathComponent
+            if gone.contains(item.relativePath) || gone.contains(parent) { return false }
+            return item.isDirectory || exists(item.relativePath)
+        }
+        let kept = Set(result.listing.map(\.relativePath))
+        result.remote = scan.remote.filter { kept.contains($0) }
+        return result
+    }
     /// Just the folders and settings files at the top, for a first launcher.
     static func scanTopLevel(root: URL) -> Scan {
         var result = Scan()

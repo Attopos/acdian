@@ -65,6 +65,14 @@ extension AppLanguage {
                         self.diskScan = snapshot.scan
                         let loaded = Self.load(root:root,scan:snapshot.scan)
                         DispatchQueue.main.async { if !self.publishedAnything { self.publish(loaded,final:false,note:"from snapshot") } }
+                        // Pages deleted on another device since the snapshot go at once,
+                        // rather than after the full rescan.
+                        let checked = PerfLog.measure("check snapshot") { ReaderFiles.withoutDeleted(snapshot.scan,root:root) }
+                        if checked.listing.count != snapshot.scan.listing.count, !self.listed {
+                            self.diskScan = checked
+                            let loaded = Self.load(root:root,scan:checked)
+                            DispatchQueue.main.async { if !self.listed { self.publish(loaded,final:false,note:"snapshot without \(snapshot.scan.listing.count - checked.listing.count) deleted") } }
+                        }
                     } else {
                         let loaded = Self.load(root:root,scan:ReaderFiles.scanTopLevel(root:root))
                         DispatchQueue.main.async { if !self.publishedAnything { self.publish(loaded,final:false,note:"top level only") } }

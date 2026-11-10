@@ -40,24 +40,17 @@ struct RootView: View {
 }
 
 extension RootView {
-    /// With `--perf`: opens the biggest Card Index and searches, timing each.
+    /// With `--perf`: whether deleted pages are still shown, at launch and once the folder is rescanned.
     @MainActor private func perfRun() async {
         while store.index == nil { try? await Task.sleep(nanoseconds:20_000_000) }
         PerfLog.mark("launcher ready (\(store.presentModules.count) modules)")
-        try? await Task.sleep(nanoseconds:1_000_000_000)
-        if let card = store.components.keys.sorted().last(where: { $0.contains("GRE") }) ?? store.components.keys.first {
-            PerfLog.mark("open card index \(card)")
-            router.compactPath = [.file(card,fragment:"")]
-        } else { PerfLog.mark("no card index known yet") }
-        try? await Task.sleep(nanoseconds:5_000_000_000)
-        router.compactPath = []
-        for (label,word) in [("first search","abate"),("search","the"),("Chinese search","中文")] {
-            let found = PerfLog.measure("\(label) '\(word)'") { store.search(word,inModule:nil).count }
-            PerfLog.mark("  \(found) results, \(store.db?.count ?? 0) pages in cache")
+        for wait in [0,30,60,90] {
+            try? await Task.sleep(nanoseconds:UInt64(wait == 0 ? 1 : 30) * 1_000_000_000)
+            let listed = store.index?.files.filter { $0.relativePath.hasPrefix("CS/AI & CPU") }.count ?? 0
+            let cards = store.components.keys.filter { $0.contains("AI & CPU") }.count
+            let found = store.search("CUDA Graphs",inModule:nil).map(\.relativePath)
+            PerfLog.mark("deleted dictionary: \(listed) listed, \(cards) card index, search \(found.prefix(3)), \(store.db?.count ?? 0) cached pages")
         }
-        try? await Task.sleep(nanoseconds:45_000_000_000)
-        let found = PerfLog.measure("later search 'abate'") { store.search("abate",inModule:nil).count }
-        PerfLog.mark("  \(found) results, \(store.db?.count ?? 0) pages in cache")
     }
 }
 
