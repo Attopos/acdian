@@ -8,3 +8,7 @@ core-tests
 *.rej
 ACdian.xcodeproj/
 iOS/Generated/
+
+# App Store Connect API keys stay out of the repo.
+*.p8
+private_keys/
