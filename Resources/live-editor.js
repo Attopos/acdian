@@ -1093,15 +1093,16 @@ window.acdianScrollTo=raw=>{
   view.dispatch({selection:EditorSelection.cursor(pos)});
   if(!anchor){view.scrollDOM.scrollTop=0;headingFollowPausedUntil=performance.now()+400;reportHeading(-1);return true;}
   // The scroll effect is lost when moving the caret re-lays out the live
-  // decorations, so the heading is brought to the top of the scroller directly.
-  const scroller=view.scrollDOM,offset=view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop;
-  scroller.scrollTop=Math.max(0,offset+view.lineBlockAt(pos).top-24);
+  // decorations, so the heading is brought to the middle of the scroller directly.
+  const scroller=view.scrollDOM,offset=view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop,block=view.lineBlockAt(pos);
+  scroller.scrollTop=Math.max(0,offset+block.top+block.height/2-scroller.clientHeight/2);
   // The jumped-to heading stays current even when the page cannot scroll it to the top.
   headingFollowPausedUntil=performance.now()+400;reportHeading(headingStarts(view.state).indexOf(pos));
   return true;
 };
-// The outline follows the reader: the heading nearest the top of the view is
-// reported to the native outline whenever it changes (-1 before the first one).
+// The outline follows the reader: the last heading above the middle of the view,
+// where an outline jump puts its heading, is reported to the native outline
+// whenever it changes (-1 before the first one).
 // Headings are found with the same rules as the native outline list.
 let headingCache=null,reportedHeading=null,headingFrame=0,headingFollowPausedUntil=0;
 function headingStarts(state){
@@ -1114,7 +1115,7 @@ function reportHeading(index){if(index!==reportedHeading){reportedHeading=index;
 function followHeading(){
   headingFrame=0;
   if(performance.now()<headingFollowPausedUntil)return;
-  const scroller=view.scrollDOM,top=scroller.scrollTop-(view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop)+60;
+  const scroller=view.scrollDOM,top=scroller.scrollTop-(view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop)+scroller.clientHeight/2+8;
   const list=headingStarts(view.state);let index=-1;
   for(let i=0;i<list.length&&view.lineBlockAt(list[i]).top<=top;i++)index=i;
   reportHeading(index);
