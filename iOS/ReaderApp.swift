@@ -10,7 +10,8 @@ extension Color {
 }
 
 @main struct ReaderApp: App {
-    var body: some Scene { WindowGroup { RootView() } }
+    // Editing is iPad-only: an iPhone always gets the read-only reader.
+    var body: some Scene { WindowGroup { if UIDevice.current.userInterfaceIdiom == .pad { EditorRoot() } else { RootView() } } }
 }
 
 struct RootView: View {

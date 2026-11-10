@@ -1,9 +1,6 @@
 /* Loaded only by the iOS app, on top of the Mac editor's styles. */
 html,body { -webkit-text-size-adjust:100%; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
 
-/* Comments are not shown in the read-only reader. */
-.cm-comments,.cm-comments-panel,.cm-comments-header,.cm-comments-opener,.cm-comments-solved,.cm-comment-badge { display:none!important; }
-
 @media (hover:none) {
   /* Fold arrows appear on hover, so on touch only the ones already folded remain. */
   .cm-editor .cm-fold-toggle:not(.cm-fold-closed) { display:none; }

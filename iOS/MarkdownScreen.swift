@@ -62,7 +62,7 @@ struct ReaderWebView: UIViewRepresentable {
     }
 
     /// The touch adjustments live only in this app; the Mac editor never loads them.
-    private static let touchScript: String = {
+    static let touchBasics: String = {
         let css = Bundle.main.url(forResource:"reader-touch",withExtension:"css").flatMap { try? String(contentsOf:$0,encoding:.utf8) } ?? ""
         let literal = (try? JSONSerialization.data(withJSONObject:[css])).flatMap { String(data:$0,encoding:.utf8) } ?? "[\"\"]"
         return """
@@ -70,15 +70,21 @@ struct ReaderWebView: UIViewRepresentable {
           var meta=document.querySelector('meta[name=viewport]');
           if(meta)meta.setAttribute('content','width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
           var style=document.createElement('style');style.textContent=\(literal)[0];document.head.appendChild(style);
-          document.addEventListener('click',function(event){
-            var image=event.target.closest&&event.target.closest('img[data-live-resource]');
-            if(!image||image.closest('a,[data-live-target]'))return;
-            event.preventDefault();event.stopPropagation();
-            window.webkit.messageHandlers.acdian.postMessage({type:'openImage',target:image.dataset.liveResource});
-          },true);
         })();
         """
     }()
+    /// The read-only reader has no comment rail, and a tapped picture opens full screen.
+    private static let touchScript: String = touchBasics + """
+    (function(){
+      var style=document.createElement('style');style.textContent='.cm-comments,.cm-comments-panel,.cm-comments-header,.cm-comments-opener,.cm-comments-solved,.cm-comment-badge{display:none!important}';document.head.appendChild(style);
+      document.addEventListener('click',function(event){
+        var image=event.target.closest&&event.target.closest('img[data-live-resource]');
+        if(!image||image.closest('a,[data-live-target]'))return;
+        event.preventDefault();event.stopPropagation();
+        window.webkit.messageHandlers.acdian.postMessage({type:'openImage',target:image.dataset.liveResource});
+      },true);
+    })();
+    """
 
     @MainActor final class Coordinator: NSObject, WKScriptMessageHandler, WKURLSchemeHandler, WKNavigationDelegate {
         weak var view: WKWebView?
@@ -146,7 +152,7 @@ struct ReaderWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
             guard let request = task.request.url, let components = URLComponents(url:request,resolvingAgainstBaseURL:false) else { task.didFailWithError(URLError(.badURL)); return }
             let path = String(components.percentEncodedPath.dropFirst())
-            if components.host == "interactive" { serveInteractive(task,request:request,path:path); return }
+            if components.host == "interactive" { Self.serveInteractiveFrame(task,request:request,path:path); return }
             let from = components.queryItems?.first { $0.name == "from" }?.value ?? ""
             guard let url = page?.store.index?.resolve(path,from:from) else { task.didFailWithError(URLError(.fileDoesNotExist)); return }
             let id = ObjectIdentifier(task as AnyObject); tasks.insert(id)
@@ -168,7 +174,7 @@ struct ReaderWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) { tasks.remove(ObjectIdentifier(task as AnyObject)) }
         private static let interactivePolicy = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' acdian-resource://interactive; style-src 'unsafe-inline' acdian-resource://interactive; img-src data: blob: acdian-resource://interactive; font-src data: acdian-resource://interactive; media-src data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'"
         /// Interactive blocks load their frame and libraries from the app itself, as on the Mac.
-        private func serveInteractive(_ task: WKURLSchemeTask, request: URL, path: String) {
+        fileprivate static func serveInteractiveFrame(_ task: WKURLSchemeTask, request: URL, path: String) {
             let parts = (path.removingPercentEncoding ?? "").split(separator:"/").map(String.init)
             guard let resources = Bundle.main.resourceURL, !parts.isEmpty, !parts.contains(where:{ $0.hasPrefix(".") }) else { task.didFailWithError(URLError(.badURL)); return }
             let library = parts[0] == "lib", rest = library ? Array(parts.dropFirst()) : parts
@@ -182,6 +188,7 @@ struct ReaderWebView: UIViewRepresentable {
         }
         private struct PendingTask: @unchecked Sendable { let task: WKURLSchemeTask }
     }
+    @MainActor static func serveInteractive(_ task: WKURLSchemeTask, request: URL, path: String) { Coordinator.serveInteractiveFrame(task,request:request,path:path) }
     /// WebKit keeps message handlers strongly; this keeps only a weak link back.
     private final class MessageRelay: NSObject, WKScriptMessageHandler {
         weak var coordinator: Coordinator?

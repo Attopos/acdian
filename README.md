@@ -48,6 +48,10 @@ ACdian 自动准备本地页面的保存位置，打开后即可使用，无需�
 
 `iOS/` 是只读阅读器（iPhone 与 iPad 同一个应用，iOS 17+），和 Mac 共用 `Sources/` 里的六个核心文件和 `Resources/` 里的网页编辑器。页面来自 iCloud Drive 的 ACdian 文件夹（Mac 上是 `~/Library/Mobile Documents/iCloud~com~acdian~reader/Documents`）；iCloud 不可用时显示应用自己的 Documents 文件夹。应用不会写入、移动或删除页面文件夹里的任何内容。
 
+iPad 上可以编辑（iPhone 仍然只读）：同一个网页编辑器，自动保存，切到后台时补存；侧栏新建页面、重命名、移动、移到垃圾桶和恢复；键盘上方有格式按钮；可从“照片”或“文件”插入附件。和 Mac 共用 `Sources/AppModel.swift`，系统相关的部分在 `PlatformServices` 后面。另一台设备同时改过的页面在保存时三方合并，冲突的段落两边都保留在提示块里。触屏专用的输入修正在 `Resources/touch-input.js`，只在 iOS 应用里启用：拼音等输入法组词、智能破折号、系统撤销手势。
+
+iPad 编辑的界面测试：在 iPad 模拟器里把 fixtures 副本放进应用的 Documents，以 `--local-pages` 启动，运行 `ACdianUITests/EditorTour`。触屏输入的单元测试：`npx esbuild Tests/touch-input-tests.mjs --bundle --platform=node --format=esm --outfile=.build/touch-input-tests.mjs && node .build/touch-input-tests.mjs`。
+
 需要完整的 Xcode 和 `xcodegen`（`brew install xcodegen`）。`./ios-build.sh` 生成 `ACdian.xcodeproj` 并构建模拟器版和已配对设备版；`./ios-build.sh simulator` 或 `./ios-build.sh device` 只构建其一。工程文件由 `project.yml` 生成，不提交。Mac 版仍由 `build.sh` 构建，不依赖这个工程。
 
 ## 模块

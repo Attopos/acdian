@@ -31,6 +31,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     private static let translations: [String:(english:String,spanish:String)] = [
         "好": ("OK", "Aceptar"),
+        "文件": ("Files", "Archivos"),
         "正在从 iCloud 下载 %@…": ("Downloading %@ from iCloud…", "Descargando %@ de iCloud…"),
         "移到 iCloud": ("Move Pages to iCloud", "Mover páginas a iCloud"),
         "正在复制到 iCloud…": ("Copying to iCloud…", "Copiando a iCloud…"),
