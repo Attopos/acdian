@@ -203,3 +203,7 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/Vau
 侧栏拖动耗时：同 `Tests/SplitViewTests.swift` 的方式（加 `-O`）构建 `Tests/DragMoveBenchmark.swift`，运行 `drag-move-benchmark <页面文件夹副本> <模块> <页面或文件夹> <目标文件夹> [open]`，会来回移动多次，请用副本。
 
 测试通过独立的 `Fixtures/Vault` 或临时页面目录运行，不修改个人页面或保存偏好。
+
+## 备份
+
+`资料库` 是 iCloud 页面文件夹的完整副本，删除也会同步过去。`scripts/backup-sync.py` 负责同步：被删掉或被覆盖的旧文件先移到 `资料库-已删除/<日期>`，保留 7 天后清除。遇到以下情况会停下，不做任何改动：iCloud 文件夹看起来是空的或没挂载；有页面还只在 iCloud 里、下载不下来；要删的文件超过备份的 5%。加 `--dry-run` 只列出将要做的改动。目前需要手动运行，还没有设成每天自动运行。
