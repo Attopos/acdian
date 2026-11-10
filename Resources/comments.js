@@ -220,6 +220,8 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     this.opener=document.createElement('button');this.opener.type='button';this.opener.className='cm-comments-opener';
     this.opener.addEventListener('click',()=>this.setCollapsed(false));
     this.collapsed=storedCollapsed();
+    // The app's own menu and keyboard shortcut show or hide the comments.
+    globalThis.acdianToggleComments=()=>this.setCollapsed(!this.collapsed);
     this.dom.append(this.panel,this.footer,this.header,this.opener);
     // Clicks in the cards stay out of the editor's own mouse handling.
     this.dom.addEventListener('mousedown',event=>event.stopPropagation());
@@ -267,6 +269,13 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
   setCollapsed(collapsed) {
     this.collapsed=collapsed;
     try{localStorage.setItem(collapsedKey,collapsed?'1':'0');}catch{}
+    // The iOS app keeps no web storage between launches, so it remembers this itself.
+    if(globalThis.acdianTouch){
+      config.post({type:'commentsCollapsed',collapsed});
+      // On a touch screen only the open comment shows, so showing them opens the first one.
+      const state=this.view.state.field(commentsField);
+      if(!collapsed&&state.active==null&&state.threads.length)this.dispatch(setActive.of(state.threads[0].id));
+    }
     this.schedule();
   }
   strings(){return messagesForLanguage(this.view.state.facet(editorLanguage)).comments;}
@@ -305,6 +314,8 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     const resolve=this.tool(()=>{const thread=this.thread(id);if(!thread)return;if(!thread.replies.length){this.dispatch(removeThread.of(id));return;}this.dispatch(updateThread.of({id,solved:!thread.solved}),setActive.of(null));});
     const remove=this.tool(()=>this.dispatch(removeThread.of(id)));
     head.append(quote,resolve,remove);
+    // On a touch screen the open comment can cover the text, so it can be put away.
+    if(globalThis.acdianTouch){const hide=this.tool(()=>this.setCollapsed(true));hide.classList.add('cm-comments-collapse');hide.innerHTML=icons.collapse;hide.title=this.strings().collapse;hide.setAttribute('aria-label',this.strings().collapse);head.append(hide);}
     const replies=document.createElement('div');replies.className='cm-comment-replies';
     const composer=document.createElement('div');composer.className='cm-comment-composer';
     const input=document.createElement('textarea');input.className='cm-comment-input';input.rows=1;input.spellcheck=false;
@@ -441,7 +452,8 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     classes.toggle('cm-comments-wide',mode==='wide');classes.toggle('cm-comments-narrow',mode==='narrow');
     for(const element of [this.panel,this.header]){element.style.top=m.fixedTop+'px';element.style.right=m.fixedRight+'px';element.style.width=COLUMN+'px';}
     this.opener.style.top=(m.fixedTop+12)+'px';this.opener.style.right=(m.fixedRight+16)+'px';
-    this.opener.hidden=!(any&&m.wide&&this.collapsed);
+    this.opener.hidden=!(any&&this.collapsed&&(m.wide||globalThis.acdianTouch));
+    classes.toggle('cm-comments-collapsed',any&&this.collapsed&&!!globalThis.acdianTouch);
     // The text moves over to make room, so the places are read again.
     if(mode!==this.mode){this.mode=mode;requestAnimationFrame(()=>this.schedule());return;}
     const active=this.view.state.field(commentsField).active;

@@ -41,7 +41,7 @@ struct EditorRoot: View {
                 if PerfLog.enabled { DispatchQueue.main.asyncAfter(deadline:.now() + 30) { PerfLog.mark("after launch: \(model.index?.files.count ?? 0) files, page open: \(model.selected?.relativePath ?? "none"), tabs: \(model.tabs.count)")
                     // The listing, for comparing with the Mac; written to the app's own folder, not the pages.
                     let list = (model.index?.files ?? []).map(\.relativePath).sorted().joined(separator:"\n")
-                    try? list.write(to:FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("perf-files.txt"),atomically:true,encoding:.utf8)
+                    try? list.write(to:FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("perf-files.txt").deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("tmp/perf-files.txt"),atomically:true,encoding:.utf8)
                 } }
                 if found.iCloud { ICloudDownloader.start(root:found.root) { Self.refreshWhenLoaded(model) } }
             }
@@ -123,6 +123,7 @@ struct EditorWorkspace: View {
             Button(model.localized("所有页面")) { model.goHome() }.keyboardShortcut("h",modifiers:[.command,.shift])
             Button(model.localized("显示或隐藏侧栏")) { withAnimation { columns = columns == .detailOnly ? .all : .detailOnly } }.keyboardShortcut("s",modifiers:[.control,.command])
             Button(model.localized("评论")) { EditorHost.shared.format("comment") }.keyboardShortcut("m",modifiers:[.command,.shift])
+            Button(model.localized("显示或隐藏评论")) { EditorHost.shared.toggleComments() }.keyboardShortcut("c",modifiers:[.command,.option])
         }.opacity(0).frame(width:0,height:0).accessibilityHidden(true)
     }
     /// The editor's latest text is asked for, and written, before iOS suspends the app.

@@ -35,7 +35,9 @@ import UniformTypeIdentifiers
         let schemes = SchemeRelay()
         config.setURLSchemeHandler(schemes,forURLScheme:"acdian-resource")
         // The flag is set before the editor's own script runs; the Mac never sets it.
-        config.userContentController.addUserScript(WKUserScript(source:"window.acdianTouch=true;",injectionTime:.atDocumentStart,forMainFrameOnly:true))
+        // Whether the comments were put away, remembered across launches.
+        let collapsed = UserDefaults.standard.bool(forKey:"commentsCollapsed") ? "1" : "0"
+        config.userContentController.addUserScript(WKUserScript(source:"window.acdianTouch=true;try{localStorage.setItem('acdian.commentsCollapsed','\(collapsed)')}catch(e){}",injectionTime:.atDocumentStart,forMainFrameOnly:true))
         config.userContentController.addUserScript(WKUserScript(source:ReaderWebView.touchBasics,injectionTime:.atDocumentEnd,forMainFrameOnly:true))
         view = WKWebView(frame:.zero,configuration:config)
         super.init()
@@ -140,12 +142,17 @@ import UniformTypeIdentifiers
         }
     }
     /// A formatting button above the keyboard, or undo/redo.
+    /// Shows or hides the comments, in both editors of split view.
+    func toggleComments() {
+        for host in [EditorHost.shared,EditorHost.split] { host.view.evaluateJavaScript("window.acdianToggleComments&&window.acdianToggleComments();",completionHandler:nil) }
+    }
     func format(_ action: String) { view.evaluateJavaScript("window.acdianFormat&&window.acdianFormat('\(action)');",completionHandler:nil) }
     func dismissKeyboard() { view.evaluateJavaScript("document.activeElement&&document.activeElement.blur();",completionHandler:nil) }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let value = message.body as? [String:Any], let type = value["type"] as? String else { return }
         if type == "ready" { ready = true; render(); return }
+        if type == "commentsCollapsed" { UserDefaults.standard.set(value["collapsed"] as? Bool ?? false,forKey:"commentsCollapsed"); return }
         if type == "focus" { focused = value["focused"] as? Bool ?? false; return }
         if type == "imageMenu", let target = value["target"] as? String { imageMenu = (target,documentPath); return }
         if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
