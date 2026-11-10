@@ -41,6 +41,10 @@ rm -rf "$OLD"
 codesign --verify --strict "$INSTALLED"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$INSTALLED"
 echo "Installed: $INSTALLED"
+# The build folder is empty once the app has moved; the Swift module cache stays,
+# as it is small and makes the next build faster.
+rm -rf "$APP:h"
+echo "Free disk: $(df -h /private/tmp | awk 'NR==2 {print $4}')"
 if (( WAS_RUNNING )); then
     open "$INSTALLED"
 fi

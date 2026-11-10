@@ -42,7 +42,7 @@ ACdian 自动准备本地页面的保存位置，打开后即可使用，无需�
 不需要网络，渲染依赖与字体均已包含，许可证在 `Resources/vendor`。
 压缩包写入本目录的 `dist`（可用 `ACDIAN_OUTPUT_DIR` 指定），可直接打开的 `ACdian.app` 位于 `/private/tmp/acdian-build-<UID>`，每次构建都会覆盖。
 
-安装到本机请执行 `./install.sh`：构建后退出正在运行的 ACdian，用新版替换 `/Applications/ACdian.app`，再重新打开。本机只保留这一份，不留旧版本和备份；旧版本可从 git 重新构建。
+安装到本机请执行 `./install.sh`：构建后退出正在运行的 ACdian，用新版替换 `/Applications/ACdian.app`，再重新打开，然后删除 `/private/tmp/acdian-build-<UID>` 构建目录并打印剩余磁盘空间（Swift 模块缓存保留，以加快下次构建）。本机只保留这一份，不留旧版本和备份；旧版本可从 git 重新构建。
 
 ## iPhone 与 iPad
 
@@ -52,7 +52,7 @@ iPad 上可以编辑（iPhone 仍然只读）：同一个网页编辑器，自�
 
 iPad 编辑的界面测试：在 iPad 模拟器里把 fixtures 副本放进应用的 Documents，以 `--local-pages` 启动，运行 `ACdianUITests/EditorTour`。触屏输入的单元测试：`npx esbuild Tests/touch-input-tests.mjs --bundle --platform=node --format=esm --outfile=.build/touch-input-tests.mjs && node .build/touch-input-tests.mjs`。
 
-需要完整的 Xcode 和 `xcodegen`（`brew install xcodegen`）。`./ios-build.sh` 生成 `ACdian.xcodeproj` 并构建模拟器版和已配对设备版；`./ios-build.sh simulator` 或 `./ios-build.sh device` 只构建其一。工程文件由 `project.yml` 生成，不提交。Mac 版仍由 `build.sh` 构建，不依赖这个工程。
+需要完整的 Xcode 和 `xcodegen`（`brew install xcodegen`）。`./ios-build.sh` 构建并安装到所有已连接、已解锁的 iPhone 和 iPad；`--simulator` 改为构建模拟器版（不安装）；`--keep` 保留构建结果（比如要跑界面测试），用完运行 `./ios-build.sh clean`。不加 `--keep` 时，脚本无论成功、失败还是被 Ctrl-C 中断都会清理：关掉所有模拟器、退出 Simulator，删除 `/private/tmp/acdian-ios-build-*`、`/private/tmp/acdian-ios-phone-*`、生成的 `ACdian.xcodeproj` 和本项目的 DerivedData，最后打印剩余磁盘空间。模拟器系统和设备、页面文件夹都不会动。工程文件由 `project.yml` 生成，不提交。Mac 版仍由 `build.sh` 构建，不依赖这个工程。
 
 ## 模块
 
