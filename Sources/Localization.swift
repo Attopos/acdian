@@ -128,6 +128,13 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "剩余 1 天": ("1 day remaining", "Queda 1 día"),
         "文件已移到垃圾桶": ("Moved to Trash", "Movido a la papelera"),
         "文件已恢复": ("File restored", "Archivo restaurado"),
+        "清空垃圾桶": ("Empty Trash", "Vaciar papelera"),
+        "清空垃圾桶…": ("Empty Trash…", "Vaciar papelera…"),
+        "要彻底删除垃圾桶里的所有项目吗？": ("Permanently delete all items in Trash?", "¿Eliminar definitivamente todos los elementos de la papelera?"),
+        "此操作无法撤销。": ("You can’t undo this action.", "Esta acción no se puede deshacer."),
+        "彻底删除": ("Delete Permanently", "Eliminar definitivamente"),
+        "垃圾桶已清空": ("Trash emptied", "Papelera vaciada"),
+        "部分项目仍在 iCloud 同步，稍后会自动删除": ("Some items are still syncing with iCloud and will be deleted later", "Algunos elementos aún se sincronizan con iCloud y se eliminarán más tarde"),
         "无法安全访问垃圾桶。": ("Trash could not be accessed safely.", "No se pudo acceder a la papelera de forma segura."),
         "垃圾桶项目无效或已损坏。": ("This Trash item is invalid or damaged.", "Este elemento de la papelera no es válido o está dañado."),
         "找不到垃圾桶项目。": ("This Trash item could not be found.", "No se pudo encontrar este elemento de la papelera."),
@@ -226,7 +233,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 }
 
 enum AppStatus {
-    case ready, readingPages, openedPages(Int), refreshed, trashed, restored, attachmentsCleaned, imported(Int), opening(String), downloading(String), saving, saveFailed, saved(Date), path(String)
+    case ready, readingPages, openedPages(Int), refreshed, trashed, restored, trashEmptied, trashPartlyEmptied, attachmentsCleaned, imported(Int), opening(String), downloading(String), saving, saveFailed, saved(Date), path(String)
     func localized(_ language: AppLanguage) -> String {
         switch self {
         case .ready: return language.localized("就绪")
@@ -235,6 +242,8 @@ enum AppStatus {
         case .refreshed: return language.localized("页面已刷新")
         case .trashed: return language.localized("文件已移到垃圾桶")
         case .restored: return language.localized("文件已恢复")
+        case .trashEmptied: return language.localized("垃圾桶已清空")
+        case .trashPartlyEmptied: return language.localized("部分项目仍在 iCloud 同步，稍后会自动删除")
         case .attachmentsCleaned: return language.localized("未被引用的附件已移到垃圾桶")
         case .imported(let count): return count == 1 ? language.localized("已复制 1 个项目") : language.localized("已复制 %@ 个项目",arguments:[language.number(count)])
         case .opening(let name): return language.localized("正在打开 %@…",arguments:[name])

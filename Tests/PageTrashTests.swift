@@ -385,6 +385,20 @@ struct PageTrashTests {
             try check(restored.lastPathComponent == "Page 2.md" && (try Data(contentsOf:restored)) == text && (try Data(contentsOf:pages.appendingPathComponent("Page.md"))) == binary, "Recovery after rollback conflict must restore beside the replacement without overwriting either version")
         }
 
+        do {
+            now = epoch
+            let pages = try directory("empty-trash")
+            var settled = true
+            let trash = try PageTrash(root:pages,nowDate:{ now },isSettled:{ _ in settled })
+            try write(Data("a".utf8),pages,"A.md"); try write(Data("b".utf8),pages,"Folder/B.md")
+            let a = try trash.moveToTrash(relativePath:"A.md"), b = try trash.moveToTrash(relativePath:"Folder")
+            settled = false
+            try check(try trash.emptyTrash().isEmpty && trash.entries().count == 2, "Empty Trash must leave items iCloud is still syncing")
+            settled = true
+            try check(Set(try trash.emptyTrash()) == [a.id,b.id] && trash.entries().isEmpty && !fm.fileExists(atPath:entryDirectory(pages,a.id).path) && !fm.fileExists(atPath:entryDirectory(pages,b.id).path), "Empty Trash must remove every item before its 15 days are up")
+            try check(try trash.emptyTrash().isEmpty, "Emptying an empty trash must do nothing")
+        }
+
         print("PageTrash: \(checks) checks passed for exact-byte recovery, nested folders, 15-day expiry, conflicts, failed operations, corrupt metadata and symlink safety")
     }
 }

@@ -578,6 +578,25 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             return true
         } catch { self.error = localizedError(error); refreshTrash(); return false }
     }
+    func confirmEmptyTrash() {
+        guard !trashEntries.isEmpty else { return }
+        services.confirm(title:localized("要彻底删除垃圾桶里的所有项目吗？"),detail:localized("此操作无法撤销。"),action:localized("彻底删除"),cancel:localized("取消")) { [weak self] yes in
+            if yes { self?.emptyTrash() }
+        }
+    }
+    /// Permanently removes everything in the trash. Items iCloud is still
+    /// syncing are kept and picked up by the next refresh, like expiry.
+    @discardableResult func emptyTrash() -> Bool {
+        guard let root = index?.root ?? pageStorageRoot else { return false }
+        do {
+            let trash = try PageTrash(root:root,nowDate:trashNow)
+            try trash.emptyTrash()
+            trashEntries = try trash.entries()
+            scheduleTrashCleanup()
+            statusValue = trashEntries.isEmpty ? .trashEmptied : .trashPartlyEmptied
+            return trashEntries.isEmpty
+        } catch { self.error = localizedError(error); refreshTrash(); return false }
+    }
     private func reindexAfterTrashMutation(_ root: URL) {
         do { index = try VaultIndex(root:root); rebuildSearch() }
         catch { self.error = localizedError(error) }

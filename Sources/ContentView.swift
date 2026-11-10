@@ -422,6 +422,7 @@ struct SidebarView: View {
                     .background(model.showingTrash ? Color.acPink.opacity(0.09) : .clear,in:RoundedRectangle(cornerRadius:7))
             }.buttonStyle(.plain).padding(.horizontal,10).padding(.bottom,12)
                 .accessibilityIdentifier("trashButton")
+                .contextMenu { Button(role:.destructive) { model.confirmEmptyTrash() } label: { Label(model.localized("清空垃圾桶…"),systemImage:"trash.slash") }.disabled(model.trashEntries.isEmpty) }
             Rectangle().fill(Color.faint).frame(height:1).padding(.horizontal,16)
             HStack(spacing:14) { SettingsButton(); Spacer() }.padding(.horizontal,20).padding(.vertical,14)
         }.background(Color.rail)
@@ -728,7 +729,14 @@ struct TrashView: View {
     @ObservedObject var model: AppModel
     var body: some View {
         VStack(alignment:.leading,spacing:16) {
-            Text(model.localized("垃圾桶")).font(.system(size:28,weight:.bold))
+            HStack(alignment:.firstTextBaseline) {
+                Text(model.localized("垃圾桶")).font(.system(size:28,weight:.bold))
+                Spacer()
+                if !model.trashEntries.isEmpty {
+                    Button(role:.destructive) { model.confirmEmptyTrash() } label: { Label(model.localized("清空垃圾桶…"),systemImage:"trash.slash") }
+                        .buttonStyle(.bordered).accessibilityIdentifier("emptyTrash")
+                }
+            }
             Text(model.localized("删除的文件会保留 15 天，之后自动彻底删除。"))
                 .font(.system(size:12)).foregroundStyle(.secondary)
             if model.trashEntries.isEmpty {
@@ -754,6 +762,11 @@ struct TrashView: View {
                                 Button(model.localized("恢复")) { model.restoreFromTrash(entry) }.buttonStyle(.bordered)
                                     .accessibilityIdentifier("restore-\(entry.id.uuidString)")
                             }.padding(15).background(Color.wash,in:RoundedRectangle(cornerRadius:9))
+                            .contextMenu {
+                                Button(model.localized("恢复")) { model.restoreFromTrash(entry) }
+                                Divider()
+                                Button(model.localized("清空垃圾桶…"),role:.destructive) { model.confirmEmptyTrash() }
+                            }
                         }
                     }.padding(.top,7)
                 }

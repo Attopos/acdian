@@ -321,6 +321,13 @@ struct TrashList: View {
                 Button(model.localized("恢复")) { model.restoreFromTrash(entry) }.buttonStyle(.bordered).accessibilityIdentifier("restore-" + entry.name)
             }
         }.overlay { if model.trashEntries.isEmpty { ReaderEmptyState(icon:"trash",message:model.localized("垃圾桶")) } }
+        .toolbar {
+            if !model.trashEntries.isEmpty {
+                ToolbarItem(placement:.primaryAction) {
+                    Button(role:.destructive) { model.confirmEmptyTrash() } label: { Text(model.localized("清空垃圾桶")) }.accessibilityIdentifier("emptyTrash")
+                }
+            }
+        }
     }
 }
 

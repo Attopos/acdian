@@ -187,17 +187,29 @@ final class PageTrash {
     }
 
     /// Malformed or incomplete entries are retained. Only a validated record
-    /// with its exact 15-day deadline may authorize permanent payload removal.
+    /// with its exact 15-day deadline, or Empty Trash, may authorize permanent
+    /// payload removal.
     @discardableResult func purgeExpired() throws -> [UUID] {
+        let now = nowDate()
+        return try purge { $0.expiresAt <= now }
+    }
+
+    /// Empty Trash: every validated entry is removed for good, under the same
+    /// rules as expiry. Entries iCloud is still syncing stay in `entries()`
+    /// and are removed by a later purge once they have settled.
+    @discardableResult func emptyTrash() throws -> [UUID] {
+        try purge { _ in true }
+    }
+
+    private func purge(_ shouldRemove: (Entry) -> Bool) throws -> [UUID] {
         lock.lock(); defer { lock.unlock() }
         guard let storage = try trashDirectory(create: false) else { return [] }
-        let now = nowDate()
         var removed: [UUID] = []
         for name in try names(in: storage.fd) {
             guard let id = UUID(uuidString: name), name == id.uuidString,
                   let directory = try? openDirectory(storage.fd, name),
                   let entry = try? validatedEntry(id, in: directory.fd),
-                  entry.expiresAt <= now else { continue }
+                  shouldRemove(entry) else { continue }
             // Something iCloud is still moving, for example a restore made on
             // another device, is left alone and looked at again next time.
             let entryURL = storageURL.appendingPathComponent(name, isDirectory: true)
