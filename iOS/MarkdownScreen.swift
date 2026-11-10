@@ -38,27 +38,64 @@ struct ReaderWebView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.preferences.javaScriptCanOpenWindowsAutomatically = false
-        config.websiteDataStore = .nonPersistent()
-        config.setURLSchemeHandler(context.coordinator,forURLScheme:"acdian-resource")
-        config.userContentController.add(MessageRelay(context.coordinator),name:"acdian")
-        config.userContentController.addUserScript(WKUserScript(source:Self.touchScript,injectionTime:.atDocumentEnd,forMainFrameOnly:true))
-        let view = WKWebView(frame:.zero,configuration:config)
-        view.isOpaque = false; view.backgroundColor = .clear; view.scrollView.backgroundColor = .clear
-        // CodeMirror scrolls inside the page; the outer view must stay still.
-        view.scrollView.isScrollEnabled = false; view.scrollView.bounces = false
-        view.scrollView.contentInsetAdjustmentBehavior = .never
-        view.allowsLinkPreview = false
+        // A web view with the editor already loaded is taken from the pool, so a
+        // page shows without waiting for the editor's scripts to start.
+        let (view,relay) = WebViewPool.shared.take()
+        PerfLog.mark("web view taken (prewarmed \(relay.ready))")
         view.navigationDelegate = context.coordinator
         context.coordinator.view = view
-        context.coordinator.update(self); context.coordinator.load()
+        context.coordinator.update(self)
+        relay.coordinator = context.coordinator
+        if relay.ready { context.coordinator.becameReady() }
         return view
     }
     func updateUIView(_ view: WKWebView, context: Context) { context.coordinator.update(self); context.coordinator.render() }
     static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
         view.configuration.userContentController.removeAllScriptMessageHandlers()
         view.stopLoading()
+    }
+
+    /// Keeps one web view loaded and ready for the next page.
+    @MainActor final class WebViewPool {
+        static let shared = WebViewPool()
+        private var spare: (WKWebView,Relay)?
+        func warm() {
+            guard spare == nil else { return }
+            let relay = Relay()
+            let config = WKWebViewConfiguration()
+            config.preferences.javaScriptCanOpenWindowsAutomatically = false
+            config.websiteDataStore = .nonPersistent()
+            config.setURLSchemeHandler(relay,forURLScheme:"acdian-resource")
+            config.userContentController.add(relay,name:"acdian")
+            config.userContentController.addUserScript(WKUserScript(source:ReaderWebView.touchScript,injectionTime:.atDocumentEnd,forMainFrameOnly:true))
+            let view = WKWebView(frame:CGRect(x:0,y:0,width:390,height:800),configuration:config)
+            view.isOpaque = false; view.backgroundColor = .clear; view.scrollView.backgroundColor = .clear
+            // CodeMirror scrolls inside the page; the outer view must stay still.
+            view.scrollView.isScrollEnabled = false; view.scrollView.bounces = false
+            view.scrollView.contentInsetAdjustmentBehavior = .never
+            view.allowsLinkPreview = false
+            if let url = Bundle.main.url(forResource:"live-editor",withExtension:"html") { view.loadFileURL(url,allowingReadAccessTo:url.deletingLastPathComponent()) }
+            spare = (view,relay)
+        }
+        func take() -> (WKWebView,Relay) {
+            if spare == nil { warm() }
+            let taken = spare!; spare = nil
+            DispatchQueue.main.async { self.warm() }
+            return taken
+        }
+    }
+    /// Passes the page's messages and resource requests to whichever page took the view.
+    final class Relay: NSObject, WKScriptMessageHandler, WKURLSchemeHandler {
+        weak var coordinator: Coordinator?
+        var ready = false
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            MainActor.assumeIsolated {
+                if (message.body as? [String:Any])?["type"] as? String == "ready" { ready = true }
+                coordinator?.userContentController(controller,didReceive:message)
+            }
+        }
+        func webView(_ webView: WKWebView, start task: WKURLSchemeTask) { MainActor.assumeIsolated { if let coordinator { coordinator.webView(webView,start:task) } else { task.didFailWithError(URLError(.cancelled)) } } }
+        func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) { MainActor.assumeIsolated { coordinator?.webView(webView,stop:task) } }
     }
 
     /// The touch adjustments live only in this app; the Mac editor never loads them.
@@ -74,7 +111,7 @@ struct ReaderWebView: UIViewRepresentable {
         """
     }()
     /// The read-only reader has no comment rail, and a tapped picture opens full screen.
-    private static let touchScript: String = touchBasics + """
+    static let touchScript: String = touchBasics + """
     (function(){
       var style=document.createElement('style');style.textContent='.cm-comments,.cm-comments-panel,.cm-comments-header,.cm-comments-opener,.cm-comments-solved,.cm-comment-badge{display:none!important}';document.head.appendChild(style);
       document.addEventListener('click',function(event){
@@ -97,6 +134,7 @@ struct ReaderWebView: UIViewRepresentable {
         private var tasks = Set<ObjectIdentifier>()
 
         func update(_ page: ReaderWebView) { self.page = page }
+        func becameReady() { PerfLog.mark("editor ready"); ready = true; render() }
         func load() {
             ready = false; sentText = nil; sentConfig = ""
             if let url = Bundle.main.url(forResource:"live-editor",withExtension:"html") { view?.loadFileURL(url,allowingReadAccessTo:url.deletingLastPathComponent()) }
@@ -114,6 +152,7 @@ struct ReaderWebView: UIViewRepresentable {
             sentText = page.text; sentConfig = json
             view?.evaluateJavaScript("window.acdianSetDocument(\(json));") { [weak self] _,error in
                 guard let self, error == nil else { return }
+                PerfLog.mark("page text shown")
                 self.scrollToFragment()
             }
         }
@@ -129,7 +168,7 @@ struct ReaderWebView: UIViewRepresentable {
             guard message.frameInfo.isMainFrame, let value = message.body as? [String:Any], let type = value["type"] as? String else { return }
             // Anything that would change a file (save, change, comments…) is not listened to.
             switch type {
-            case "ready": ready = true; render()
+            case "ready": becameReady()
             case "navigate":
                 guard let target = value["target"] as? String else { return }
                 if target.hasPrefix("#") { scroll(String(target.dropFirst())) } else { page?.open(target) }

@@ -55,7 +55,8 @@ struct LauncherScreen: View {
     }
     private var grid: some View {
         let present = store.presentModules, hidden = present.filter(\.hidden)
-        let loose = store.visible(store.index?.entries ?? []).filter { !$0.isDirectory }
+        // As on the Mac's launcher, only modules show here; pages at the top level
+        // (such as AGENTS.md) are found through search.
         return ScrollView {
             VStack(alignment:.leading,spacing:24) {
                 if !store.usesICloud {
@@ -78,15 +79,7 @@ struct LauncherScreen: View {
                         Label(showHidden ? store.localized("收起已隐藏的模块") : store.localized("显示已隐藏的模块 (%@)",store.language.number(hidden.count)),systemImage:showHidden ? "eye.slash" : "eye").font(.caption)
                     }.buttonStyle(.plain).foregroundStyle(.secondary)
                 }
-                if !loose.isEmpty {
-                    VStack(spacing:0) {
-                        ForEach(loose) { file in
-                            EntryRow(entry:file).padding(.vertical,11)
-                            if file.id != loose.last?.id { Divider() }
-                        }
-                    }.padding(.horizontal,14).background(Color.wash,in:RoundedRectangle(cornerRadius:12,style:.continuous))
-                }
-                if present.isEmpty && loose.isEmpty {
+                if present.isEmpty {
                     ReaderEmptyState(icon:"tray",message:store.localized("没有找到匹配的文件")).frame(height:260)
                 }
             }.padding(.horizontal,20).padding(.vertical,12).frame(maxWidth:820).frame(maxWidth:.infinity)
@@ -143,6 +136,7 @@ struct FolderScreen: View {
             }
         }
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+        .onAppear { PerfLog.mark("folder list on screen: \(folder.children?.count ?? 0) rows") }
         .searchable(text:$query,prompt:store.localized("搜索"))
         .autocorrectionDisabled()
     }
@@ -154,6 +148,16 @@ struct SearchResults: View {
     let module: String?
     var body: some View {
         let results = store.search(query,inModule:module)
+        VStack(spacing:0) {
+            // Titles are found at once; text matches fill in as the index is built.
+            if let indexing = store.indexing {
+                Label(store.localized("正在建立搜索索引… %@/%@",store.language.number(indexing.done),store.language.number(indexing.total)),systemImage:"hourglass")
+                    .font(.footnote).foregroundStyle(.secondary).padding(.vertical,8).frame(maxWidth:.infinity).background(Color.wash)
+            }
+            searchList(results)
+        }
+    }
+    @ViewBuilder private func searchList(_ results: [VaultEntry]) -> some View {
         if results.isEmpty { ReaderEmptyState(icon:"magnifyingglass",message:store.localized("没有找到匹配的文件")) }
         else {
             List(results) { file in
@@ -176,6 +180,7 @@ struct CardIndexScreen: View {
     let instance: ComponentInstance
     @State private var group: String?
     @State private var query = ""
+    @State private var notes: [String:String] = [:]
     private static let all = "\u{2217}all", starred = "\u{2217}saved"
     private struct Card: Identifiable { let page: VaultEntry; let name: String; let key: String; let group: String; var id: String { page.relativePath } }
     private var cards: [Card] {
@@ -192,7 +197,7 @@ struct CardIndexScreen: View {
         // Nothing can be starred here, so an empty "Saved" view would be a dead end.
         let current = group.flatMap { groups.contains($0) ? $0 : nil } ?? (saved.isEmpty ? Self.all : Self.starred)
         let needle = ReaderStore.searchFold(query.trimmingCharacters(in:.whitespaces))
-        let shown: [Card] = !needle.isEmpty ? cards.filter { ReaderStore.searchFold($0.name).contains(needle) || ReaderStore.searchFold(store.notes[$0.id] ?? "").contains(needle) }
+        let shown: [Card] = !needle.isEmpty ? cards.filter { ReaderStore.searchFold($0.name).contains(needle) || ReaderStore.searchFold(notes[$0.id] ?? "").contains(needle) }
             : current == Self.all ? cards : current == Self.starred ? saved : cards.filter { $0.group == current }
         let columns = Array(repeating:GridItem(.flexible(),spacing:10,alignment:.top),count:sizeClass == .compact ? 2 : 3)
         HStack(alignment:.top,spacing:6) {
@@ -202,7 +207,7 @@ struct CardIndexScreen: View {
                         Button { router.push(card.page.relativePath,fragment:"") } label: {
                             VStack(alignment:.leading,spacing:6) {
                                 Text(card.name).font(.system(size:20,weight:.bold)).foregroundStyle(Color.acPink).lineLimit(2).minimumScaleFactor(0.7)
-                                Text(store.notes[card.id] ?? "").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                                Text(notes[card.id] ?? "").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.leading)
                                     .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
                             }
                             .padding(12).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading).aspectRatio(1,contentMode:.fit)
@@ -222,6 +227,13 @@ struct CardIndexScreen: View {
         .navigationTitle((file.name as NSString).deletingPathExtension).navigationBarTitleDisplayMode(.inline)
         .searchable(text:$query,prompt:store.localized("搜索"))
         .autocorrectionDisabled()
+        // Notes come from the page cache, read off the main thread.
+        .task(id:"\(instance.source)-\(store.textsRevision)") {
+            let folder = instance.source
+            PerfLog.mark("card index notes requested")
+            notes = await Task.detached(priority:.userInitiated) { [store] in await store.cardNotesAsync(folder) }.value
+            PerfLog.mark("card index notes shown: \(notes.count)")
+        }
     }
 }
 

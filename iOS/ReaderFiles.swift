@@ -54,10 +54,52 @@ enum ReaderFiles {
     /// Lists the pages folder from the disk and from the metadata query
     /// together: either may know of files the other has not heard about yet.
     /// Hidden items and the trash stay out, apart from root config files.
-    static func scan(root: URL, query: [QueryItem]) -> Scan {
-        let manager = FileManager.default
+    /// Just the folders and settings files at the top, for a first launcher.
+    static func scanTopLevel(root: URL) -> Scan {
         var result = Scan()
-        var seen = Set<String>()
+        for child in (try? FileManager.default.contentsOfDirectory(at:root,includingPropertiesForKeys:[.isDirectoryKey],options:[])) ?? [] {
+            let name = logicalName(ofPlaceholder:child.lastPathComponent) ?? child.lastPathComponent
+            if name.hasPrefix(".") { result.rootConfig.insert(name); continue }
+            if (try? child.resourceValues(forKeys:[.isDirectoryKey]).isDirectory) == true { result.listing.append(VaultListing(relativePath:name,isDirectory:true,modified:nil,size:0)) }
+        }
+        return result
+    }
+    /// The query alone is enough once it has gathered: walking a large iCloud
+    /// folder on iOS takes far longer than asking the query.
+    /// The whole folder in one pass of a directory enumerator, its attributes
+    /// prefetched, rather than one request per item. Hidden items stay out,
+    /// except iCloud stubs and the settings files at the root.
+    static func enumerate(root: URL) -> Scan {
+        var result = Scan(), seen = Set<String>()
+        let keys: [URLResourceKey] = [.isDirectoryKey,.isRegularFileKey,.isSymbolicLinkKey,.contentModificationDateKey,.fileSizeKey,.ubiquitousItemDownloadingStatusKey]
+        let base = root.standardizedFileURL.resolvingSymlinksInPath().path + "/"
+        guard let walk = FileManager.default.enumerator(at:root,includingPropertiesForKeys:keys,options:[],errorHandler:{ _,_ in true }) else { return result }
+        for case let url as URL in walk {
+            let full = url.standardizedFileURL.resolvingSymlinksInPath().path
+            guard full.hasPrefix(base) else { continue }
+            let relative = String(full.dropFirst(base.count)), name = url.lastPathComponent
+            let parent = (relative as NSString).deletingLastPathComponent
+            if name.hasPrefix(".") {
+                if let logical = logicalName(ofPlaceholder:name), !logical.hasPrefix(".") {
+                    let path = parent.isEmpty ? logical : parent + "/" + logical
+                    if seen.insert(path).inserted { result.listing.append(VaultListing(relativePath:path,isDirectory:false,modified:nil,size:0)); result.remote.insert(path) }
+                } else if parent.isEmpty { result.rootConfig.insert(logicalName(ofPlaceholder:name) ?? name) }
+                walk.skipDescendants(); continue
+            }
+            guard let values = try? url.resourceValues(forKeys:Set(keys)), values.isSymbolicLink != true else { continue }
+            guard seen.insert(relative).inserted else { continue }
+            if values.isDirectory == true { result.listing.append(VaultListing(relativePath:relative,isDirectory:true,modified:values.contentModificationDate,size:0)) }
+            else if values.isRegularFile == true {
+                result.listing.append(VaultListing(relativePath:relative,isDirectory:false,modified:values.contentModificationDate,size:values.fileSize ?? 0))
+                if notDownloaded(values) { result.remote.insert(relative) }
+            }
+        }
+        return result
+    }
+    static func scan(root: URL, query: [QueryItem], walkDisk: Bool = true, base: Scan? = nil) -> Scan {
+        let manager = FileManager.default
+        var result = base ?? Scan()
+        var seen = Set(result.listing.map { $0.relativePath.precomposedStringWithCanonicalMapping })
         func add(_ path: String, isDirectory: Bool, modified: Date?, size: Int, remote: Bool) {
             guard seen.insert(path.precomposedStringWithCanonicalMapping).inserted else { return }
             result.listing.append(VaultListing(relativePath:path,isDirectory:isDirectory,modified:modified,size:size))
@@ -83,7 +125,7 @@ enum ReaderFiles {
                 }
             }
         }
-        walk(root,prefix:"")
+        if walkDisk { walk(root,prefix:"") }
         for item in query {
             guard let relative = relativePath(item.path,root:root) else { continue }
             var parts = relative.split(separator:"/").map(String.init)
