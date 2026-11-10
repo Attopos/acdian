@@ -27,6 +27,11 @@ struct EditorRoot: View {
                 let model = AppModel()
                 model.services.applyAppearance(model.appearance)
                 self.model = model
+                PerfLog.mark("iPad pages root \(found.root.path) (iCloud \(found.iCloud))")
+                if found.iCloud { ICloudDownloader.start(root:found.root) {
+                    PerfLog.mark("iPad shows \(model.index?.files.count ?? 0) files, modules: \(model.presentModules.map(\.name))")
+                    model.refresh()
+                } }
             }
         }
     }
@@ -443,4 +448,42 @@ struct ShareSheet: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems:[url],applicationActivities:nil) }
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+/// Brings every page in the iCloud folder onto the iPad. iOS keeps pages it has
+/// not been asked for as placeholders, which the editor's listing cannot use, so
+/// all of them are requested, and the pages list is refreshed as they arrive.
+enum ICloudDownloader {
+    static func start(root: URL, refresh: @escaping @MainActor () -> Void) {
+        DispatchQueue.global(qos:.utility).async {
+            var last = -1, quiet = 0
+            // Keep asking until nothing is left or nothing has changed for a few minutes.
+            while quiet < 60 {
+                let waiting = requestMissing(root:root)
+                PerfLog.mark("iCloud pages still downloading: \(waiting)")
+                if waiting != last { last = waiting; quiet = 0; DispatchQueue.main.async { refresh() } } else { quiet += 1 }
+                if waiting == 0 { return }
+                Thread.sleep(forTimeInterval:5)
+            }
+        }
+    }
+    /// Asks for every placeholder under the root and returns how many there are.
+    private static func requestMissing(root: URL) -> Int {
+        let manager = FileManager.default
+        guard let walk = manager.enumerator(at:root,includingPropertiesForKeys:[.ubiquitousItemDownloadingStatusKey],options:[],errorHandler:{ _,_ in true }) else { return 0 }
+        var waiting = 0, seen = 0
+        PerfLog.mark("iCloud scan start")
+        for case let url as URL in walk {
+            seen += 1; if seen % 1000 == 0 { PerfLog.mark("iCloud scan \(seen) items, \(waiting) waiting") }
+            let name = url.lastPathComponent
+            if let logical = ReaderFiles.logicalName(ofPlaceholder:name) {
+                waiting += 1
+                try? manager.startDownloadingUbiquitousItem(at:url.deletingLastPathComponent().appendingPathComponent(logical))
+            } else if let status = try? url.resourceValues(forKeys:[.ubiquitousItemDownloadingStatusKey]).ubiquitousItemDownloadingStatus, status == .notDownloaded {
+                waiting += 1
+                try? manager.startDownloadingUbiquitousItem(at:url)
+            }
+        }
+        return waiting
+    }
 }

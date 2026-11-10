@@ -47,7 +47,7 @@ enum ReaderFiles {
         var rootConfig: Set<String> = []
     }
 
-    private static func logicalName(ofPlaceholder name: String) -> String? { CloudFiles.logicalName(ofPlaceholder:name) }
+    static func logicalName(ofPlaceholder name: String) -> String? { CloudFiles.logicalName(ofPlaceholder:name) }
     private static let resourceKeys: Set<URLResourceKey> = [.isDirectoryKey,.isRegularFileKey,.isSymbolicLinkKey,.contentModificationDateKey,.fileSizeKey,.ubiquitousItemDownloadingStatusKey]
     private static func notDownloaded(_ values: URLResourceValues) -> Bool { values.ubiquitousItemDownloadingStatus == .notDownloaded }
 
