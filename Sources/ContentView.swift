@@ -58,7 +58,6 @@ struct BrandMark: View {
 }
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
-    @State private var outlineFloating = false
     var body: some View {
         HStack(spacing:0) {
             if model.showSidebar {
@@ -131,21 +130,25 @@ struct ContentView: View {
         if let file = model.selected {
             VStack(spacing:0) {
                 if file.ext == "md" {
-                    // The text column stays centred in the whole article area; the
-                    // outline floats in the left margin when it fits there, and
-                    // otherwise opens over the text from a » button.
+                    // The text column stays centred in the window whatever the outline
+                    // does: it sits in the empty margin left of the text when that
+                    // margin holds it, and otherwise shrinks to a rail of short lines
+                    // that opens over the margin while the pointer is on it.
                     GeometryReader { geometry in
                         let shift = centerShift
-                        let fits = geometry.size.width >= Self.outlineFitWidth + 2 * shift
+                        let dock = Self.outlineDockWidth(geometry.size.width,shift:shift)
+                        let title = model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent
                         ZStack(alignment:.topLeading) {
                             VStack(spacing:0) {
                                 if model.isDraft { DraftTitleView(model:model,side:Self.pageSide(geometry.size.width),left:Self.pageLeft(geometry.size.width,shift:shift)).id(model.editorDocumentID) }
                                 LiveMarkdownEditor(model:model,centerShift:shift).frame(maxWidth:.infinity,maxHeight:.infinity)
                             }
-                            if model.showOutline && (fits || outlineFloating) {
-                                outline(title:model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent,floating:!fits)
+                            if !model.showOutline {
+                                Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = true } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)).frame(width:22,height:22).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,geometry.size.width > 700 ? 20 : 2).padding(.top,geometry.size.width > 700 ? 39 : 4)
+                            } else if let dock {
+                                outline(title:title,width:dock,floating:false)
                             } else {
-                                Button { withAnimation(.easeInOut(duration:0.18)) { if fits { model.showOutline = true } else { model.showOutline = true; outlineFloating = true } } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)).frame(width:22,height:22).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,geometry.size.width > 700 ? 20 : 2).padding(.top,geometry.size.width > 700 ? 39 : 4)
+                                OutlineRail(model:model,title:title,textLeft:Self.pageLeft(geometry.size.width,shift:shift) + Self.pageSide(geometry.size.width),top:geometry.size.width > 700 ? 49 : 30,height:geometry.size.height) { outline(title:title,width:240,floating:true) }
                             }
                         }
                     }
@@ -161,9 +164,14 @@ struct ContentView: View {
     }
     // A Feishu-style outline in the page's left margin: the page title first,
     // then its headings, with no panel chrome of its own.
-    // The editor column is at most 860 wide with 58 of empty padding inside each
-    // edge; the outline (220) fits when the margin left of the text holds it plus a gap.
-    static let outlineFitWidth: CGFloat = 860 + 2 * (220 + 12 - 58)
+    // The editor column is at most 860 wide with empty padding inside each edge.
+    // The outline docks in the margin left of the text when that margin holds at
+    // least the narrowest outline plus a gap; it grows up to 220 with the margin.
+    static let outlineWidths: ClosedRange<CGFloat> = 168...220
+    static func outlineDockWidth(_ width: CGFloat, shift: CGFloat) -> CGFloat? {
+        let room = pageLeft(width,shift:shift) + pageSide(width) - 12
+        return room >= outlineWidths.lowerBound ? min(room,outlineWidths.upperBound) : nil
+    }
     // The text column sits in the middle of the window, not of the space the
     // sidebar leaves: the editor moves it left by half the sidebar. A split page
     // shares the window, so each column keeps its text in its own middle.
@@ -172,9 +180,9 @@ struct ContentView: View {
     static func pageLeft(_ width: CGFloat, shift: CGFloat) -> CGFloat { max(0,((width - 860) / 2 - shift).rounded(.down)) }
     // The empty space beside the text, by the page's width, as in live-editor.css.
     static func pageSide(_ width: CGFloat) -> CGFloat { width > 700 ? 58 : width > 450 ? 28 : 19 }
-    private func outline(title: String, floating: Bool) -> some View {
+    private func outline(title: String, width: CGFloat, floating: Bool) -> some View {
         VStack(alignment:.leading,spacing:0) {
-            Button { withAnimation(.easeInOut(duration:0.18)) { if floating { outlineFloating = false } else { model.showOutline = false } } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
+            Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = false } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
             ScrollView {
                 VStack(alignment:.leading,spacing:4) {
                     Button { model.anchor = "#"; model.activeHeading = -1 } label: { Text(title.isEmpty ? "New Page" : title).font(.system(size:13,weight:.medium)).foregroundStyle(model.activeHeading < 0 ? Color.acPink : Color.primary.opacity(0.85)).lineLimit(2).multilineTextAlignment(.leading).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
@@ -183,9 +191,9 @@ struct ContentView: View {
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)
             }.scrollIndicators(.never) // .hidden still shows when the system always shows scroll bars.
-        }.padding(.leading,24).padding(.trailing,8).padding(.top,43).padding(.bottom,floating ? 16 : 0).frame(width:220,alignment:.topLeading)
-        .background { if floating { RoundedRectangle(cornerRadius:10).fill(Color.canvas).shadow(color:.black.opacity(0.25),radius:16,y:6).padding(.top,30).padding(.leading,10) } }
-        .frame(maxHeight:.infinity,alignment:.top)
+        }.padding(.leading,floating ? 20 : 24).padding(.trailing,floating ? 14 : 8).padding(.top,floating ? 14 : 43).padding(.bottom,floating ? 14 : 0).frame(width:width,alignment:.topLeading)
+        .background { if floating { RoundedRectangle(cornerRadius:10).fill(Color.rail).overlay(RoundedRectangle(cornerRadius:10).strokeBorder(Color.faint,lineWidth:1)).shadow(color:.black.opacity(0.28),radius:16,y:6) } }
+        .frame(maxHeight:floating ? nil : .infinity,alignment:.top)
     }
     private func unsupported(_ file: VaultEntry) -> some View { VStack(spacing:18) { Image(systemName:"doc").font(.system(size:48,weight:.ultraLight)).foregroundStyle(Color.acPink); Text(file.name).font(.title2); Text(model.localized("此类文件可在系统默认应用中打开。")).foregroundStyle(.secondary); Button(model.localized("打开文件")) { NSWorkspace.shared.open(file.url) }.buttonStyle(.bordered) }.frame(maxWidth:.infinity,maxHeight:.infinity) }
     private var statusBar: some View {
@@ -400,6 +408,7 @@ struct SidebarView: View {
             }; Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             }
             ScrollView {
+                OverlayScrollers().frame(width:0,height:0)
                 if home { SidebarModuleList { editingModule = $0 }.padding(.horizontal,10).padding(.bottom,20) }
                 else if model.query.isEmpty { SidebarTree(entries:model.sidebarEntries).padding(.horizontal,10).padding(.bottom,20) }
                 else {
@@ -880,4 +889,75 @@ struct LanguageMenu: View {
         .accessibilityValue(model.language.name)
         .accessibilityIdentifier("languageMenu")
     }
+}
+
+// The outline when the margin is too narrow for it: one short line per heading,
+// longer for higher levels and pink for the part being read. Pointing at it opens
+// the whole outline over the margin and the text's edge; leaving closes it. The
+// text never moves for it.
+struct OutlineRail<Panel: View>: View {
+    @ObservedObject var model: AppModel
+    let title: String
+    /// Where the text starts in the page, so the rail stays in the empty margin.
+    let textLeft: CGFloat
+    let top: CGFloat
+    /// The page's height, which the open outline stays inside.
+    let height: CGFloat
+    @ViewBuilder let panel: () -> Panel
+    @State private var open = false
+    @State private var closing: Task<Void,Never>?
+    var body: some View {
+        let leading = max(4,min(22,textLeft - 26))
+        ZStack(alignment:.topLeading) {
+            if open {
+                // About 30 points a heading, plus the close button and the panel's padding; longer outlines scroll.
+                panel().frame(height:max(120,min(height - max(4,top - 14) - 12,CGFloat(model.headings.count + 1) * 31 + 62)),alignment:.top)
+                    .padding(.leading,max(6,leading - 8)).padding(.top,max(4,top - 14))
+                    .onHover(perform:hover)
+                    .transition(.opacity)
+            } else {
+                VStack(alignment:.leading,spacing:7) {
+                    line(level:1,active:model.activeHeading < 0)
+                    ForEach(Array(model.headings.prefix(48).enumerated()),id:\.offset) { index,heading in line(level:heading.level + 1,active:index == model.activeHeading) }
+                }
+                .padding(.vertical,6).padding(.horizontal,6).contentShape(Rectangle())
+                .onHover(perform:hover)
+                .help(model.localized("文章目录"))
+                .padding(.leading,leading - 6).padding(.top,top - 6)
+                .accessibilityElement(children:.ignore).accessibilityLabel(model.localized("文章目录"))
+            }
+        }
+    }
+    private func line(level: Int, active: Bool) -> some View {
+        Capsule().fill(active ? Color.acPink : Color.secondary.opacity(0.4)).frame(width:level <= 1 ? 16 : level == 2 ? 12 : level == 3 ? 9 : 6,height:2)
+    }
+    // Moving from the rail onto the panel that replaces it reads as leaving and
+    // coming back, so a close waits a moment for the pointer to arrive.
+    private func hover(_ inside: Bool) {
+        closing?.cancel()
+        if inside { if !open { withAnimation(.easeOut(duration:0.12)) { open = true } } }
+        else { closing = Task { @MainActor in try? await Task.sleep(nanoseconds:220_000_000); guard !Task.isCancelled else { return }; withAnimation(.easeIn(duration:0.12)) { open = false } } }
+    }
+}
+
+// Keeps the scroll bars of the scroll view it sits in as thin overlay bars that show
+// only while scrolling or with the pointer near them, even when System Settings
+// says to always show scroll bars.
+struct OverlayScrollers: NSViewRepresentable {
+    final class Probe: NSView {
+        private var observer: NSObjectProtocol?
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            apply()
+            if observer == nil { observer = NotificationCenter.default.addObserver(forName:NSScroller.preferredScrollerStyleDidChangeNotification,object:nil,queue:.main) { [weak self] _ in DispatchQueue.main.async { self?.apply() } } }
+        }
+        func apply() {
+            guard let scroll = enclosingScrollView else { return }
+            scroll.scrollerStyle = .overlay
+            scroll.autohidesScrollers = true
+        }
+        deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
+    }
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ view: Probe, context: Context) { DispatchQueue.main.async { view.apply() } }
 }
