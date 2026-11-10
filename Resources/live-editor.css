@@ -244,6 +244,14 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-fold-toggle { position:absolute; left:-1.35em; width:1.2em; text-align:center; font-size:14px; line-height:inherit; font-weight:400; letter-spacing:0; color:#8d8695; cursor:pointer; opacity:0; user-select:none; -webkit-user-select:none; transition:transform .12s; text-indent:0; }
 .cm-editor .cm-line:hover > .cm-fold-toggle,.cm-editor .cm-fold-closed { opacity:1; }
 .cm-editor .cm-fold-closed { transform:rotate(-90deg); }
+/* A heading's arrow takes the heading's own size (--heading-scale) and sits in the middle of its first line. */
+.cm-editor .cm-heading { --heading-scale:1; }
+.cm-editor .cm-heading-1 { --heading-scale:2; }
+.cm-editor .cm-heading-2 { --heading-scale:1.7; }
+.cm-editor .cm-heading-3 { --heading-scale:1.4; }
+.cm-editor .cm-heading-4 { --heading-scale:1.1; }
+.cm-editor .cm-heading > .cm-fold-toggle { --heading-size:calc(var(--editor-font-size) * var(--heading-scale)); top:auto; height:calc(var(--heading-size) * 1.35); line-height:calc(var(--heading-size) * 1.35); font-size:max(14px, calc(var(--heading-size) * .8)); width:calc(var(--heading-size) * .8); left:calc(var(--heading-size) * -.95); }
+@media(max-width:700px){.cm-editor .cm-heading-1{--heading-scale:1.875;}}
 .cm-editor .cm-foldPlaceholder { background:transparent; border:0; color:#8d8695; padding:0 4px; }
 /* Footnotes */
 .cm-editor .cm-footnote-mark { color:#e57bad; cursor:pointer; font-size:.75em; padding:0 1px; }
