@@ -9,7 +9,10 @@ import UIKit
     @Published var pickRequest: (imagesOnly: Bool, picked: ([URL]) -> Void)?
     var isActive: Bool { UIApplication.shared.applicationState == .active }
     var becameActive: Notification.Name { UIApplication.didBecomeActiveNotification }
-    func applyAppearance(_ appearance: AppAppearance) {}
+    func applyAppearance(_ appearance: AppAppearance) {
+        let style: UIUserInterfaceStyle = appearance == .light ? .light : appearance == .dark ? .dark : .unspecified
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes { scene.windows.forEach { $0.overrideUserInterfaceStyle = style } }
+    }
     func closeFrontWindow() {}
     func confirm(title: String, detail: String, action: String, cancel: String, _ answer: @escaping (Bool) -> Void) {
         confirmation = Confirmation(title:title,detail:detail,action:action,cancel:cancel,answer:answer)

@@ -81,6 +81,11 @@ const actions={
 export function installTouchCommands(view) {
   if(!isTouch())return;
   globalThis.acdianFormat=name=>{const run=actions[name];if(run){run(view);view.focus();}};
+  // On a wide iPad the text moves left just enough for the comment column, as
+  // the Mac does beside its sidebar; narrower screens keep the text centred.
+  const COLUMN=296,TEXT=860;
+  const shift=()=>{const room=(innerWidth-TEXT)/2;document.documentElement.style.setProperty('--center-shift',(innerWidth>=1000&&room<COLUMN+16?Math.min(COLUMN+16-room,room):0)+'px');dispatchEvent(new Event('acdian-relayout'));};
+  shift();
   // The web view shrinks when the keyboard appears; the caret stays in sight.
-  addEventListener('resize',()=>{if(view.hasFocus)view.dispatch({scrollIntoView:true});});
+  addEventListener('resize',()=>{shift();if(view.hasFocus)view.dispatch({scrollIntoView:true});});
 }

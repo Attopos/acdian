@@ -5,7 +5,11 @@ import UniformTypeIdentifiers
 /// The iPad's editor: the same web editor the Mac uses, with `editable` on. It
 /// lives for the whole session, and each page swaps the document inside it.
 @MainActor final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler, WKNavigationDelegate, ObservableObject {
-    static let shared = EditorHost()
+    enum Role { case main, split }
+    static let shared = EditorHost(role:.main)
+    /// The second editor of split view, showing the model's split page.
+    static let split = EditorHost(role:.split)
+    let role: Role
     let view: WKWebView
     weak var model: AppModel? { didSet { if model !== oldValue { attachBridge() } } }
     var appearance = "dark"
@@ -21,7 +25,8 @@ import UniformTypeIdentifiers
     private var pendingInsertion: UUID?
     private var tasks = Set<ObjectIdentifier>()
 
-    private override init() {
+    private init(role: Role) {
+        self.role = role
         let config = WKWebViewConfiguration()
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
         config.websiteDataStore = .nonPersistent()
@@ -45,10 +50,19 @@ import UniformTypeIdentifiers
         ready = false; documentID = nil; installed = false; lastSent = nil; lastConfig = ""
         if let url = Bundle.main.url(forResource:"live-editor",withExtension:"html") { view.loadFileURL(url,allowingReadAccessTo:url.deletingLastPathComponent()) }
     }
-    private var isCurrent: Bool { guard let model, let documentID else { return false }; return model.editorDocumentID == documentID && model.selected?.relativePath == documentPath }
+    private var isCurrent: Bool {
+        guard let model, let documentID else { return false }
+        if role == .split { return model.splitDocumentID == documentID }
+        return model.editorDocumentID == documentID && model.selected?.relativePath == documentPath
+    }
     private func attachBridge() {
-        guard let model else { return }
-        model.editorFocus = { [weak self] in self?.view.evaluateJavaScript("window.acdianEditor.focus();",completionHandler:nil) }
+        guard let model, role == .main else { return }
+        // The web view has to take the keyboard before the page can focus its editor.
+        model.editorFocus = { [weak self] in
+            guard let self else { return }
+            self.view.becomeFirstResponder()
+            self.view.evaluateJavaScript("window.acdianEditor.focus();",completionHandler:nil)
+        }
         model.editorSnapshot = { [weak self, weak model] completion in
             guard let self, let model, model.selected?.ext == "md" else { completion(.failure(URLError(.cancelled))); return }
             guard self.ready, self.installed, self.isCurrent, let expected = self.documentID else {
@@ -64,6 +78,7 @@ import UniformTypeIdentifiers
         }
     }
     func render() {
+        if role == .split { renderSplit(); return }
         guard ready, let model, model.selected?.ext == "md" else { return }
         if model.editorDocumentID != documentID {
             documentID = model.editorDocumentID; documentPath = model.selected?.relativePath ?? ""
@@ -87,6 +102,24 @@ import UniformTypeIdentifiers
             guard let self, self.isCurrent, self.documentID == documentID else { return }
             if error != nil { self.lastConfig = ""; if sendText { self.installed = false; self.lastSent = nil }; return }
             self.afterRender()
+        }
+    }
+    private func renderSplit() {
+        guard ready, let model, let entry = model.splitEntry, entry.ext == "md", !model.splitLoading else { return }
+        let id = model.splitDocumentID
+        if documentID != id { documentID = id; documentPath = entry.relativePath; installed = false; lastSent = nil; lastRevision = -1; lastConfig = "" }
+        var payload: [String:Any] = ["currentPath":documentPath,"documentID":id.uuidString,"tabID":id.uuidString,"openTabs":[id.uuidString],"title":entry.name,"draft":true,"fontSize":model.fontSize,
+                                     "editable":true,"language":model.language.rawValue,"appearance":appearance,"pageTitle":entry.url.deletingPathExtension().lastPathComponent]
+        let sendText = !installed || lastSent.map { !model.splitText.sameBytes($0) } ?? true
+        if sendText {
+            payload["text"] = model.splitText
+            if let root = model.index?.root { payload["comments"] = PageComments.read(page:documentPath,root:root) ?? "" }
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject:payload,options:[.sortedKeys]), let json = String(data:data,encoding:.utf8), sendText || json != lastConfig else { return }
+        if sendText { lastSent = model.splitText }
+        installed = true; lastConfig = json
+        view.evaluateJavaScript("window.acdianSetDocument(\(json));") { [weak self] _,error in
+            if error != nil { self?.lastConfig = ""; if sendText { self?.installed = false; self?.lastSent = nil } }
         }
     }
     private func afterRender() {
@@ -114,6 +147,13 @@ import UniformTypeIdentifiers
         if type == "focus" { focused = value["focused"] as? Bool ?? false; return }
         if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
         guard isCurrent, let model, let documentID, value["documentID"] as? String == documentID.uuidString else { return }
+        if role == .split {
+            if type == "change", let text = value["text"] as? String { lastSent = text; model.splitEdited(text,documentID:documentID) }
+            if type == "save" { model.saveSplit() }
+            if type == "navigate", let target = value["target"] as? String { model.navigate(target) }
+            if type == "external", let target = value["target"] as? String { model.external(target) }
+            return
+        }
         if type == "change", let text = value["text"] as? String {
             let revision = value["revision"] as? Int ?? lastRevision
             guard revision >= lastRevision else { return }
@@ -178,18 +218,18 @@ import UniformTypeIdentifiers
 
 struct EditorWebView: UIViewRepresentable {
     @ObservedObject var model: AppModel
+    var host: EditorHost = .shared
     @Environment(\.colorScheme) private var colorScheme
     func makeUIView(context: Context) -> UIView {
         let container = UIView(); attach(container)
         return container
     }
     func updateUIView(_ container: UIView, context: Context) {
-        let host = EditorHost.shared
         host.model = model; host.appearance = colorScheme == .light ? "light" : "dark"
         attach(container); host.render()
     }
     private func attach(_ container: UIView) {
-        let view = EditorHost.shared.view
+        let view = host.view
         guard view.superview !== container else { return }
         view.frame = container.bounds; view.autoresizingMask = [.flexibleWidth,.flexibleHeight]; container.addSubview(view)
     }
