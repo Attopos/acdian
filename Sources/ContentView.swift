@@ -429,7 +429,7 @@ struct SidebarView: View {
             }; Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             }
             ScrollView {
-                OverlayScrollers().frame(width:0,height:0)
+                ThinScrollBar().frame(width:0,height:0)
                 if home { SidebarModuleList { editingModule = $0 }.padding(.horizontal,10).padding(.bottom,20) }
                 else if model.query.isEmpty { SidebarTree(entries:model.sidebarEntries).padding(.horizontal,10).padding(.bottom,20) }
                 else {
@@ -437,7 +437,7 @@ struct SidebarView: View {
                     LazyVStack(spacing:2) { ForEach(matches.prefix(500)) { entry in FileRow(entry:entry,indent:0,showPath:true) }; if matches.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.caption).foregroundStyle(.tertiary).padding(.top,25) } }
                         .padding(.horizontal,10).padding(.bottom,20)
                 }
-            }
+            }.scrollIndicators(.never)
             Spacer(minLength:0)
             Button { model.showMarket() } label: {
                 HStack(spacing:10) { Image(systemName:"puzzlepiece.extension").frame(width:16); Text(model.localized("组件")); Spacer() }
@@ -961,24 +961,107 @@ struct OutlineRail<Panel: View>: View {
     }
 }
 
-// Keeps the scroll bars of the scroll view it sits in as thin overlay bars that show
-// only while scrolling or with the pointer near them, even when System Settings
-// says to always show scroll bars.
-struct OverlayScrollers: NSViewRepresentable {
+// A thin scroll bar for the scroll view it sits in, in place of the system one
+// (whose overlay style still flashed a wide grey bar whenever the sidebar's
+// contents changed). It shows only while the list scrolls or the pointer is over
+// the list, fades a moment later, and its knob can be dragged.
+// The ScrollView itself is given .scrollIndicators(.never).
+struct ThinScrollBar: NSViewRepresentable {
     final class Probe: NSView {
-        private var observer: NSObjectProtocol?
+        private weak var bar: Bar?
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            apply()
-            if observer == nil { observer = NotificationCenter.default.addObserver(forName:NSScroller.preferredScrollerStyleDidChangeNotification,object:nil,queue:.main) { [weak self] _ in DispatchQueue.main.async { self?.apply() } } }
+            guard bar == nil, let scroll = enclosingScrollView else { return }
+            let bar = Bar(scroll:scroll); self.bar = bar
+            scroll.addSubview(bar); bar.place()
         }
-        func apply() {
-            guard let scroll = enclosingScrollView else { return }
-            scroll.scrollerStyle = .overlay
-            scroll.autohidesScrollers = true
+        override func removeFromSuperview() { bar?.removeFromSuperview(); super.removeFromSuperview() }
+    }
+    final class Bar: NSView {
+        private weak var scroll: NSScrollView?
+        private var observers: [NSObjectProtocol] = []
+        private var hideWork: DispatchWorkItem?
+        private var dragStart: (y: CGFloat, origin: CGFloat)?
+        private var hovering = false
+        static let width: CGFloat = 12
+        init(scroll: NSScrollView) {
+            self.scroll = scroll
+            super.init(frame:.zero)
+            wantsLayer = true; alphaValue = 0
+            let clip = scroll.contentView; clip.postsBoundsChangedNotifications = true
+            observers.append(NotificationCenter.default.addObserver(forName:NSView.boundsDidChangeNotification,object:clip,queue:.main) { [weak self] _ in self?.reveal() })
+            scroll.postsFrameChangedNotifications = true
+            observers.append(NotificationCenter.default.addObserver(forName:NSView.frameDidChangeNotification,object:scroll,queue:.main) { [weak self] _ in self?.place() })
+            scroll.addTrackingArea(NSTrackingArea(rect:.zero,options:[.mouseEnteredAndExited,.activeInActiveApp,.inVisibleRect],owner:self,userInfo:nil))
         }
-        deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
+        required init?(coder: NSCoder) { nil }
+        deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+        override var isFlipped: Bool { true }
+        override func mouseEntered(with event: NSEvent) { hovering = true; reveal() }
+        override func mouseExited(with event: NSEvent) { hovering = false; scheduleHide() }
+        override func layout() { super.layout(); place() }
+        func place() {
+            guard let scroll else { return }
+            let box = scroll.bounds
+            frame = NSRect(x:box.maxX - Self.width,y:box.minY,width:Self.width,height:box.height)
+            autoresizingMask = [.minXMargin,.height]
+            needsDisplay = true
+        }
+        /// The knob's rect in this view, nil when everything fits.
+        private var knob: NSRect? {
+            guard let scroll, let document = scroll.documentView else { return nil }
+            let visible = scroll.contentView.bounds.height, total = document.frame.height
+            guard total > visible + 1 else { return nil }
+            let track = bounds.height - 8
+            let height = max(28,track * visible / total)
+            let progress = min(1,max(0,scroll.contentView.bounds.minY / (total - visible)))
+            return NSRect(x:bounds.width - 7,y:4 + (track - height) * progress,width:4,height:height)
+        }
+        override func draw(_ dirtyRect: NSRect) {
+            guard let knob else { return }
+            NSColor.secondaryLabelColor.withAlphaComponent(dragStart != nil ? 0.7 : 0.45).setFill()
+            NSBezierPath(roundedRect:knob,xRadius:2,yRadius:2).fill()
+        }
+        func reveal() {
+            if superview != nil, frame.width == 0 { place() }
+            needsDisplay = true
+            guard knob != nil else { alphaValue = 0; return }
+            hideWork?.cancel()
+            if alphaValue < 1 { NSAnimationContext.runAnimationGroup { $0.duration = 0.12; animator().alphaValue = 1 } }
+            scheduleHide()
+        }
+        private func scheduleHide() {
+            hideWork?.cancel()
+            guard !hovering, dragStart == nil else { return }
+            let work = DispatchWorkItem { [weak self] in NSAnimationContext.runAnimationGroup { $0.duration = 0.3; self?.animator().alphaValue = 0 } }
+            hideWork = work
+            DispatchQueue.main.asyncAfter(deadline:.now() + 0.9,execute:work)
+        }
+        // Clicks land only on the knob (or the strip it runs in while showing); the rest goes to the list.
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard alphaValue > 0.5, knob != nil, let local = superview.map({ convert(point,from:$0) }), bounds.contains(local) else { return nil }
+            return self
+        }
+        override func mouseDown(with event: NSEvent) {
+            guard let scroll, let knob else { return }
+            let y = convert(event.locationInWindow,from:nil).y
+            if !knob.contains(NSPoint(x:knob.midX,y:y)) { scrollTo(knobTop:y - knob.height / 2) }
+            dragStart = (y,self.knob?.minY ?? knob.minY); hideWork?.cancel(); needsDisplay = true
+            _ = scroll
+        }
+        override func mouseDragged(with event: NSEvent) {
+            guard let start = dragStart else { return }
+            scrollTo(knobTop:start.origin + convert(event.locationInWindow,from:nil).y - start.y)
+        }
+        override func mouseUp(with event: NSEvent) { dragStart = nil; needsDisplay = true; scheduleHide() }
+        private func scrollTo(knobTop: CGFloat) {
+            guard let scroll, let document = scroll.documentView, let knob else { return }
+            let track = bounds.height - 8, visible = scroll.contentView.bounds.height, total = document.frame.height
+            let progress = min(1,max(0,(knobTop - 4) / max(1,track - knob.height)))
+            scroll.contentView.scroll(to:NSPoint(x:scroll.contentView.bounds.minX,y:progress * (total - visible)))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
     }
     func makeNSView(context: Context) -> Probe { Probe() }
-    func updateNSView(_ view: Probe, context: Context) { DispatchQueue.main.async { view.apply() } }
+    func updateNSView(_ view: Probe, context: Context) {}
 }
