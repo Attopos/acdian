@@ -16,6 +16,16 @@ struct EditorRoot: View {
 /// Finds the pages location first, because the model reads the saved one when it starts.
 @MainActor final class ModelHolder: ObservableObject {
     @Published var model: AppModel?
+    /// A refresh during the first load would discard that load, and with it the
+    /// reopening of the last tab, so it waits until the first load is done.
+    static func refreshWhenLoaded(_ model: AppModel) {
+        guard !model.loading, model.index != nil else {
+            DispatchQueue.main.asyncAfter(deadline:.now() + 1) { refreshWhenLoaded(model) }
+            return
+        }
+        model.refresh()
+        DispatchQueue.main.asyncAfter(deadline:.now() + 20) { PerfLog.mark("iPad shows \(model.index?.files.count ?? 0) files, page open: \(model.selected?.relativePath ?? "none")") }
+    }
     func start() {
         guard model == nil else { return }
         // Until a language is picked in Settings, the iPad follows the device.
@@ -28,10 +38,12 @@ struct EditorRoot: View {
                 model.services.applyAppearance(model.appearance)
                 self.model = model
                 PerfLog.mark("iPad pages root \(found.root.path) (iCloud \(found.iCloud))")
-                if found.iCloud { ICloudDownloader.start(root:found.root) {
-                    PerfLog.mark("iPad shows \(model.index?.files.count ?? 0) files, modules: \(model.presentModules.map(\.name))")
-                    model.refresh()
+                if PerfLog.enabled { DispatchQueue.main.asyncAfter(deadline:.now() + 30) { PerfLog.mark("after launch: \(model.index?.files.count ?? 0) files, page open: \(model.selected?.relativePath ?? "none"), tabs: \(model.tabs.count)")
+                    // The listing, for comparing with the Mac; written to the app's own folder, not the pages.
+                    let list = (model.index?.files ?? []).map(\.relativePath).sorted().joined(separator:"\n")
+                    try? list.write(to:FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("perf-files.txt"),atomically:true,encoding:.utf8)
                 } }
+                if found.iCloud { ICloudDownloader.start(root:found.root) { Self.refreshWhenLoaded(model) } }
             }
         }
     }
@@ -95,7 +107,7 @@ struct EditorWorkspace: View {
         .alert(model.localized("好"),isPresented:Binding(get:{ model.error != nil },set:{ if !$0 { model.error = nil } })) { Button(model.localized("好"),role:.cancel) {} } message: { Text(model.error ?? "") }
         .onChange(of:scenePhase) { _,phase in
             if phase == .background { saveInBackground() }
-            if phase == .active { model.refresh() }
+            if phase == .active { ModelHolder.refreshWhenLoaded(model) }
         }
     }
     /// The Mac's menu shortcuts, which iPadOS also lists when ⌘ is held down.
@@ -461,7 +473,8 @@ enum ICloudDownloader {
             while quiet < 60 {
                 let waiting = requestMissing(root:root)
                 PerfLog.mark("iCloud pages still downloading: \(waiting)")
-                if waiting != last { last = waiting; quiet = 0; DispatchQueue.main.async { refresh() } } else { quiet += 1 }
+                // The first pass only asks; the list is refreshed once pages have arrived.
+                if waiting != last { if last >= 0 { DispatchQueue.main.async { refresh() } }; last = waiting; quiet = 0 } else { quiet += 1 }
                 if waiting == 0 { return }
                 Thread.sleep(forTimeInterval:5)
             }
