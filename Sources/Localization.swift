@@ -22,8 +22,6 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         return arguments.isEmpty ? format : String(format:format,locale:locale,arguments:arguments)
     }
     func number(_ value: Int) -> String { value.formatted(.number.locale(locale)) }
-    func noteCount(_ count: Int) -> String { count == 1 ? localized("1 篇笔记") : localized("%@ 篇笔记",arguments:[number(count)]) }
-    func fileCount(_ count: Int) -> String { count == 1 ? localized("1 个文件") : localized("%@ 个文件",arguments:[number(count)]) }
     func characterCount(_ count: Int) -> String { count == 1 ? localized("1 字符") : localized("%@ 字符",arguments:[number(count)]) }
     func remainingTrashDays(_ count: Int) -> String { count == 1 ? localized("剩余 1 天") : localized("剩余 %@ 天",arguments:[number(count)]) }
     func modifiedDate(_ date: Date) -> String { date.formatted(.dateTime.month().day().locale(locale)) }
@@ -101,8 +99,6 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "图片": ("Images", "Imágenes"),
         "视频": ("Videos", "Vídeos"),
         "未被引用": ("Unused", "Sin usar"),
-        "%@ 个页面引用": ("Used in %@ pages", "Usado en %@ páginas"),
-        "1 个页面引用": ("Used in 1 page", "Usado en 1 página"),
         "引用它的页面": ("Pages using it", "Páginas que lo usan"),
         "未被引用的附件已移到垃圾桶": ("Unused attachments moved to Trash", "Adjuntos sin usar movidos a la papelera"),
         "页面": ("Pages", "Páginas"),
@@ -159,15 +155,11 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "有未保存的修改": ("Unsaved changes", "Cambios sin guardar"),
         "%@ 字符": ("%@ characters", "%@ caracteres"),
         "1 字符": ("1 character", "1 carácter"),
-        "%@ 个文件": ("%@ files", "%@ archivos"),
-        "1 个文件": ("1 file", "1 archivo"),
-        "%@ 篇笔记": ("%@ notes", "%@ notas"),
-        "1 篇笔记": ("1 note", "1 nota"),
         "搜索笔记与内容": ("Search notes and content", "Buscar notas y contenido"),
         "清除搜索": ("Clear search", "Borrar búsqueda"),
         "调整侧栏宽度": ("Resize sidebar", "Cambiar el ancho de la barra lateral"),
         "所有笔记": ("All notes", "Todas las notas"),
-        "搜索结果 · %@": ("Search results · %@", "Resultados · %@"),
+        "搜索结果": ("Search results", "Resultados"),
         "刷新文件目录": ("Refresh file list", "Actualizar la lista de archivos"),
         "新建笔记 ⌘N": ("New note ⌘N", "Nueva nota ⌘N"),
         "没有找到匹配的文件": ("No matching files", "No se encontraron archivos"),

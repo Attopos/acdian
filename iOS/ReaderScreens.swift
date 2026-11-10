@@ -68,8 +68,6 @@ struct LauncherScreen: View {
                             VStack(spacing:8) {
                                 ModuleTileIcon(icon:module.icon,color:module.color)
                                 Text(module.name).font(.footnote.weight(.medium)).lineLimit(1).truncationMode(.middle).foregroundStyle(Color.ink)
-                                let count = store.pageCount(module)
-                                Text(module.kind == .attachments ? store.language.fileCount(count) : store.language.noteCount(count)).font(.caption2).foregroundStyle(.tertiary)
                             }.frame(maxWidth:.infinity).contentShape(Rectangle())
                         }.buttonStyle(.plain).opacity(module.hidden ? 0.45 : 1)
                     }

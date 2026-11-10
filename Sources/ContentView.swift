@@ -393,7 +393,7 @@ struct SidebarView: View {
             if home {
                 HStack { Text(model.localized("模块")).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(Color.secondary.opacity(0.6)); Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { editingModule = .new } label: { Image(systemName:"plus") }.help(model.localized("新建模块")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             } else {
-            HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果 · %@",model.language.number(model.matches.count))).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
+            HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果")).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
                 // Dropping on the Pages header puts an item at the top of the open module.
                 let target = PageDropTarget(folder:model.activeModule?.folder ?? "")
                 return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }

@@ -109,7 +109,6 @@ struct CardIndexView: View {
             VStack(alignment:.leading,spacing:14*zoom) {
                 HStack(alignment:.firstTextBaseline,spacing:10*zoom) {
                     Text(title).font(.system(size:28*zoom,weight:.bold))
-                    Text(model.language.noteCount(cards.count)).font(.system(size:12*zoom)).foregroundStyle(.secondary)
                     Spacer()
                     // Cards per row; the cards stay square, so more per row means smaller cards.
                     HStack(spacing:2*zoom) {
@@ -128,7 +127,6 @@ struct CardIndexView: View {
                     TextField(model.localized("搜索"),text:$query).textFieldStyle(.plain).font(.system(size:13*zoom))
                         .onSubmit { if let first = shown.first { model.open(first.page) } }
                     if !query.isEmpty { Button { query = "" } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
-                    Text(model.language.number(shown.count)).font(.system(size:11*zoom).monospacedDigit()).foregroundStyle(.tertiary)
                 }.padding(10*zoom).background(Color.wash,in:RoundedRectangle(cornerRadius:9*zoom)).overlay(RoundedRectangle(cornerRadius:9*zoom).strokeBorder(Color.faint))
                 ScrollView {
                     LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:10*zoom,alignment:.top),count:perRow),spacing:10*zoom) {

@@ -69,7 +69,7 @@ struct LauncherView: View {
                 }
                 LazyVGrid(columns:columns,alignment:.leading,spacing:26) {
                     ForEach(present.filter { !$0.hidden || showHidden }) { module in
-                        ModuleTile(module:module,count:pageCount(module)) { editing = .edit(module) }
+                        ModuleTile(module:module) { editing = .edit(module) }
                             .opacity(module.hidden ? 0.45 : 1)
                             .onDrag { dragging = module.id; return NSItemProvider(object:module.id as NSString) }
                             .onDrop(of:[.text],isTargeted:nil) { _ in
@@ -97,26 +97,18 @@ struct LauncherView: View {
         .background(Color.canvas)
         .sheet(item:$editing) { target in ModuleEditor(target:target).environmentObject(model) }
     }
-    private func pageCount(_ module: PageModule) -> Int {
-        let prefix = module.folder + "/"
-        return model.index?.files.filter { $0.relativePath.hasPrefix(prefix) && (module.kind == .attachments ? MediaKinds.isMedia($0.ext) : $0.ext == "md") }.count ?? 0
-    }
 }
 
 struct ModuleTile: View {
     @EnvironmentObject var model: AppModel
     let module: PageModule
-    let count: Int
     let edit: () -> Void
     @State private var hovering = false
     var body: some View {
         Button { model.enterModule(module.id) } label: {
             VStack(spacing:9) {
                 ModuleTileIcon(icon:module.icon,color:module.color,hovering:hovering).offset(y:hovering ? -2 : 0)
-                VStack(spacing:2) {
-                    Text(module.name).font(.system(size:12,weight:.medium)).lineLimit(1).truncationMode(.middle)
-                    Text(module.kind == .attachments ? model.language.fileCount(count) : model.language.noteCount(count)).font(.system(size:10)).foregroundStyle(.tertiary)
-                }
+                Text(module.name).font(.system(size:12,weight:.medium)).lineLimit(1).truncationMode(.middle)
             }.frame(maxWidth:.infinity).contentShape(Rectangle())
         }
         .buttonStyle(.plain).help(module.folder)
@@ -277,10 +269,7 @@ struct ModuleHomeView: View {
             VStack(alignment:.leading,spacing:22) {
                 HStack(spacing:16) {
                     ModuleTileIcon(icon:module.icon,color:module.color,size:64,active:true)
-                    VStack(alignment:.leading,spacing:5) {
-                        Text(module.name).font(.system(size:26,weight:.bold))
-                        Text(model.language.noteCount(pages.count)).font(.system(size:12)).foregroundStyle(.secondary)
-                    }
+                    Text(module.name).font(.system(size:26,weight:.bold))
                     Spacer()
                     Button { model.newPageFromEditor() } label: { Label(model.localized("新建页面"),systemImage:"square.and.pencil") }.buttonStyle(.bordered)
                 }
@@ -330,7 +319,7 @@ struct AttachmentsView: View {
         VStack(alignment:.leading,spacing:16) {
             HStack(alignment:.firstTextBaseline,spacing:12) {
                 Text(module.name).font(.system(size:28,weight:.bold))
-                Text(model.language.fileCount(media.count) + " · " + ByteCountFormatter.string(fromByteCount:Int64(media.reduce(0) { $0 + $1.size }),countStyle:.file)).font(.system(size:12)).foregroundStyle(.secondary)
+                Text(ByteCountFormatter.string(fromByteCount:Int64(media.reduce(0) { $0 + $1.size }),countStyle:.file)).font(.system(size:12)).foregroundStyle(.secondary)
                 Spacer()
                 if model.modules.contains(where: { $0.id == module.id }) {
                     Button { model.setModuleHidden(module.id,!module.hidden) } label: {
@@ -386,7 +375,7 @@ struct AttachmentCard: View {
                 Group {
                     if !counted { Text(" ") }
                     else if pages.isEmpty { Text(model.localized("未被引用")).foregroundStyle(Color.acPink) }
-                    else { Text(pages.count == 1 ? model.localized("1 个页面引用") : model.localized("%@ 个页面引用",model.language.number(pages.count))).foregroundStyle(.secondary) }
+                    else { Text(" ") }
                 }.font(.system(size:10))
             }.contentShape(Rectangle())
         }

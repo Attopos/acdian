@@ -28,7 +28,6 @@ struct LocalizationTests {
         try check(preferences.string(forKey:"appLanguage") == "es", "Choosing a language must persist its stable identifier")
         try check(AppModel(loadInitialVault:false,preferences:preferences).language == .spanish, "A new model must restore the selected language")
         try check(model.status == "Guardando…" && model.localized("新建页面") == "Nueva página", "Existing UI and the pending-save status must immediately use Spanish")
-        try check(model.language.noteCount(1) == "1 nota" && model.language.noteCount(2) == "2 notas", "Counts must use Spanish singular and plural forms")
         try check(model.localizedError(VaultCoreError.conflict(file)).contains("Otra aplicación modificó «Localization.md»"), "File safety errors must use the selected language and preserve the filename")
         try check(AppStatus.openedPages(1).localized(.english) == "Ready" && AppStatus.openedPages(1).localized(.spanish) == "Listo", "Automatic page storage must show a ready status in the active language")
         try check(AppStatus.trashed.localized(.english) == "Moved to Trash" && AppStatus.restored.localized(.spanish) == "Archivo restaurado", "Trash action statuses must use the current language")

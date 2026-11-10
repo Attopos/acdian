@@ -29,7 +29,6 @@ extension AppLanguage {
 
     private var files: [String:VaultEntry] = [:]
     private var folders: [String:VaultEntry] = [:]
-    private var counts: [String:(pages: Int, media: Int)] = [:]
     private var query: NSMetadataQuery?
     private var observers: [NSObjectProtocol] = []
     private var generation = 0
@@ -152,7 +151,6 @@ extension AppLanguage {
         let modules: [PageModule]
         let components: [String:ComponentInstance]
         let remote: Set<String>
-        let counts: [String:(pages: Int, media: Int)]
     }
     private func publish(_ loaded: Loaded, final: Bool, note: String) {
         var files: [String:VaultEntry] = [:], folders: [String:VaultEntry] = [:]
@@ -160,7 +158,7 @@ extension AppLanguage {
             for entry in entries { if entry.isDirectory { folders[entry.relativePath] = entry; walk(entry.children ?? []) } else { files[entry.relativePath] = entry } }
         }
         walk(loaded.index.entries)
-        self.files = files; self.folders = folders; counts = loaded.counts
+        self.files = files; self.folders = folders
         index = loaded.index; modules = loaded.modules; components = loaded.components; remote = loaded.remote
         changeTick += 1
         if !publishedAnything { PerfLog.mark("launcher can show (\(note))") }
@@ -184,13 +182,7 @@ extension AppLanguage {
         for file in index.files where file.ext == ComponentStore.fileExtension {
             if let instance = try? ReaderFiles.coordinatedRead(file.url,timeout:5,{ ComponentStore.read($0) }) { components[file.relativePath] = instance }
         }
-        var counts: [String:(pages: Int, media: Int)] = [:]
-        for file in index.files {
-            guard let slash = file.relativePath.firstIndex(of:"/") else { continue }
-            let top = String(file.relativePath[..<slash])
-            if file.ext == "md" { counts[top,default:(0,0)].pages += 1 } else if MediaKinds.isMedia(file.ext) { counts[top,default:(0,0)].media += 1 }
-        }
-        return Loaded(index:index,modules:modules,components:components,remote:scan.remote,counts:counts)
+        return Loaded(index:index,modules:modules,components:components,remote:scan.remote)
     }
 
     /// Brings the page cache up to date: only pages whose date or size changed
@@ -251,10 +243,6 @@ extension AppLanguage {
         return entries.filter { !hidden.contains($0.relativePath) }
     }
     func module(containing path: String) -> PageModule? { modules.filter { $0.contains(path) }.max { $0.folder.count < $1.folder.count } }
-    func pageCount(_ module: PageModule) -> Int {
-        let count = counts[module.folder] ?? (0,0)
-        return module.kind == .attachments ? count.media : count.pages
-    }
 
     nonisolated static func searchFold(_ text: String) -> String { text.folding(options:[.caseInsensitive,.diacriticInsensitive],locale:nil) }
     /// Same rule as the Mac: inside a module when one is open, otherwise
