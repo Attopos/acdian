@@ -14,6 +14,8 @@ import UniformTypeIdentifiers
     weak var model: AppModel? { didSet { if model !== oldValue { attachBridge() } } }
     var appearance = "dark"
     @Published private(set) var focused = false
+    /// A picture held down in the page: its link and the page it is on.
+    @Published var imageMenu: (target: String, page: String)?
     private var ready = false
     private var documentID: UUID?
     private var documentPath = ""
@@ -145,6 +147,7 @@ import UniformTypeIdentifiers
         guard message.frameInfo.isMainFrame, let value = message.body as? [String:Any], let type = value["type"] as? String else { return }
         if type == "ready" { ready = true; render(); return }
         if type == "focus" { focused = value["focused"] as? Bool ?? false; return }
+        if type == "imageMenu", let target = value["target"] as? String { imageMenu = (target,documentPath); return }
         if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
         guard isCurrent, let model, let documentID, value["documentID"] as? String == documentID.uuidString else { return }
         if role == .split {
@@ -228,9 +231,11 @@ struct EditorWebView: UIViewRepresentable {
         host.model = model; host.appearance = colorScheme == .light ? "light" : "dark"
         attach(container); host.render()
     }
+    /// A container that is on its way out must not take the web view back from
+    /// the one that replaced it, or the page ends up blank.
     private func attach(_ container: UIView) {
         let view = host.view
-        guard view.superview !== container else { return }
+        guard view.superview !== container, view.window == nil || container.window != nil else { return }
         view.frame = container.bounds; view.autoresizingMask = [.flexibleWidth,.flexibleHeight]; container.addSubview(view)
     }
 }

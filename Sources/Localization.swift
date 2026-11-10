@@ -29,6 +29,9 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     private static let translations: [String:(english:String,spanish:String)] = [
         "好": ("OK", "Aceptar"),
+        "拷贝图片": ("Copy Image", "Copiar imagen"),
+        "分享…": ("Share…", "Compartir…"),
+        "在“文件”中显示": ("Show in Files", "Mostrar en Archivos"),
         "正在建立搜索索引… %@/%@": ("Indexing for search… %@/%@", "Indexando para buscar… %@/%@"),
         "评论": ("Comment", "Comentario"),
         "目录": ("Contents", "Índice"),

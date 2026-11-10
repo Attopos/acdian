@@ -275,3 +275,10 @@ test('a new comment is saved only once it has text, and can be edited',async()=>
  assert.equal(r.view.state.doc.toString(),'一段可以评论的文字。\n');
  r.close();
 });
+
+test('a table typed row by row stays one table',()=>{
+ const r=setup('| Name | Count |\n');const end=()=>r.view.state.doc.length;
+ const type=text=>{for(const ch of text){const at=r.view.state.selection.main.head;r.view.dispatch({changes:{from:at,insert:ch},selection:{anchor:at+ch.length},userEvent:'input.type'});}};
+ r.view.dispatch({selection:{anchor:end()}});type('| --- | --- |\n| Ink | 2 |');
+ assert.equal(r.get().text,'| Name | Count |\n| --- | --- |\n| Ink | 2 |');r.close();
+});

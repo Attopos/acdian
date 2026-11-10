@@ -86,6 +86,17 @@ export function installTouchCommands(view) {
   const COLUMN=296,TEXT=860;
   const shift=()=>{const room=(innerWidth-TEXT)/2;document.documentElement.style.setProperty('--center-shift',(innerWidth>=1000&&room<COLUMN+16?Math.min(COLUMN+16-room,room):0)+'px');dispatchEvent(new Event('acdian-relayout'));};
   shift();
+  // Holding a finger on a picture asks the app for its menu, in place of the Mac's right-click.
+  let hold=null,origin=null;
+  const cancel=()=>{if(hold){clearTimeout(hold);hold=null;}};
+  view.dom.addEventListener('touchstart',event=>{
+    const image=event.target.closest?.('img[data-live-resource]');cancel();
+    if(!image||event.touches.length!==1)return;
+    origin=[event.touches[0].clientX,event.touches[0].clientY];
+    hold=setTimeout(()=>{hold=null;globalThis.webkit?.messageHandlers?.acdian?.postMessage({type:'imageMenu',target:image.dataset.liveResource});},500);
+  },{passive:true});
+  view.dom.addEventListener('touchmove',event=>{if(hold&&Math.hypot(event.touches[0].clientX-origin[0],event.touches[0].clientY-origin[1])>10)cancel();},{passive:true});
+  view.dom.addEventListener('touchend',cancel,{passive:true});
   // The web view shrinks when the keyboard appears; the caret stays in sight.
   addEventListener('resize',()=>{shift();if(view.hasFocus)view.dispatch({scrollIntoView:true});});
 }

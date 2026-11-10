@@ -2,6 +2,8 @@
 html,body { -webkit-text-size-adjust:100%; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
 
 @media (hover:none) {
+  /* The app shows its own menu for a held picture. */
+  .cm-editor img { -webkit-touch-callout:none; -webkit-user-select:none; }
   /* Fold arrows appear on hover, so on touch only the ones already folded remain. */
   .cm-editor .cm-fold-toggle:not(.cm-fold-closed) { display:none; }
   /* Without room for the comment column, the open comment rises from the bottom as a sheet. */

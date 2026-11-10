@@ -464,6 +464,8 @@ function typedIntoBlank(tr) {
   if(count!==1||found===null)return null;
   const line=tr.startState.doc.lineAt(found);
   if(line.text.trim()||literalCodeLine(tr.startState,line)||!needsSeparatorAbove(tr.startState,line.number))return null;
+  // A table row typed right under a table row continues the table.
+  if(/^\s*\|/.test(tr.newDoc.lineAt(tr.changes.mapPos(line.from,1)).text)&&/^\s*\|/.test(tr.startState.doc.line(line.number-1).text))return null;
   return tr.changes.mapPos(line.from,-1);
 }
 // The newlines that set typed text apart: one above it, and one below it too

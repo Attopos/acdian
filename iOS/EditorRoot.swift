@@ -144,7 +144,8 @@ struct SidebarList: View {
             } else {
                 if model.activeModule == nil {
                     Section(model.localized("模块")) {
-                        ForEach(model.presentModules.filter { !$0.hidden || showHidden }) { module in
+                        let shown = model.presentModules.filter { !$0.hidden || showHidden }
+                        ForEach(shown) { module in
                             Button { model.enterModule(module.id) } label: {
                                 Label { Text(module.name).foregroundStyle(Color.ink) } icon: { Image(systemName:ModuleStyle.symbol(module.icon)).foregroundStyle(ModuleStyle.glyph(module.color)) }
                             }
@@ -154,6 +155,12 @@ struct SidebarList: View {
                                 Button { model.setModuleHidden(module.id,!module.hidden) } label: { Label(module.hidden ? model.localized("取消隐藏") : model.localized("隐藏"),systemImage:module.hidden ? "eye" : "eye.slash") }
                                 Button(role:.destructive) { model.removeModule(module.id) } label: { Label(model.localized("从模块中移除（保留文件夹）"),systemImage:"minus.circle") }
                             }
+                            .accessibilityIdentifier("module-" + module.folder)
+                        }
+                        // Dragging a module reorders the launcher, as on the Mac.
+                        .onMove { from,to in
+                            guard let index = from.first else { return }
+                            model.moveModule(shown[index].id,before:to < shown.count ? shown[to].id : "")
                         }
                         Button { sheet = .module(nil) } label: { Label(model.localized("新建模块"),systemImage:"plus") }
                         if model.presentModules.contains(where:\.hidden) {
@@ -203,6 +210,8 @@ struct DetailPane: View {
     @Binding var showingFiles: Bool
     @Binding var showingOutline: Bool
     @State private var keyboardVisible = false
+    @State private var shareURL: URL?
+    @ObservedObject private var host = EditorHost.shared
     var body: some View {
         NavigationStack {
             VStack(spacing:0) {
@@ -222,6 +231,14 @@ struct DetailPane: View {
             }
             .safeAreaInset(edge:.bottom,spacing:0) { if keyboardVisible, model.selected?.ext == "md" { FormatBar() } }
         }
+        .confirmationDialog("",isPresented:Binding(get:{ host.imageMenu != nil },set:{ if !$0 { host.imageMenu = nil } })) {
+            if let menu = host.imageMenu, let url = model.index?.resolve(menu.target,from:menu.page) {
+                Button(model.localized("拷贝图片")) { model.copyImage(menu.target,from:menu.page) }
+                Button(model.localized("分享…")) { shareURL = url }
+                Button(model.localized("在“文件”中显示")) { if let files = URL(string:"shareddocuments://" + url.path.addingPercentEncoding(withAllowedCharacters:.urlPathAllowed)!) { UIApplication.shared.open(files) } }
+            }
+        }
+        .sheet(item:Binding(get:{ shareURL.map(SharedFile.init) },set:{ shareURL = $0?.url })) { ShareSheet(url:$0.url) }
         .onReceive(NotificationCenter.default.publisher(for:UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for:UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
     }
@@ -229,18 +246,7 @@ struct DetailPane: View {
         if model.showingTrash { TrashList(model:model) }
         else if let file = model.selected, file.ext == "md" {
             if let split = model.splitEntry {
-                HStack(spacing:0) {
-                    EditorWebView(model:model)
-                    Divider()
-                    VStack(spacing:0) {
-                        HStack {
-                            Text((split.name as NSString).deletingPathExtension).font(.footnote.weight(.medium)).lineLimit(1)
-                            Spacer()
-                            Button { model.closeSplit() } label: { Image(systemName:"xmark") }.accessibilityIdentifier("closeSplit")
-                        }.padding(.horizontal,12).padding(.vertical,6).background(Color.wash)
-                        if split.ext == "md" { EditorWebView(model:model,host:.split) } else { AttachmentPreview(file:split,model:model) }
-                    }
-                }.ignoresSafeArea(edges:.bottom)
+                SplitPanes(model:model,split:split).ignoresSafeArea(edges:.bottom)
             } else {
                 VStack(spacing:0) {
                     if model.isDraft { DraftTitleField(model:model) }
@@ -291,7 +297,7 @@ struct FormatBar: View {
                     }
                 }
             }
-            Button { EditorHost.shared.dismissKeyboard() } label: { Image(systemName:"keyboard.chevron.compact.down").frame(width:40,height:36) }.buttonStyle(.plain).foregroundStyle(.secondary)
+            Button { EditorHost.shared.dismissKeyboard() } label: { Image(systemName:"keyboard.chevron.compact.down").frame(width:40,height:36) }.buttonStyle(.plain).foregroundStyle(.secondary).accessibilityIdentifier("hideKeyboard")
         }.padding(.horizontal,8).padding(.vertical,4).background(.bar)
     }
 }
@@ -386,4 +392,55 @@ struct DraftTitleField: View {
             .frame(maxWidth:860,alignment:.leading).frame(maxWidth:.infinity)
             .onAppear { focused = true }
     }
+}
+
+/// The open page and a second one side by side. The divider can be dragged
+/// (double-tap to centre it), and the sides swapped, as on the Mac.
+struct SplitPanes: View {
+    @ObservedObject var model: AppModel
+    let split: VaultEntry
+    @State private var dragStart: CGFloat?
+    var body: some View {
+        GeometryReader { geometry in
+            // The panes keep their places in the view tree and only change sides,
+            // so their web views are never torn down by a swap.
+            let width = geometry.size.width, divider = max(200,min(width - 200,width * model.splitFraction))
+            HStack(spacing:0) {
+                EditorWebView(model:model).environment(\.layoutDirection,.leftToRight)
+                    .frame(width:model.splitOnLeft ? width - divider - 14 : divider)
+                handle(width:width,divider:divider)
+                splitPane.environment(\.layoutDirection,.leftToRight)
+            }
+            .environment(\.layoutDirection,model.splitOnLeft ? .rightToLeft : .leftToRight)
+        }
+    }
+    private func handle(width: CGFloat, divider: CGFloat) -> some View {
+        ZStack { Rectangle().fill(Color.faint).frame(width:1); Capsule().fill(Color.secondary.opacity(0.5)).frame(width:4,height:40) }
+            .frame(width:14).frame(maxHeight:.infinity).contentShape(Rectangle())
+            // Measured in the window, because the divider itself moves while it is dragged.
+            .gesture(DragGesture(minimumDistance:2,coordinateSpace:.global).onChanged { drag in
+                let origin = dragStart ?? divider; dragStart = origin
+                model.splitFraction = min(max((origin + drag.translation.width) / width,0.2),0.8)
+            }.onEnded { _ in dragStart = nil })
+            .onTapGesture(count:2) { model.splitFraction = 0.5 }
+            .accessibilityIdentifier("splitDivider")
+    }
+    private var splitPane: some View {
+        VStack(spacing:0) {
+            HStack(spacing:14) {
+                Text((split.name as NSString).deletingPathExtension).font(.footnote.weight(.medium)).lineLimit(1)
+                Spacer()
+                Button { model.swapSplitSides() } label: { Image(systemName:"arrow.left.arrow.right") }.accessibilityIdentifier("swapSplit")
+                Button { model.closeSplit() } label: { Image(systemName:"xmark") }.accessibilityIdentifier("closeSplit")
+            }.padding(.horizontal,12).padding(.vertical,6).background(Color.wash)
+            if split.ext == "md" { EditorWebView(model:model,host:.split) } else { AttachmentPreview(file:split,model:model) }
+        }
+    }
+}
+
+struct SharedFile: Identifiable { let url: URL; var id: String { url.path } }
+struct ShareSheet: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems:[url],applicationActivities:nil) }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
