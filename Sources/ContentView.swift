@@ -165,11 +165,13 @@ struct ContentView: View {
     // A Feishu-style outline in the page's left margin: the page title first,
     // then its headings, with no panel chrome of its own.
     // The editor column is at most 860 wide with empty padding inside each edge.
-    // The outline docks in the margin left of the text when that margin holds at
-    // least the narrowest outline plus a gap; it grows up to 220 with the margin.
-    static let outlineWidths: ClosedRange<CGFloat> = 168...220
+    // The outline docks in the margin left of the text only when that margin holds
+    // a readable outline and a clear gap before the text (Aaron found 12 crowded);
+    // it grows up to 240 with the margin. Narrower margins get the rail instead.
+    static let outlineWidths: ClosedRange<CGFloat> = 200...240
+    static let outlineGap: CGFloat = 48
     static func outlineDockWidth(_ width: CGFloat, shift: CGFloat) -> CGFloat? {
-        let room = pageLeft(width,shift:shift) + pageSide(width) - 12
+        let room = pageLeft(width,shift:shift) + pageSide(width) - outlineGap
         return room >= outlineWidths.lowerBound ? min(room,outlineWidths.upperBound) : nil
     }
     // The text column sits in the middle of the window, not of the space the

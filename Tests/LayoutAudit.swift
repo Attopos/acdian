@@ -60,7 +60,7 @@ struct LayoutAudit {
             let shift = LiveEditorHost.shared.centerShift
             let textLeft = ContentView.pageLeft(width,shift:shift) + 58
             // The docked outline keeps a gap to the text; otherwise only the rail shows, inside the margin.
-            if let dock = ContentView.outlineDockWidth(width,shift:shift) { if textLeft < dock + 12 - 0.5 { problems.append("\(label): outline over the text, text at \(textLeft)") } }
+            if let dock = ContentView.outlineDockWidth(width,shift:shift) { if textLeft < dock + ContentView.outlineGap - 0.5 { problems.append("\(label): outline over the text, text at \(textLeft)") } }
             else if textLeft < 4 + 22 { problems.append("\(label): outline rail over the text, text at \(textLeft)") }
         }
         let sizes: [(CGFloat,CGFloat)] = [(920,620),(1000,700),(1100,720),(1260,840),(1440,900),(1512,982),(1728,1117),(1920,1080),(2560,1440),(3440,1440),(5120,1440)]
