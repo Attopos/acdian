@@ -91,8 +91,27 @@ function resourceURL(target) {
   if (/^data:image\/(?:png|jpe?g|gif|webp|avif);/i.test(target)) return target;
   if (/^[a-z][a-z\d+.-]*:/i.test(target)) return '';
   const [path, ...anchor] = target.split('#');
-  return `acdian-resource://vault/${encodeURIComponent(decode(path))}?from=${encodeURIComponent(metadata.currentPath)}${anchor.length ? '#' + anchor.join('#') : ''}`;
+  const url = `acdian-resource://vault/${encodeURIComponent(decode(path))}?from=${encodeURIComponent(metadata.currentPath)}`;
+  if (/\.svg$/i.test(path) && !anchor.length) return themedSVG(url);
+  return `${url}${anchor.length ? '#' + anchor.join('#') : ''}`;
 }
+// A picture in an <img> follows the Mac's appearance, not ACdian's, so an SVG
+// is told the editor's theme by its URL: #acdian-light or #acdian-dark, which
+// the file can style with :target (e.g. #acdian-dark:target ~ .dark). The
+// query names the theme too, so WebKit keeps a separate drawing for each.
+// Pictures already on the page, or made from an older URL, move to the theme
+// whenever it changes.
+const themedSVG=url=>{const theme=currentAppearance();return `${url.replace(/&appearance=\w+/,'')}&appearance=${theme}#acdian-${theme}`;};
+function themeSVGImages(root=document) {
+  const images=root.tagName==='IMG'?[root]:root.querySelectorAll?.('img[src^="acdian-resource://vault/"]')??[];
+  for(const image of images){
+    const src=image.getAttribute('src')||'',[base,fragment]=src.split('#');
+    if(!src.startsWith('acdian-resource://vault/')||!/\.svg\?/i.test(base)||(fragment&&!/^acdian-(?:light|dark)$/.test(fragment)))continue;
+    const next=themedSVG(base);
+    if(next!==src)image.setAttribute('src',next);
+  }
+}
+new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)if(node.nodeType===1)themeSVGImages(node);}).observe(document.documentElement,{childList:true,subtree:true});
 function navigate(target) {
   if (target.startsWith('#')) { window.acdianScrollTo(target); return; }
   if (/^(?:https?:|mailto:)/i.test(target)) post({type:'external',target,from:metadata.currentPath});
@@ -286,7 +305,7 @@ window.addEventListener('message',event=>{
     if(Math.abs(height-frame.offsetHeight)>1){frame.style.height=height+'px';window.acdianEditor?.requestMeasure();}
   }
 });
-new MutationObserver(()=>{const theme=currentAppearance();for(const frame of interactiveFrames())frame.contentWindow?.postMessage({type:'acdian-interactive:theme',theme},'*');}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+new MutationObserver(()=>{const theme=currentAppearance();themeSVGImages();for(const frame of interactiveFrames())frame.contentWindow?.postMessage({type:'acdian-interactive:theme',theme},'*');}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
 
 // The last line of the HTML block that starts on line n, or 0 if none does. The
 // tags are matched up, so a block may hold blank lines and Markdown.
