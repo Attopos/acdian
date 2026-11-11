@@ -29,8 +29,9 @@ html.light .cm-editor .cm-live-em { color: #4a3d45; }
 html.light .cm-editor .cm-live-strike { color: #8d8893; }
 html.light .cm-editor .cm-live-code { color: #b8236c; background: #d93b8612; }
 html.light .cm-editor .cm-live-highlight { background: #d93b8624; color: #5c1036; }
-html.light .cm-editor .cm-list-bullet { color: #d93b86; }
-html.light .cm-editor .cm-live-link { color: #c4206f; background: #d93b860d; text-decoration-color: #d93b8660; }
+html.light .cm-editor .cm-list-bullet { color: #8d8893; }
+html.light .cm-editor .cm-heading-6 { color: #77727e; }
+html.light .cm-editor .cm-live-link { color: #c4206f; text-decoration-color: #d93b8660; }
 html.light .cm-editor .cm-code-line { background: #f5f4f7; color: #2a2830; }
 html.light .cm-editor .cm-quote-line { color: #5f5966; }
 html.light .cm-editor .cm-callout-line { color: #45404b; }
@@ -117,7 +118,7 @@ html.light .cm-comment-quote { color: #77727e; border-left-color: #e5b52a; }
 html.light .cm-comment-tool { color: #8d8893; }
 html.light .cm-comment-tool:hover { background: #0000000d; color: #2a2830; }
 html.light .cm-comment-reply + .cm-comment-reply { border-top-color: #0000000f; }
-html.light .cm-comment-meta { color: #9a95a0; }
+html.light .cm-comment-meta { color: #77727e; }
 html.light .cm-comment-text { color: #2a2830; }
 html.light .cm-comment-input { background: #f6f5f8; color: #2a2830; border-color: #0000001f; }
 html.light .cm-comment-input:focus { border-color: #e5b52a; }

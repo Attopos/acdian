@@ -235,10 +235,10 @@ struct ContentView: View {
             if model.loading { ProgressView().controlSize(.mini).scaleEffect(0.7) } else { Circle().fill(Color.acPink).frame(width:5,height:5) }
             Text(model.status).lineLimit(1).truncationMode(.middle)
             Spacer()
-            if model.selected?.ext == "md" { Text(model.language.characterCount(model.wordCount)); Text("·").padding(.horizontal,3); Text("Markdown"); Text("UTF-8").padding(.leading,12) }
+            if model.selected?.ext == "md" { Text(model.language.characterCount(model.wordCount)) }
             else if model.selected?.ext == "pdf" { pdfControls.font(.system(size:11)).foregroundStyle(.secondary).buttonStyle(.borderless) }
             else if let file = model.selected, !model.showingTrash { Button { NSWorkspace.shared.activateFileViewerSelecting([file.url]) } label: { Image(systemName:"folder") }.buttonStyle(.borderless).help(model.localized("在 Finder 中显示")) }
-        }.font(.system(size:10)).foregroundStyle(.tertiary).padding(.horizontal,20).frame(height:29)
+        }.font(.system(size:11)).foregroundStyle(.secondary).padding(.horizontal,20).frame(height:29)
     }
 }
 
@@ -432,9 +432,9 @@ struct SidebarView: View {
                 HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused).onExitCommand { model.query = ""; searching = false }; Button { model.query = ""; searching = false } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
             } else { Color.clear.frame(height:8) }
             if home {
-                HStack { Text(model.localized("模块")).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(Color.secondary.opacity(0.6)); Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { editingModule = .new } label: { Image(systemName:"plus") }.help(model.localized("新建模块")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
+                HStack { Text(model.localized("模块")).font(.system(size:11,weight:.semibold)).tracking(0.6).foregroundStyle(Color.secondary.opacity(0.6)); Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { editingModule = .new } label: { Image(systemName:"plus") }.help(model.localized("新建模块")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             } else {
-            HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果")).font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
+            HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果")).font(.system(size:11,weight:.semibold)).tracking(0.6).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
                 // Dropping on the Pages header puts an item at the top of the open module.
                 let target = PageDropTarget(folder:model.activeModule?.folder ?? "")
                 return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }
@@ -511,7 +511,7 @@ struct TreeRow: View {
             RenameRow(entry:entry,leading:CGFloat(depth)*13+8,folder:true,symbol:expanded ? "folder.fill" : "folder",tint:Color.acPink.opacity(0.72)).id(model.renamingSession)
         } else if entry.isDirectory {
             Button { model.setFolderExpanded(entry.relativePath,!expanded) } label: {
-                HStack(spacing:6) { Image(systemName:expanded ? "chevron.down" : "chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8); Image(systemName:expanded ? "folder.fill" : "folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72)); Text(entry.name).font(.system(size:12)).lineLimit(1); Spacer() }.foregroundStyle(.secondary).padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29).contentShape(Rectangle())
+                HStack(spacing:6) { Image(systemName:expanded ? "chevron.down" : "chevron.right").font(.system(size:8,weight:.semibold)).frame(width:8); Image(systemName:expanded ? "folder.fill" : "folder").font(.system(size:12)).foregroundStyle(Color.acPink.opacity(0.72)); Text(entry.name).font(.system(size:13)).lineLimit(1); Spacer() }.foregroundStyle(.secondary).padding(.leading,CGFloat(depth)*13+8).padding(.trailing,8).frame(height:29).contentShape(Rectangle())
             }.buttonStyle(.plain)
             .simultaneousGesture(TapGesture(count:2).onEnded { model.startRenaming(entry) })
             .contextMenu {
@@ -568,7 +568,7 @@ private struct NameEditor: NSViewRepresentable {
         let field = FocusingField(string:initial)
         field.selected = NSRange(location:0,length:selected)
         field.isBordered = false; field.drawsBackground = false; field.focusRingType = .none
-        field.font = .systemFont(ofSize:12); field.lineBreakMode = .byClipping; field.cell?.isScrollable = true
+        field.font = .systemFont(ofSize:13); field.lineBreakMode = .byClipping; field.cell?.isScrollable = true
         field.setAccessibilityIdentifier("sidebarNameField")
         field.delegate = context.coordinator
         context.coordinator.watch(field)
@@ -635,7 +635,7 @@ struct FileRow: View {
     }
     private var row: some View {
         Button { model.openInFocusedColumn(entry) } label: {
-            HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(AppModel.editableName(entry)).font(.system(size:12)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:9)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,7).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
+            HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(AppModel.editableName(entry)).font(.system(size:13)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:11)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,6).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
         }.buttonStyle(.plain).help(entry.relativePath)
         .simultaneousGesture(TapGesture(count:2).onEnded { model.startRenaming(entry) })
         .contextMenu {
@@ -794,11 +794,11 @@ struct TrashView: View {
                                 Image(systemName:entry.isDirectory ? "folder" : "doc.text").font(.system(size:21)).foregroundStyle(Color.acPink).frame(width:28)
                                 VStack(alignment:.leading,spacing:5) {
                                     Text(entry.name).font(.system(size:13,weight:.medium)).lineLimit(1)
-                                    Text(entry.originalRelativePath).font(.system(size:10)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+                                    Text(entry.originalRelativePath).font(.system(size:11)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
                                     HStack(spacing:12) {
                                         Text(model.localized("删除于 %@",model.language.modifiedDate(entry.deletedAt)))
                                         Text(model.language.remainingTrashDays(model.trashDaysRemaining(entry)))
-                                    }.font(.system(size:10)).foregroundStyle(.secondary)
+                                    }.font(.system(size:11)).foregroundStyle(.secondary)
                                 }
                                 Spacer(minLength:12)
                                 Button(model.localized("恢复")) { model.restoreFromTrash(entry) }.buttonStyle(.bordered)

@@ -68,7 +68,7 @@ pre code { display: block; padding: 18px 20px 21px; overflow: auto; white-space:
 kbd { padding: 2px 5px; border: 1px solid #ffffff22; border-bottom-width: 2px; border-radius: 4px; background: var(--raised); font-size: .85em; }
 table { display: block; width: max-content; max-width: 100%; overflow-x: auto; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border); border-radius: 8px; margin: 22px 0 27px; font-size: 14px; line-height: 1.65; }
 th { background: #ffffff04; color: #ded7e3; font-weight: 600; text-align: left; }
-td, th { padding: 11px 16px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+td, th { font-variant-numeric: tabular-nums; padding: 11px 16px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
 th:last-child, td:last-child { border-right: 0; }
 tr:last-child td { border-bottom: 0; }
 tr:nth-child(even) td { background: #ffffff02; }
