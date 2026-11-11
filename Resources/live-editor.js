@@ -140,7 +140,7 @@ function listLineStyle(hang,marker) {
 class BulletWidget extends WidgetType {
   constructor(label) { super(); this.label = label; }
   eq(other) { return this.label === other.label; }
-  toDOM() { const span = document.createElement('span'); span.className = 'cm-list-bullet'; span.textContent = this.label; span.setAttribute('aria-hidden','true'); return span; }
+  toDOM() { const span = document.createElement('span'); span.className = this.label==='•' ? 'cm-list-bullet cm-list-dot' : 'cm-list-bullet'; span.textContent = this.label; span.setAttribute('aria-hidden','true'); return span; }
 }
 class TaskWidget extends WidgetType {
   constructor(from, checked, language) { super(); Object.assign(this,{from,checked,language}); }

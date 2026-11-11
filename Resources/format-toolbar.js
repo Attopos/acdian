@@ -393,7 +393,7 @@ const icons={
   color:svg(['M6.2 12.5 10 3.5l3.8 9','M7.5 9.5h5','M4 16.5h12']),
   chevron:svg(['M6 8.5l4 4 4-4'],' class="cm-format-chevron"')
 };
-const inlineButtons=[['bold','Mod-b'],['strike','Mod-Shift-x'],['italic','Mod-i'],['link','Mod-k'],['code','Mod-e'],['highlight',null]];
+const inlineButtons=[['bold','Mod-b'],['strike','Mod-Shift-x'],['italic','Mod-i'],['link','Mod-k'],['code','Mod-e'],['highlight','Mod-Shift-h']];
 const shortcutLabel=key=>key?' '+key.replace('Mod-','⌘').replace('Shift-','⇧').replace('Alt-','⌥').toUpperCase():'';
 const blockShortcuts={text:'Mod-Alt-0',h1:'Mod-Alt-1',h2:'Mod-Alt-2',h3:'Mod-Alt-3',h4:'Mod-Alt-4',quote:'Mod-Shift-.',todo:'Mod-Shift-9',bullet:'Mod-Shift-8',number:'Mod-Shift-7',code:'Mod-Alt-c'};
 
@@ -527,6 +527,7 @@ export function formatToolbar() {return [
     {key:'Mod-i',run:toggleFormat('italic')},
     {key:'Mod-Shift-x',run:toggleFormat('strike')},
     {key:'Mod-e',run:toggleFormat('code')},
+    {key:'Mod-Shift-h',run:toggleFormat('highlight')},
     {key:'Mod-k',run:openLink},
     ...Object.entries(blockShortcuts).map(([id,key])=>({key,run:setBlock(id,true)})),
     {key:'Escape',run(view){if(!view.state.field(toolbarState).show)return false;view.dispatch({effects:dismiss.of(null)});return true;}}

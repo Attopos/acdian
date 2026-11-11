@@ -282,3 +282,11 @@ test('a table typed row by row stays one table',()=>{
  r.view.dispatch({selection:{anchor:end()}});type('| --- | --- |\n| Ink | 2 |');
  assert.equal(r.get().text,'| Name | Count |\n| --- | --- |\n| Ink | 2 |');r.close();
 });
+test('Command-Shift-H highlights the selection and takes the highlight off again',()=>{
+ const source='Some words here.\n',r=setup(source),from=source.indexOf('words');
+ const press=()=>{const mac=/Mac/.test(r.w.navigator.platform);r.view.contentDOM.dispatchEvent(new r.w.KeyboardEvent('keydown',{key:'H',code:'KeyH',keyCode:72,shiftKey:true,metaKey:mac,ctrlKey:!mac,bubbles:true,cancelable:true}));};
+ r.view.focus();r.view.dispatch({selection:{anchor:from,head:from+5}});
+ press();assert.equal(r.get().text,'Some ==words== here.\n');
+ assert.ok(r.w.document.querySelector('.cm-live-highlight'),'the highlight is drawn');
+ press();assert.equal(r.get().text,source);r.close();
+});
