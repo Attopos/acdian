@@ -59,7 +59,7 @@ struct LayoutAudit {
             guard model.splitEntry == nil, model.showOutline else { return }
             let web = LiveEditorHost.shared.view
             let article = window.contentLayoutRect.width - (model.showSidebar ? CGFloat(model.sidebarWidth + 1) : 0)
-            let shift = model.showSidebar ? CGFloat(model.sidebarWidth + 1) / 2 : 0
+            let shift: CGFloat = 0
             let layout = ContentView.outlineLayout(article,shift:shift,showOutline:true)
             // Where the text starts in the article area, from where the editor really is.
             let editorLeft = web.convert(web.bounds,to:nil).minX - (model.showSidebar ? CGFloat(model.sidebarWidth + 1) : 0)

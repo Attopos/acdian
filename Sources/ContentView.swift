@@ -145,7 +145,7 @@ struct ContentView: View {
                         ZStack(alignment:.topLeading) {
                             VStack(spacing:0) {
                                 if model.isDraft { DraftTitleView(model:model,side:Self.pageSide(width),left:Self.pageLeft(width,shift:layout.shift)).id(model.editorDocumentID) }
-                                LiveMarkdownEditor(model:model,centerShift:layout.shift,leftRoom:layout.room).frame(maxWidth:.infinity,maxHeight:.infinity)
+                                LiveMarkdownEditor(model:model,centerShift:layout.shift,leftEdge:layout.edge).frame(maxWidth:.infinity,maxHeight:.infinity)
                             }.padding(.leading,layout.reserve)
                             if !model.showOutline {
                                 Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = true } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)).frame(width:22,height:22).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,geometry.size.width > 700 ? 20 : 2).padding(.top,geometry.size.width > 700 ? 39 : 4)
@@ -181,35 +181,34 @@ struct ContentView: View {
     /// How the page makes room for the outline: `reserve` is the space the editor
     /// gives up on its left, `shift` the centre shift the editor then uses, and
     /// `outline` the docked outline's width, nil for the rail or no outline.
-    /// `room` is how far the text may still move left, for the comment column on the right.
-    struct OutlineLayout { var reserve: CGFloat = 0; var shift: CGFloat; var outline: CGFloat?; var room: CGFloat = 0 }
+    /// `edge` is where text may start in the editor when the comment column moves it.
+    struct OutlineLayout { var reserve: CGFloat = 0; var shift: CGFloat; var outline: CGFloat?; var edge: CGFloat = 0 }
     /// Narrowest editor left beside a pushed-in outline; below it the rail shows.
     static let pushedEditorMinimum: CGFloat = 480
     /// A split page keeps the two columns' text the same width, so it never pushes.
     static func outlineLayout(_ width: CGFloat, shift: CGFloat, showOutline: Bool, push: Bool = true) -> OutlineLayout {
         let side = pageSide(width)
-        guard showOutline else { return OutlineLayout(shift:shift,outline:nil,room:pageLeft(width,shift:shift)) }
+        guard showOutline else { return OutlineLayout(shift:shift,outline:nil,edge:side) }
         if let dock = outlineDockWidth(width,shift:shift) {
-            guard push else { return OutlineLayout(shift:shift,outline:dock) }
+            guard push else { return OutlineLayout(shift:shift,outline:dock,edge:dock + outlineGap) }
             // Beside a docked outline the column sits in the middle of the space
             // right of the outline, never left of where it would be without it,
             // so the margin on the right is no wider than the gap after the outline.
             let middle = max(pageLeft(width,shift:shift),((width - dock - 760) / 2 + dock).rounded(.down))
             let moved = (width - 760) / 2 - middle
-            return OutlineLayout(shift:moved,outline:dock,room:max(0,pageLeft(width,shift:moved) + side - dock - outlineGap))
+            return OutlineLayout(shift:moved,outline:dock,edge:dock + outlineGap)
         }
         guard push else { return OutlineLayout(shift:shift,outline:nil) }
         // The outline keeps its narrowest width and the text starts one gap past it:
         // the editor starts there less its own side padding, its column at its left edge.
         let outline = outlineWidths.lowerBound
         let reserve = max(0,outline + outlineGap - pageSide(width - outline))
-        guard width - reserve >= pushedEditorMinimum else { return OutlineLayout(shift:shift,outline:nil,room:max(0,pageLeft(width,shift:shift) + side - 48)) }
-        return OutlineLayout(reserve:reserve,shift:width,outline:outline)
+        guard width - reserve >= pushedEditorMinimum else { return OutlineLayout(shift:shift,outline:nil,edge:48) }
+        return OutlineLayout(reserve:reserve,shift:width,outline:outline,edge:pageSide(width - reserve))
     }
-    // The text column sits in the middle of the window, not of the space the
-    // sidebar leaves: the editor moves it left by half the sidebar. A split page
-    // shares the window, so each column keeps its text in its own middle.
-    private var centerShift: CGFloat { model.showSidebar && model.splitEntry == nil ? CGFloat(model.sidebarWidth + 1) / 2 : 0 }
+    // As in Feishu, the text column sits in the middle of the page area beside
+    // the sidebar, not of the whole window; outline and comments move it from there.
+    private var centerShift: CGFloat { 0 }
     // Where the 760-wide column starts in a page of this width, as --page-left in live-editor.css.
     static func pageLeft(_ width: CGFloat, shift: CGFloat) -> CGFloat { max(0,((width - 760) / 2 - shift).rounded(.down)) }
     // The empty space beside the text, by the page's width, as in live-editor.css.

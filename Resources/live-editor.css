@@ -8,10 +8,10 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-scroller { font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; font-size:inherit; line-height:1.8; overflow:auto; }
 .cm-editor .cm-scroller { flex-wrap:wrap; align-content:flex-start; }
 /* The title takes a whole row of the scroller, however wide the window, with its text in the same column as the page's. */
-.cm-editor .cm-page-title { --page-side:58px; --page-left:max(0px,round(down,(100% - 760px) / 2 - var(--center-shift,0px) - var(--comment-shift,0px),1px)); flex:0 0 100%; box-sizing:border-box; margin:0; padding:43px max(var(--page-side),calc(100% - 760px - var(--page-left) + var(--page-side))) 8px calc(var(--page-left) + var(--page-side)); font-size:2.125em; font-weight:700; line-height:1.3; letter-spacing:-.02em; color:#f5f3f7; border:0; outline:none; caret-color:#e57bad; cursor:text; user-select:text; -webkit-user-select:text; word-break:break-word; }
+.cm-editor .cm-page-title { --page-side:58px; --page-left:var(--comment-left,max(0px,round(down,(100% - var(--column,760px)) / 2 - var(--center-shift,0px),1px))); flex:0 0 100%; box-sizing:border-box; margin:0; padding:43px max(var(--page-side),calc(100% - var(--column,760px) - var(--page-left) + var(--page-side))) 8px calc(var(--page-left) + var(--page-side)); font-size:2.125em; font-weight:700; line-height:1.3; letter-spacing:-.02em; color:#f5f3f7; border:0; outline:none; caret-color:#e57bad; cursor:text; user-select:text; -webkit-user-select:text; word-break:break-word; }
 .cm-editor .cm-page-title[hidden] { display:none; }
 /* Whole pixels, or callout edges and table lines blur differently row by row. */
-.cm-editor .cm-content { --page-left:max(0px,round(down,(100% - 760px) / 2 - var(--center-shift,0px) - var(--comment-shift,0px),1px)); max-width:760px; width:100%; margin:0 0 0 var(--page-left); padding:43px 58px 120px; caret-color:#e57bad; min-height:calc(100vh - var(--page-title-height,0px)); }
+.cm-editor .cm-content { --page-left:var(--comment-left,max(0px,round(down,(100% - var(--column,760px)) / 2 - var(--center-shift,0px),1px))); max-width:var(--column,760px); width:100%; margin:0 0 0 var(--page-left); padding:43px 58px 120px; caret-color:#e57bad; min-height:calc(100vh - var(--page-title-height,0px)); }
 .draft-page .cm-editor .cm-content { padding-top:12px; }
 .cm-editor .cm-line { margin:0!important; padding:0; min-height:1.8em; }
 /* Reading type: a column of about 40 Chinese characters at 16px, Chinese and

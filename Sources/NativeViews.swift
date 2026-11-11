@@ -10,8 +10,8 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     /// How far right of the window's middle the editor's own middle sits; the
     /// text column moves left by this much so it stays in the window's middle.
     var centerShift: CGFloat = 0
-    /// How far the text may move left of where centerShift puts it, to make room for comments.
-    var leftRoom: CGFloat = 0
+    /// Where text may start, past the outline, when the comment column moves it.
+    var leftEdge: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
@@ -21,7 +21,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     func updateNSView(_ container: NSView,context: Context) {
         let host = LiveEditorHost.shared
         host.model = model; host.appearance = colorScheme == .light ? "light" : "dark"
-        host.attach(to:container); host.leftRoom = leftRoom; host.centerShift = centerShift; host.render()
+        host.attach(to:container); host.leftEdge = leftEdge; host.centerShift = centerShift; host.render()
     }
     static func dismantleNSView(_ container: NSView,coordinator: ()) { LiveEditorHost.shared.detach(from:container) }
 }
@@ -37,7 +37,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     weak var model: AppModel? { didSet { if model !== oldValue { attachBridge() } } }
     var appearance = "dark"
     var centerShift: CGFloat = 0 { didSet { if centerShift != oldValue { applyCenterShift() } } }
-    var leftRoom: CGFloat = 0 { didSet { if leftRoom != oldValue { applyCenterShift() } } }
+    var leftEdge: CGFloat = 0 { didSet { if leftEdge != oldValue { applyCenterShift() } } }
     private var ready = false
     // The document the page was last sent, and the per-document bridge state.
     private var documentID: UUID?
@@ -76,7 +76,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
     }
     private func applyCenterShift() {
         guard ready else { return }
-        view.evaluateJavaScript("document.documentElement.style.setProperty('--center-shift','\(Int(centerShift.rounded(.down)))px');document.documentElement.style.setProperty('--left-room','\(Int(leftRoom.rounded(.down)))px');window.dispatchEvent(new Event('acdian-relayout'));",completionHandler:nil)
+        view.evaluateJavaScript("document.documentElement.style.setProperty('--center-shift','\(Int(centerShift.rounded(.down)))px');document.documentElement.style.setProperty('--left-edge','\(Int(leftEdge.rounded(.up)))px');window.dispatchEvent(new Event('acdian-relayout'));",completionHandler:nil)
     }
     func attach(to container: NSView) {
         guard view.superview !== container else { return }
