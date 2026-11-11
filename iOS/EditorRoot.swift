@@ -120,7 +120,7 @@ struct EditorWorkspace: View {
             Button(model.localized("插入附件…")) { model.importAttachment() }.keyboardShortcut("i",modifiers:[.command,.shift])
             Button(model.localized("显示或隐藏目录")) { showingOutline.toggle() }.keyboardShortcut("l",modifiers:[.command,.shift])
             Button(model.localized("刷新页面")) { model.refresh() }.keyboardShortcut("r")
-            Button(model.localized("所有页面")) { model.goHome() }.keyboardShortcut("h",modifiers:[.command,.shift])
+            Button(model.localized("所有页面")) { model.goHome() }.keyboardShortcut("a",modifiers:[.command,.shift])
             Button(model.localized("显示或隐藏侧栏")) { withAnimation { columns = columns == .detailOnly ? .all : .detailOnly } }.keyboardShortcut("s",modifiers:[.control,.command])
             Button(model.localized("评论")) { EditorHost.shared.format("comment") }.keyboardShortcut("m",modifiers:[.command,.shift])
             Button(model.localized("显示或隐藏评论")) { EditorHost.shared.toggleComments() }.keyboardShortcut("c",modifiers:[.command,.option])
