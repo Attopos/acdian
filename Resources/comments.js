@@ -265,6 +265,7 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     if(this.saveTimer)this.save();
     this.resize.disconnect();window.removeEventListener('acdian-relayout',this.relayout);this.dom.remove();
     this.view.scrollDOM.classList.remove('cm-comments-wide','cm-comments-narrow');
+    document.documentElement.style.removeProperty('--comment-shift');
   }
   setCollapsed(collapsed) {
     this.collapsed=collapsed;
@@ -441,14 +442,19 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
       }
       items.push({id,top,height:card.dom.offsetHeight,whole:thread.whole});
     }
-    // The column only shows where it fits beside the text: the text never moves for it.
+    // The column shows where it fits beside the text. When it nearly fits, the
+    // text moves left into the room the page leaves it (--left-room) to make space.
     const textRight=content.right-box.left+scrollLeft-(parseFloat(style.paddingRight)||0);
-    return {items,wide:scroller.clientWidth+scrollLeft-textRight>=COLUMN+16,clientRight:scroller.clientWidth+scrollLeft,column:scroller.clientWidth-COLUMN+scrollLeft,fixedTop:box.top,fixedRight:window.innerWidth-box.left-scroller.clientWidth,bottom:Math.max(scroller.scrollHeight,scroller.clientHeight),right:content.right-box.left+scrollLeft,textRight:content.right-box.left+scrollLeft-(parseFloat(style.paddingRight)||0),line:parseFloat(getComputedStyle(view.contentDOM).lineHeight)||27,footer:this.footer.offsetHeight};
+    const root=getComputedStyle(document.documentElement),shifted=parseFloat(root.getPropertyValue('--comment-shift'))||0,room=parseFloat(root.getPropertyValue('--left-room'))||0;
+    const free=scroller.clientWidth+scrollLeft-textRight-shifted,need=Math.ceil(COLUMN+16-free);
+    const shift=items.length&&!this.collapsed&&!globalThis.acdianTouch&&need>0&&need<=room?need:0;
+    return {items,shift,shifted,wide:free+shift>=COLUMN+16,clientRight:scroller.clientWidth+scrollLeft,column:scroller.clientWidth-COLUMN+scrollLeft,fixedTop:box.top,fixedRight:window.innerWidth-box.left-scroller.clientWidth,bottom:Math.max(scroller.scrollHeight,scroller.clientHeight),right:content.right-box.left+scrollLeft,textRight:content.right-box.left+scrollLeft-(parseFloat(style.paddingRight)||0),line:parseFloat(getComputedStyle(view.contentDOM).lineHeight)||27,footer:this.footer.offsetHeight};
   }
   place(m) {
     // On the scroller: CodeMirror rewrites the editor's own class list.
     const classes=this.view.scrollDOM.classList,any=m.items.length>0;
     const mode=any?(m.wide&&!this.collapsed?'wide':'narrow'):null;
+    if(m.shift!==m.shifted){document.documentElement.style.setProperty('--comment-shift',m.shift+'px');this.mode=mode;requestAnimationFrame(()=>this.schedule());return;}
     classes.toggle('cm-comments-wide',mode==='wide');classes.toggle('cm-comments-narrow',mode==='narrow');
     for(const element of [this.panel,this.header]){element.style.top=m.fixedTop+'px';element.style.right=m.fixedRight+'px';element.style.width=COLUMN+'px';}
     this.opener.style.top=(m.fixedTop+12)+'px';this.opener.style.right=(m.fixedRight+16)+'px';

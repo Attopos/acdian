@@ -41,11 +41,12 @@ struct LayoutAudit {
             func n(_ key: String) -> Double { (m[key] as? NSNumber)?.doubleValue ?? .nan }
             checks += 1
             if abs(n("titleLeft") - n("textLeft")) > 1.5 { problems.append("\(label): title at \(n("titleLeft")), text at \(n("textLeft"))") }
-            // The main page's column sits in the window's middle where the page has room for it.
+            // The main page's column sits in the window's middle where the page has room for it,
+            // or in the middle of the space right of a docked outline.
             let shift = web === LiveEditorHost.shared.view ? LiveEditorHost.shared.centerShift : 0
             let middle = ContentView.pageLeft(n("w"),shift:shift) + min(760,n("w")) / 2
             if abs(n("contentMiddle") - middle) > 8 { problems.append("\(label): column centre \(n("contentMiddle")) of \(n("w")), expected \(middle)") }
-            if shift > 0, ContentView.pageLeft(n("w"),shift:shift) > 0, let window = web.window {
+            if shift > 0, !model.showOutline, ContentView.pageLeft(n("w"),shift:shift) > 0, let window = web.window {
                 let inWindow = web.convert(web.bounds,to:nil).minX + n("contentMiddle")
                 if abs(inWindow - window.contentLayoutRect.width / 2) > 8 { problems.append("\(label): column centre \(inWindow) in a window \(window.contentLayoutRect.width) wide") }
             }
