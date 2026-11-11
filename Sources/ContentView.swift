@@ -165,7 +165,7 @@ struct ContentView: View {
     }
     // A Feishu-style outline in the page's left margin: the page title first,
     // then its headings, with no panel chrome of its own.
-    // The editor column is at most 860 wide with empty padding inside each edge.
+    // The editor column is at most 760 wide with empty padding inside each edge.
     // The outline docks in the margin left of the text only when that margin holds
     // a readable outline and a clear gap before the text (Aaron found 12 crowded);
     // it grows up to 240 with the margin. Narrower margins get the rail instead.
@@ -197,8 +197,8 @@ struct ContentView: View {
     // sidebar leaves: the editor moves it left by half the sidebar. A split page
     // shares the window, so each column keeps its text in its own middle.
     private var centerShift: CGFloat { model.showSidebar && model.splitEntry == nil ? CGFloat(model.sidebarWidth + 1) / 2 : 0 }
-    // Where the 860-wide column starts in a page of this width, as --page-left in live-editor.css.
-    static func pageLeft(_ width: CGFloat, shift: CGFloat) -> CGFloat { max(0,((width - 860) / 2 - shift).rounded(.down)) }
+    // Where the 760-wide column starts in a page of this width, as --page-left in live-editor.css.
+    static func pageLeft(_ width: CGFloat, shift: CGFloat) -> CGFloat { max(0,((width - 760) / 2 - shift).rounded(.down)) }
     // The empty space beside the text, by the page's width, as in live-editor.css.
     static func pageSide(_ width: CGFloat) -> CGFloat { width > 700 ? 58 : width > 450 ? 28 : 19 }
     private func outline(title: String, width: CGFloat, floating: Bool) -> some View {
@@ -395,7 +395,7 @@ struct DraftTitleView: View {
             .onSubmit { titleFocused = false; model.editorFocus?() }
             .onChange(of:titleFocused) { _,focused in if !focused { model.draftTitleEnded() } }
             .padding(.horizontal,side).padding(.top,43).padding(.bottom,8)
-            .frame(maxWidth:860,alignment:.leading)
+            .frame(maxWidth:760,alignment:.leading)
             .padding(.leading,left)
             .frame(maxWidth:.infinity,alignment:.leading)
             .onAppear { titleFocused = true }

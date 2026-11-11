@@ -4,7 +4,7 @@
   --surface: #19191e;
   --raised: #202026;
   --border: #ffffff10;
-  --text: #e5e3e8;
+  --text: #d8d5dc;
   --muted: #929099;
   --pink: #d93b86;
   --pink-soft: #d93b8615;
@@ -15,12 +15,12 @@
 
 * { box-sizing: border-box; }
 html { background: var(--background); scroll-behavior: smooth; }
-body { margin: 0; color: var(--text); background: var(--background); font-size: var(--reader-font-size, 16px); line-height: 1.9; overflow-wrap: break-word; }
+body { margin: 0; color: var(--text); background: var(--background); font-size: var(--reader-font-size, 16px); line-height: 1.8; overflow-wrap: break-word; text-autospace: normal; }
 ::selection { background: #d93b8645; color: #fff; }
 ::-webkit-scrollbar { width: 9px; height: 8px; }
 ::-webkit-scrollbar-thumb { border: 2px solid var(--background); border-radius: 6px; background: #ffffff25; }
 ::-webkit-scrollbar-track { background: transparent; }
-#reader { max-width: 860px; margin: 0 auto; padding: 43px 58px 110px; }
+#reader { max-width: 760px; margin: 0 auto; padding: 43px 58px 110px; }
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body > h1:first-child { margin-top: 2px; }
 .markdown-body > :last-child { margin-bottom: 0; }
@@ -31,7 +31,7 @@ h3 { font-size: 19px; margin: 29px 0 13px; }
 h4 { font-size: 17px; margin: 25px 0 12px; }
 h5, h6 { font-size: 15px; margin: 22px 0 10px; }
 h6 { color: var(--muted); }
-p { margin: 0 0 19px; }
+p { margin: 0 0 .85em; }
 strong { color: #f4f1f6; font-weight: 650; }
 em { color: #e6d3da; }
 a { color: #e57bad; text-decoration-color: #d93b8650; text-decoration-thickness: 1px; text-underline-offset: 4px; cursor: pointer; transition: color .15s, text-decoration-color .15s; }
