@@ -1,5 +1,5 @@
-import { EditorState, EditorSelection } from '@codemirror/state';
-import { Decoration } from '@codemirror/view';
+import { EditorState, EditorSelection, StateField, StateEffect } from '@codemirror/state';
+import { Decoration, EditorView } from '@codemirror/view';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 
 // Every cell remains a span in CodeMirror's one editable document. The source
@@ -47,7 +47,29 @@ function modelFor(state,node) {
     const value=state.doc.sliceString(cell.rawFrom,cell.rawTo).trim();
     return value.startsWith(':')?(value.endsWith(':')?'center':'left'):(value.endsWith(':')?'right':'left');
   });
-  return {from:node.from,to:node.to,rows,separator,columns,alignment};
+  return {from:node.from,to:node.to,rows,separator,columns,alignment,widths:widthsFor(state.doc.sliceString(separator.from,separator.to),columns)};
+}
+// A separator written without spaces, like |----|--------|, sets each column's
+// width from its number of dashes (as Pandoc reads it). Any other keeps equal columns.
+function widthsFor(text,columns) {
+  const equal=Array(columns).fill(1/columns);
+  if(/\s/.test(text.trim()))return equal;
+  const dashes=text.trim().replace(/^\||\|$/g,'').split('|').map(cell=>(cell.match(/-/g)||[]).length);
+  if(dashes.length!==columns||dashes.some(count=>!count))return equal;
+  const total=dashes.reduce((sum,count)=>sum+count,0);
+  return dashes.map(count=>count/total);
+}
+function separatorText(state,table,widths) {
+  const raw=state.doc.sliceString(table.separator.from,table.separator.to).trim().replace(/^\||\|$/g,'').split('|');
+  return '|'+widths.map((width,index)=>{
+    const cell=(raw[index]||'').trim();
+    return (cell.startsWith(':')?':':'')+'-'.repeat(Math.max(3,Math.round(width*100)))+(cell.length>1&&cell.endsWith(':')?':':'');
+  }).join('|')+'|';
+}
+function rowStyle(widths) {
+  let at=0;const edges=widths.map(width=>at+=width);
+  return `--table-columns:${widths.length};background-image:${edges.map(()=>'linear-gradient(var(--table-line),var(--table-line))').join(',')};`+
+    `background-size:1px 100%;background-repeat:no-repeat;background-position:${edges.map(edge=>`calc(${(edge*100).toFixed(3)}% + ${(edge-1).toFixed(3)}px) 0`).join(',')}`;
 }
 function tableNodes(tree) {
   if(tree.name==='Table')return [tree];
@@ -80,18 +102,20 @@ function locate(state,pos,preferredColumn=0) {
 export function tableDecorations(state,tree) {
   const result=[];
   const hide=(from,to)=>{if(from<to)result.push(Decoration.mark({class:syntaxClass}).range(from,to));};
+  const preview=state.field(tableWidthField,false);
   for(const node of tableNodes(tree)) {
     const table=modelFor(state,node);if(!table)continue;
+    const widths=preview?.from===table.from&&preview.widths.length===table.columns?preview.widths:table.widths,style=rowStyle(widths);
     for(const [index,row] of table.rows.entries()) {
       result.push(Decoration.line({class:'cm-table-row'+(row.header?' cm-table-header':'')+(index===0?' cm-table-first':'')+(index===table.rows.length-1?' cm-table-last':''),
-        attributes:{style:`--table-columns:${table.columns}`}}).range(row.line.from));
+        attributes:{style}}).range(row.line.from));
       for(const cell of row.cells) {
         if(cell.markFrom<cell.rawTo)result.push(Decoration.mark({class:'cm-table-cell',inclusive:true,attributes:{
           // Keep DOM attributes stable while text changes. Position attributes
           // would force CM to split an active IME composition into multiple
           // styled cell spans as the cell's end offset grows.
           'data-table-cell':String(cell.index),
-          style:`text-align:${table.alignment[cell.index]||'left'}`
+          style:`text-align:${table.alignment[cell.index]||'left'};width:${Math.floor((widths[cell.index]||0)*1e5)/1e3}%`
         }}).range(cell.markFrom,cell.rawTo));
         hide(cell.rawFrom,cell.contentFrom);hide(cell.contentTo,cell.rawTo);
         // The selected part of the cell's own text, so a selection highlights text, not rows.
@@ -208,3 +232,48 @@ export const tableKeymap=[
   {key:'End',run(view){const context=selectedContext(view);return context?select(view,context.cell.contentTo):false;}},
   {key:'|',run:insertPipe}
 ];
+
+const previewWidths=StateEffect.define();
+export const tableWidthField=StateField.define({
+  create:()=>null,
+  update(value,tr){for(const effect of tr.effects)if(effect.is(previewWidths))return effect.value;return tr.docChanged?null:value;}
+});
+
+function resizeTarget(view,event) {
+  const cell=event.target?.closest?.('.cm-table-cell');if(!cell)return null;
+  const rect=cell.getBoundingClientRect();let index=Number(cell.dataset.tableCell);
+  if(event.clientX<=rect.left+5&&index>0)index--;else if(event.clientX<rect.right-5)return null;
+  const context=locate(view.state,view.posAtDOM(cell));
+  if(!context||index>=context.table.columns-1)return null;
+  return {table:context.table,index,line:cell.closest('.cm-line')};
+}
+const resizeCursor=on=>document.body.classList.toggle('cm-table-col-resize',on);
+let resizing=false;
+
+export const tableColumnResize=EditorView.domEventHandlers({
+  mousemove(event,view) {if(!resizing)resizeCursor(view.state.facet(EditorView.editable)&&!view.state.readOnly&&!!resizeTarget(view,event));return false;},
+  mouseleave() {if(!resizing)resizeCursor(false);return false;},
+  mousedown(event,view) {
+    if(event.button!==0||!view.state.facet(EditorView.editable)||view.state.readOnly)return false;
+    const target=resizeTarget(view,event);if(!target)return false;
+    event.preventDefault();resizing=true;resizeCursor(true);
+    const {table,index}=target,start=event.clientX,width=target.line.getBoundingClientRect().width||1;
+    const base=table.widths,pair=base[index]+base[index+1],least=Math.min(.06,pair/2);
+    let widths=base;
+    const move=moveEvent=>{
+      const left=Math.round(clamp(base[index]+(moveEvent.clientX-start)/width,least,pair-least)*100)/100;
+      widths=base.map((value,at)=>at===index?left:at===index+1?pair-left:value);
+      view.dispatch({effects:previewWidths.of({from:table.from,widths})});
+    };
+    const up=()=>{
+      window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);
+      resizing=false;resizeCursor(false);
+      const current=models(view.state).find(candidate=>candidate.from===table.from);
+      if(!current||widths===base||current.columns!==widths.length){view.dispatch({effects:previewWidths.of(null)});return;}
+      const insert=separatorText(view.state,current,widths);
+      view.dispatch({changes:{from:current.separator.from,to:current.separator.to,insert},effects:previewWidths.of(null),userEvent:'input.table-width'});
+    };
+    window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
+    return true;
+  }
+});

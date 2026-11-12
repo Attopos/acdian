@@ -10,7 +10,7 @@ import { touchInput, installTouchCommands, composing } from './touch-input.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { comments, loadComments, commentsTest } from './comments.js';
-import { tableDecorations, tableKeymap, tableSelectionFilter } from './rich-table.js';
+import { tableDecorations, tableKeymap, tableSelectionFilter, tableWidthField, tableColumnResize } from './rich-table.js';
 import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
@@ -779,7 +779,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
   }
   const set=Decoration.set(list,true);blockWidgets.set(set,blocks);return set;
 }
-const liveField=StateField.define({create:state=>decorations(state),update(value,tr){if(composing(tr))return value.map(tr.changes);return tr.docChanged||tr.selection||tr.startState.field(windowField)!==tr.state.field(windowField)||tr.startState.field(inputBlankField)!==tr.state.field(inputBlankField)||tr.startState.facet(editorLanguage)!==tr.state.facet(editorLanguage)||syntaxTree(tr.startState)!==syntaxTree(tr.state)?decorations(tr.state,reusableBlocks(value,tr)):value;},provide:field=>[EditorView.decorations.from(field),EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>value.spec.block===true}))]});
+const liveField=StateField.define({create:state=>decorations(state),update(value,tr){if(composing(tr))return value.map(tr.changes);return tr.docChanged||tr.selection||tr.startState.field(windowField)!==tr.state.field(windowField)||tr.startState.field(inputBlankField)!==tr.state.field(inputBlankField)||tr.startState.facet(editorLanguage)!==tr.state.facet(editorLanguage)||tr.startState.field(tableWidthField)!==tr.state.field(tableWidthField)||syntaxTree(tr.startState)!==syntaxTree(tr.state)?decorations(tr.state,reusableBlocks(value,tr)):value;},provide:field=>[EditorView.decorations.from(field),EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>value.spec.block===true}))]});
 // The caret is hidden while the selection rests on a divider, which shows as selected instead.
 const dividerCaret=EditorView.editorAttributes.compute(['selection',liveField],state=>{
   if(!state.selection.ranges.every(range=>range.empty))return {};
@@ -964,7 +964,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,liveField,dividerCaret,tableSelectionFilter,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
