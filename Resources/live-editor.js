@@ -269,10 +269,11 @@ function interactiveInfo(state,node) {
   const height=/^height=(\d+)$/.exec(words.find(word=>/^height=/.test(word))||'');
   return {height:height?Math.max(60,Math.min(1600,Number(height[1]))):0};
 }
+const interactiveHeights=new Map(),frameCode=new WeakMap();
 class InteractiveWidget extends WidgetType {
   constructor(code,height,language) { super(); Object.assign(this,{code,height,language}); }
   eq(other) { return this.code===other.code&&this.height===other.height&&this.language===other.language; }
-  get estimatedHeight() { return (this.height||240)+36+16; }
+  get estimatedHeight() { return (this.height||interactiveHeights.get(this.code)||240)+36+16; }
   toDOM(view) {
     const holder=document.createElement('div');holder.className='cm-live-block cm-block-interactive';
     const bar=document.createElement('div');bar.className='cm-interactive-bar';
@@ -281,6 +282,8 @@ class InteractiveWidget extends WidgetType {
     const frame=document.createElement('iframe');frame.className='cm-interactive-frame';
     frame.setAttribute('sandbox','allow-scripts');frame.setAttribute('referrerpolicy','no-referrer');frame.title=uiText(view.state,'interactive');
     if(this.height){frame.dataset.fixedHeight='true';frame.style.height=this.height+'px';}
+    else if(interactiveHeights.has(this.code))frame.style.height=interactiveHeights.get(this.code)+'px';
+    frameCode.set(frame,this.code);
     frame.addEventListener('load',()=>frame.contentWindow?.postMessage({type:'acdian-interactive:run',source:this.code,theme:currentAppearance(),language:metadata.language},'*'));
     frame.src=interactiveFrameURL;
     const rerun=button(uiText(view.state,'rerun'),()=>{frame.src='about:blank';requestAnimationFrame(()=>{frame.src=interactiveFrameURL;});});
@@ -302,6 +305,7 @@ window.addEventListener('message',event=>{
   for(const frame of interactiveFrames()) {
     if(frame.contentWindow!==event.source||frame.dataset.fixedHeight)continue;
     const height=Math.max(60,Math.min(1600,Math.ceil(Number(event.data.height)||0)));
+    if(frameCode.has(frame))interactiveHeights.set(frameCode.get(frame),height);
     if(Math.abs(height-frame.offsetHeight)>1){frame.style.height=height+'px';window.acdianEditor?.requestMeasure();}
   }
 });
@@ -553,11 +557,20 @@ const blockWidgets=new WeakMap();
 function reusableBlocks(value,tr) {
   const previous=value&&blockWidgets.get(value),reuse=new Map();
   if(!previous)return reuse;
+  reuse.built=true;
   for(const block of previous) {
     if(tr&&tr.docChanged){if(tr.changes.touchesRange(block.from,block.to))continue;reuse.set(tr.changes.mapPos(block.from,1)+':'+tr.changes.mapPos(block.to,-1),block.widget);}
     else reuse.set(block.from+':'+block.to,block.widget);
   }
   return reuse;
+}
+// A drag that only passes over a rendered block leaves it rendered; one that
+// starts in an open block keeps its source, so the layout never shifts mid-selection.
+function showsSource(state,reuse,from,to) {
+  if(!metadata.editable)return false;
+  const ranges=state.selection.ranges;
+  if(ranges.some(range=>range.empty&&range.head>from&&range.head<to))return true;
+  return !!reuse.built&&!reuse.has(from+':'+to)&&ranges.some(range=>!range.empty&&range.from<to&&range.to>from);
 }
 function decorations(state,reuse=new Map(),blocks=[]) {
   const list=[], covered=[],quoteLines=new Set(),codeRanges=[],inlineCodeRanges=[],tableRanges=[];
@@ -583,7 +596,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       const lastLine=state.doc.lineAt(node.to),closing=node.lastChild;
       if(closing?.name!=='CodeMark'||state.doc.lineAt(closing.from).number!==lastLine.number||lastLine.number<=firstLine.number)continue;
       const from=firstLine.from,to=lastLine.to;
-      if(metadata.editable&&state.selection.ranges.some(range=>range.head>from&&range.head<to||range.anchor>from&&range.anchor<to))continue;
+      if(showsSource(state,reuse,from,to))continue;
       const language=state.facet(editorLanguage),old=reuse.get(from+':'+to);
       const widget=old instanceof MermaidWidget&&old.language===language?old:new MermaidWidget(firstLine.number+1<lastLine.number?state.doc.sliceString(state.doc.line(firstLine.number+1).from,state.doc.line(lastLine.number-1).to):'',language);
       list.push(Decoration.replace({widget,block:true}).range(from,to));covered.push([from,to]);blocks.push({from,to,widget});
@@ -593,7 +606,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
     const first=state.doc.lineAt(node.from),last=state.doc.lineAt(node.to),close=node.lastChild;
     if(!(close?.name==='CodeMark'&&state.doc.lineAt(close.from).number===last.number&&last.number>first.number))continue;
     const from=first.from,to=last.to;
-    if(metadata.editable&&state.selection.ranges.some(range=>range.head>from&&range.head<to||range.anchor>from&&range.anchor<to))continue;
+    if(showsSource(state,reuse,from,to))continue;
     const language=state.facet(editorLanguage),old=reuse.get(from+':'+to);
     const widget=old instanceof InteractiveWidget&&old.height===info.height&&old.language===language?old:
       new InteractiveWidget(first.number+1<last.number?state.doc.sliceString(state.doc.line(first.number+1).from,state.doc.line(last.number-1).to):'',info.height,language);
@@ -972,6 +985,8 @@ configureRichText({post,uiText,currentPath:()=>metadata.currentPath,headings:hea
 // The text fills what the title leaves of the window, so a short page does not scroll.
 new ResizeObserver(()=>document.documentElement.style.setProperty('--page-title-height',titleBlock.offsetHeight+'px')).observe(titleBlock);
 window.acdianEditor=view;
+view.contentDOM.addEventListener('mousedown',()=>document.documentElement.classList.add('cm-mouse-selecting'));
+window.addEventListener('mouseup',()=>document.documentElement.classList.remove('cm-mouse-selecting'),true);
 installTouchCommands(view);
 // One editor serves every tab. A tab put in the back keeps its whole editor
 // state (text, selection, undo history) and scroll place here; it comes back

@@ -118,6 +118,24 @@ struct InteractiveBlockTests {
         check(await waitFor(5) { (await self.js("document.querySelectorAll('iframe.cm-interactive-frame').length") as? NSNumber)?.intValue == 2 },"leaving the code shows the frame again")
         check(await waitFor(10) { await self.frameHeight(0) == height + 100 },"the block runs again after editing")
 
+        // A mouse drag from above the blocks to below them leaves both rendered.
+        let drag = """
+        (async()=>{const v=window.acdianEditor,doc=v.state.doc.toString(),at=(t,o)=>{const r=v.coordsAtPos(doc.indexOf(t)+o);return {x:r.left+1,y:(r.top+r.bottom)/2};};
+        const a=at('Before',2),b=at('After.',3),frames=()=>document.querySelectorAll('iframe.cm-interactive-frame').length,next=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+        const fire=(type,p,target)=>(target||document.elementFromPoint(p.x,p.y)||v.contentDOM).dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,clientX:p.x,clientY:p.y,button:0,buttons:type==='mouseup'?0:1,detail:1,view:window}));
+        fire('mousedown',a);await next();const counts=[];
+        for(let i=1;i<=16;i++){const p={x:a.x+20,y:a.y+(b.y-a.y)*i/16};fire('mousemove',p,document);await next();counts.push(frames());}
+        fire('mousemove',b,document);await next();fire('mouseup',b,document);await next();counts.push(frames());
+        const s=v.state.selection.main;return JSON.stringify({counts,anchor:s.anchor,head:s.head,want:[doc.indexOf('Before')+2,doc.indexOf('After.')+3]});})()
+        """
+        if let text = try? await LiveEditorHost.shared.view.callAsyncJavaScript("return await \(drag)",contentWorld:.page) as? String, let data = text.data(using:.utf8), let result = try? JSONSerialization.jsonObject(with:data) as? [String:Any] {
+            let counts = result["counts"] as? [Int] ?? [], want = result["want"] as? [Int] ?? []
+            print("  drag: \(text)")
+            check(!counts.isEmpty && counts.allSatisfy { $0 == 2 },"dragging a selection across blocks keeps them rendered")
+            check(result["anchor"] as? Int == want.first && result["head"] as? Int == want.last,"the dragged selection ends where the mouse does")
+        } else { check(false,"drag script ran") }
+        _ = await js("window.acdianEditor.dispatch({selection:{anchor:0}})")
+
         // ACDIAN_DEMO names a page to show for the snapshot instead of the probe.
         if let demo = ProcessInfo.processInfo.environment["ACDIAN_DEMO"] {
             try String(contentsOfFile:demo,encoding:.utf8).write(to:root.appendingPathComponent("Demo.md"),atomically:true,encoding:.utf8)
@@ -136,5 +154,12 @@ struct InteractiveBlockTests {
         }
         let saved = try String(contentsOf:root.appendingPathComponent("Interactive.md"),encoding:.utf8)
         check(saved.contains("```acdian-interactive height=180\n<p>Fixed</p>\n```"),"the page source is unchanged by rendering")
+
+        // A block scrolled out of view and back comes back at its measured height, so the text below does not move.
+        _ = await js("(()=>{const v=window.acdianEditor;v.dispatch({changes:{from:v.state.doc.length,insert:'\\n'+Array.from({length:800},(_,i)=>'Filler line '+i+'.').join('\\n\\n')}});window.__probeFrame=document.querySelector('iframe.cm-interactive-frame');v.scrollDOM.scrollTop=1e7;})()")
+        await pause(1)
+        check(await js("!window.__probeFrame.isConnected") as? Bool == true,"a block far out of view is taken out of the page")
+        let first = (try? await LiveEditorHost.shared.view.callAsyncJavaScript("const v=window.acdianEditor;v.scrollDOM.scrollTop=0;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const f=document.querySelector('iframe.cm-interactive-frame');return f?Math.round(f.getBoundingClientRect().height):-1",contentWorld:.page) as? NSNumber)?.intValue ?? -1
+        check(first == height + 100,"a block scrolled back into view keeps its measured height (\(first))")
     }
 }

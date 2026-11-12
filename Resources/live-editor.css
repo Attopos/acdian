@@ -95,6 +95,7 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-interactive-label { flex:1; color:#e57bad; }
 .cm-editor .cm-interactive-bar button { font:inherit; color:var(--muted); background:none; border:0; border-radius:5px; padding:1px 8px; cursor:pointer; }
 .cm-editor .cm-interactive-bar button:hover { color:var(--menu-text); background:var(--hover-bg); }
+.cm-mouse-selecting .cm-editor .cm-interactive-frame { pointer-events:none; }
 .cm-editor .cm-interactive-frame { display:block; width:100%; height:240px; border:0; background:transparent; color-scheme:normal; }
 .cm-editor .cm-activeLine { background:none; }
 .cm-editor .cm-tooltip { background:var(--tooltip-bg); border-color:var(--divider-line); color:var(--menu-text); }
