@@ -5,8 +5,10 @@
 # The App Store Connect API key is read from ~/.appstoreconnect/config:
 #   KEY_ID=…  ISSUER_ID=…  KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8
 # (or from ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH). The key never goes in the repo.
-# The build number is the upload time (yyyyMMddHHmm), so every upload is higher
-# than the last. Clean-up runs however the script ends, as in ios-build.sh.
+# The build number is CURRENT_PROJECT_VERSION in project.yml. After a successful
+# upload the script raises it by one and commits project.yml, so the next upload
+# is higher. Raise MARKETING_VERSION and reset it to 1 for a new version.
+# Clean-up runs however the script ends, as in ios-build.sh.
 set -euo pipefail
 cd "$(dirname "$0")"
 WORK="/private/tmp/acdian-testflight-$UID"
@@ -27,7 +29,7 @@ if [[ -z "$KEY_ID" || -z "$ISSUER_ID" || ! -f "$KEY_PATH" ]]; then
     exit 1
 fi
 AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY_PATH" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID")
-BUILD="$(date +%Y%m%d%H%M)"
+BUILD="$(grep -m1 CURRENT_PROJECT_VERSION project.yml | grep -oE '[0-9]+')"
 mkdir -p "$WORK"
 
 xcodegen generate --quiet
@@ -49,3 +51,6 @@ PLIST
 xcodebuild -quiet -exportArchive -archivePath "$WORK/ACdian.xcarchive" \
     -exportOptionsPlist "$WORK/export.plist" -exportPath "$WORK/export" $AUTH
 echo "Uploaded build $BUILD of version $(grep -m1 MARKETING_VERSION project.yml | grep -oE '[0-9.]+') to App Store Connect."
+sed -i '' -E "s/(CURRENT_PROJECT_VERSION: )\"$BUILD\"/\1\"$((BUILD + 1))\"/" project.yml
+git commit -q -m "Raise the iOS build number to $((BUILD + 1)) after uploading build $BUILD" -- project.yml
+git push -q origin HEAD:main || echo "Could not push the build number bump; push it by hand." >&2
