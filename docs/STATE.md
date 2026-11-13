@@ -8,6 +8,8 @@
 
 Mac 版 1.4.x 持续打磨编辑体验（表格列宽拖动、交互块附近的选择、Feishu 式排版、配色变量化）；iOS 版改为纯计数构建号，从 1.5.0 build 1 起。最近一项：删除模块时文件夹进垃圾桶，恢复后模块回来。新增模块 `readOnly`（给 Atlas 用）：已通过模块测试并安装到 /Applications/ACdian.app。
 
+最近：外层目录 `~/Developer/acdian/CLAUDE.md` 是一份旧的规则副本，已合并进本仓库的 `AGENTS.md` 并删除。
+
 ## 下一步
 
 - 在 App 里打开 Atlas 模块核对：页面不能编辑，侧栏不能新建、删除、拖入。

@@ -9,6 +9,7 @@
 - 源码就是本仓库（GitHub `Attopos/acdian`，分支 `main`），位于 `~/Developer/acdian/Project/work/acdian`。
 - App 实际使用的资料库在 iCloud：`~/Library/Mobile Documents/iCloud~com~acdian~reader/Documents`。`~/Developer/acdian/Backup/` 是它的同步备份（`scripts/backup-sync.py` 同步，旧文件暂存在 `Backup-deleted/`），不要在那里改内容。
 - 资料库的写作规范见资料库根目录的 `AGENTS.md`。
+- 项目规则只有本文件这一份。`~/Developer/acdian` 等外层目录不放 `CLAUDE.md` 或其他规则文件；从外层目录开工时，规则读这里：`~/Developer/acdian/Project/work/acdian/AGENTS.md`。
 
 ## 开发
 

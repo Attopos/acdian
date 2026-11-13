@@ -13,3 +13,9 @@
 - 背景：Atlas 模块的内容由同步脚本从各项目生成，在 App 里改了也会被下次同步冲掉。
 - 决定：`.acdian-modules.json` 的模块可写 `"readOnly": true`。编辑器对其中页面关闭编辑；保存、删除、改名、移入、新建文件夹、导入附件都在 AppModel 里拦下。只有为 true 时才写进 JSON，其他模块的记录不变。
 - 放弃的方案：只靠同步覆盖、不改 App（能改但会丢，容易误以为保存了）。
+
+## 2026-11-13 规则只保留仓库里的一份
+
+- 背景：`~/Developer/acdian/CLAUDE.md` 是 Atlas 之前手写的规则副本，和仓库 `AGENTS.md` 并存，读错路径时拿到旧规则；Claude Code 还会同时加载上级目录的 CLAUDE.md，两份规则会互相矛盾。
+- 决定：删掉外层副本，规则只写在仓库 `AGENTS.md`，并在其中写明从外层目录开工时去哪读。
+- 放弃的方案：外层留一行 `@Project/work/acdian/AGENTS.md` 引用（在仓库里开工时会被重复加载）。
