@@ -19,12 +19,15 @@ ACdian 自动准备本地页面的保存位置，打开后即可使用，无需�
 - 标题、粗体、斜体、任务、图片等随输入显示。表格直接点击单元格编辑，Tab／⇧Tab 切换单元格；末格 Tab 或回车新增行。
 - ⌘点击内部或外部链接可打开；普通点击进入编辑。
 - 新建页面：⌘N 直接打开空白页面，不再弹出命名窗口。标题处显示淡色 `New Page` 占位，点击即可填写标题，下方直接输入正文。
-- 打开页面会在新标签页中显示，不关闭已打开的页面；已打开的页面直接切换到它的标签页。⌘W 或标签右侧 × 关闭标签页。重新打开 ACdian 时恢复上次未关闭的标签页并停留在上次的页面。
+- 打开页面会在新标签页中显示，不关闭已打开的页面；已打开的页面直接切换到它的标签页。⌘W 或标签右侧 × 关闭标签页。重新打开 ACdian 时恢复上次未关闭的标签页并停留在上次的页面。后台标签页 30 分钟没用会自动关闭（当前标签页和分屏页面不关，关闭前已保存）。
 - 切换标签页时保留各自的滚动位置、光标和撤销记录，切换即时显示。
 - 输入后自动保存，短暂停止输入约半秒即写入；切换页面、关闭窗口或退出前会补存最新内容，不再询问是否保存。新页面有标题或正文后自动创建文件，空白未编辑页面不产生文件。⌘S 仍可立即保存，全文搜索用 ⌘F。
 - 评论：选中文字后点浮动工具栏的评论按钮，或按 ⇧⌘M，在窗口右侧单独一栏添加评论（栏头显示评论数，» 可收起，收起后右上角按钮再展开；评论栏没有底色，正文的宽度和位置始终不变）；不选文字时为整页评论。同一处可连续追加多条，双击或点铅笔编辑，清空保存即删除；✓ 解决后可在侧栏底部找回。正文右侧放不下评论栏时改为行尾小气泡，点开浮出卡片。评论存在页面旁的隐藏文件 `.页面名.md.comments.json`，Markdown 正文不变；页面重命名、移动、进垃圾桶和恢复时随之迁移。被评论的文字删光后评论随之删除，⌘Z 撤销时一并恢复；其他程序改过页面后，按原文和上下文重新找回位置。
 - 插入附件：工具栏回形针，或 ⇧⌘I
-- 目录：工具栏列表按钮，或 ⇧⌘L
+- 目录：正文左侧的一列长短线（越长层级越高，粉色是正在读的部分），指针移上去弹出标题列表，点击跳转；目录从不推挤正文。工具栏列表按钮或 ⇧⌘L 显示／隐藏。
+- 正文栏最宽 840（含左右各 58 留白）。
+- 链接：选中文字后点浮动工具栏的 🔗（或 ⌘K）添加链接。选中带链接的文字（包括 `[[页面]]`）时 🔗 亮起，再点一次取消链接、保留文字；⌘K 编辑链接地址。
+- 右键和长按不弹出 Apple 自带的菜单（Mac 编辑器、分屏、阅读页、交互块、PDF；iPhone／iPad 不显示系统编辑气泡）。图片右键菜单和侧栏菜单是 ACdian 自己的，照常可用。
 - 右键侧栏中的文件或文件夹可移到应用内垃圾桶。打开侧栏“垃圾桶”，可在删除后 15 天内恢复。ACdian 运行时会自动彻底删除到期内容；关闭期间到期的内容，会在下次打开时清理。恢复时若原位置已有同名内容，会添加编号，避免覆盖。
 - 刷新页面：⌘R
 - PDF：点击文件或页面里的 PDF 链接；在窗口内翻页和缩放。
@@ -185,6 +188,15 @@ sed 's/^@main struct AcdianApp/struct AcdianApp/' Sources/AcdianApp.swift > .bui
 mkdir -p .build/rich-tests && cp -R Resources/. .build/rich-tests/
 xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm64-apple-macos14.0 $(ls Sources/*.swift | grep -v AcdianApp) .build/AcdianApp-nomain.swift Tests/RichTextTests.swift -o .build/rich-tests/rich-tests
 .build/rich-tests/rich-tests
+```
+
+链接按钮验证（真实 WebKit，离屏窗口，临时页面：🔗 亮起、再点取消链接并保存、右键不弹系统菜单；远程会话里离屏窗口拿不到键盘焦点，测试会模拟焦点）：
+
+```sh
+sed 's/^@main struct AcdianApp/struct AcdianApp/' Sources/AcdianApp.swift > .build/AcdianApp-nomain.swift
+mkdir -p .build/link-tests && cp -R Resources/. .build/link-tests/
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache -target arm64-apple-macos14.0 $(ls Sources/*.swift | grep -v AcdianApp) .build/AcdianApp-nomain.swift Tests/LinkToolbarTests.swift -o .build/link-tests/link-tests
+.build/link-tests/link-tests
 ```
 
 版面和换行检查（`Tests/LayoutAudit.swift`：11 种窗口尺寸，配合侧栏、目录、分屏开关，检查标题和正文是否对齐居中；`Tests/WrapAudit.swift <文件夹>`：把一个文件夹里的文字按 10 种宽度排版，报告标点落单、单词被切开和超出版心；只读）。编译方式同上，把测试文件和资源目录换成对应的即可。
