@@ -108,6 +108,21 @@ struct ModuleTests {
         app.removeModule("Projects")
         try check(app.activeModuleID == nil && fm.fileExists(atPath:root.appendingPathComponent("Projects").path),"Removing a module keeps its folder")
 
+        // Deleting a module moves its folder to the trash; restoring it brings the module back.
+        try check(app.createModule(name:"Scratch",icon:"star",color:"sky"),"A module to delete is created")
+        try Data("# Note\n".utf8).write(to:root.appendingPathComponent("Scratch/Note.md"))
+        var deleted: Bool?
+        app.deleteModule("Scratch") { deleted = $0 }
+        try await eventually("The module is deleted") { deleted != nil }
+        try check(deleted == true && app.activeModuleID == nil && !fm.fileExists(atPath:root.appendingPathComponent("Scratch").path),"Deleting a module moves its folder away and leaves the module")
+        try check(!app.presentModules.contains { $0.folder == "Scratch" } && app.trashEntries.contains { $0.originalRelativePath == "Scratch" },"The deleted module leaves the launcher and its folder is in the trash")
+        if let entry = app.trashEntries.first(where: { $0.originalRelativePath == "Scratch" }) { try check(app.restoreFromTrash(entry),"The folder is restored") }
+        try await eventually("The restored module returns") { app.presentModules.contains { $0.folder == "Scratch" && $0.icon == "star" } }
+        try check(fm.fileExists(atPath:root.appendingPathComponent("Scratch/Note.md").path),"Restoring brings back the module's pages")
+        var refused: Bool?
+        app.deleteModule("Attachments") { refused = $0 }
+        try check(refused == false && fm.fileExists(atPath:root.appendingPathComponent("Attachments").path),"The Attachments module cannot be deleted")
+
         // Opening a page from another module while one is open follows it.
         app.enterModule("Languages")
         try await open(app,"Teaching/Lesson.md")

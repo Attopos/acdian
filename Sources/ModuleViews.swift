@@ -120,6 +120,9 @@ struct ModuleTile: View {
             Divider()
             Button { NSWorkspace.shared.activateFileViewerSelecting([model.index!.root.appendingPathComponent(module.folder)]) } label: { Label(model.localized("在 Finder 中显示"),systemImage:"folder") }
             Button(role:.destructive) { model.removeModule(module.id) } label: { Label(model.localized("从模块中移除（保留文件夹）"),systemImage:"minus.circle") }
+            if module.kind == .pages {
+                Button(role:.destructive) { model.confirmDeleteModule(module.id) } label: { Label(model.localized("删除模块…"),systemImage:"trash") }
+            }
         }
         .accessibilityIdentifier("module-\(module.folder)")
     }
@@ -170,6 +173,12 @@ struct ModuleEditor: View {
                 }
             }
             HStack {
+                if case .edit(let module) = target, module.kind == .pages {
+                    Button(model.localized("删除模块…"),role:.destructive) {
+                        dismiss()
+                        DispatchQueue.main.async { model.confirmDeleteModule(module.id) }
+                    }
+                }
                 Spacer()
                 Button(model.localized("取消")) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(isNew ? model.localized("创建") : model.localized("保存"),action:commit).keyboardShortcut(.defaultAction)
@@ -246,6 +255,10 @@ struct SidebarModuleRow: View {
             Button { model.enterModule(module.id) } label: { Label(model.localized("打开"),systemImage:"arrow.up.forward.app") }
             Button { edit(.edit(module)) } label: { Label(model.localized("编辑模块…"),systemImage:"slider.horizontal.3") }
             Button { model.setModuleHidden(module.id,true) } label: { Label(model.localized("隐藏"),systemImage:"eye.slash") }
+            if module.kind == .pages {
+                Divider()
+                Button(role:.destructive) { model.confirmDeleteModule(module.id) } label: { Label(model.localized("删除模块…"),systemImage:"trash") }
+            }
         }
         // Dropping a page or folder on a module moves it into the module's
         // folder; files from Finder are copied there.

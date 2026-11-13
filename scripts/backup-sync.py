@@ -14,8 +14,8 @@ import datetime, os, shutil, subprocess, sys, time
 
 HOME = os.path.expanduser("~")
 SOURCE = os.path.join(HOME, "Library/Mobile Documents/iCloud~com~acdian~reader/Documents")
-BACKUP = os.path.join(HOME, "Developer/acdian/资料库")
-HOLDING = os.path.join(HOME, "Developer/acdian/资料库-已删除")
+BACKUP = os.path.join(HOME, "Developer/acdian/Backup")
+HOLDING = os.path.join(HOME, "Developer/acdian/Backup-deleted")
 KEEP_DAYS, MAX_DELETE, MIN_FILES = 7, 0.05, 1000
 SKIP = (".DS_Store",)
 DATALESS = 0x40000000  # SF_DATALESS: the file's content is still only in iCloud

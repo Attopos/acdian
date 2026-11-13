@@ -1380,6 +1380,20 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         if activeModuleID == id { activeModuleID = nil }
         saveModules()
     }
+    func confirmDeleteModule(_ id: String) {
+        guard let module = modules.first(where: { $0.id == id }), module.kind == .pages, let index else { return }
+        let count = index.files.filter { $0.relativePath.hasPrefix(module.folder + "/") }.count
+        services.confirm(title:localized("删除模块“%@”？",module.name),detail:localized("文件夹和其中的 %@ 个文件会移到垃圾桶，15 天内可恢复；恢复后模块会回来。",language.number(count)),action:localized("删除"),cancel:localized("取消")) { [weak self] yes in
+            if yes { self?.deleteModule(id) }
+        }
+    }
+    func deleteModule(_ id: String, completion: ((Bool) -> Void)? = nil) {
+        guard let module = modules.first(where: { $0.id == id }), module.kind == .pages, let index, let entry = Self.entry(module.folder,in:index.entries) else { completion?(false); return }
+        delete(entry) { [weak self] done in
+            if done, self?.activeModuleID == id { self?.activeModuleID = nil }
+            completion?(done)
+        }
+    }
     func moveModule(_ id: String, before target: String) {
         guard id != target, let from = modules.firstIndex(where: { $0.id == id }) else { return }
         let module = modules.remove(at:from)

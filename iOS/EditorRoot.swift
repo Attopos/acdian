@@ -172,6 +172,9 @@ struct SidebarList: View {
                                 Button { sheet = .module(module) } label: { Label(model.localized("编辑模块…"),systemImage:"slider.horizontal.3") }
                                 Button { model.setModuleHidden(module.id,!module.hidden) } label: { Label(module.hidden ? model.localized("取消隐藏") : model.localized("隐藏"),systemImage:module.hidden ? "eye" : "eye.slash") }
                                 Button(role:.destructive) { model.removeModule(module.id) } label: { Label(model.localized("从模块中移除（保留文件夹）"),systemImage:"minus.circle") }
+                                if module.kind == .pages {
+                                    Button(role:.destructive) { model.confirmDeleteModule(module.id) } label: { Label(model.localized("删除模块…"),systemImage:"trash") }
+                                }
                             }
                             .accessibilityIdentifier("module-" + module.folder)
                         }
