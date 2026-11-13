@@ -1,6 +1,9 @@
 import Foundation
 import AppKit
 
+extension AppModel {
+    @MainActor func sidebarEntriesOf(_ folder: String) -> [String] { index.flatMap { AppModel.entry(folder,in:$0.entries) }?.children?.map(\.name) ?? [] }
+}
 @main
 struct ModuleTests {
     @MainActor static func main() async throws {
@@ -243,6 +246,7 @@ struct ModuleTests {
         try await eventually("The trash replaces the market") { app.showingTrash && !app.showingMarket }
         let atlasRoot = try vault("ReadOnly",[
             "Atlas/acdian/STATE.md":"# State\n\nsynced",
+            "Atlas/zeta/STATE.md":"# State",
             "Notes/Page.md":"# Page",
             ".acdian-modules.json":#"{"modules":[{"folder":"Atlas","name":"Atlas","icon":"map","color":"teal","kind":"pages","readOnly":true},{"folder":"Notes","name":"Notes","icon":"folder","color":"pink","kind":"pages"}]}"#,
         ])
@@ -262,6 +266,11 @@ struct ModuleTests {
         await pause(0.3)
         try check(fm.fileExists(atPath:atlasRoot.appendingPathComponent("Notes/Page.md").path),"Pages cannot be moved into a read-only module")
         try check(atlas.newFolder(in:"Atlas") == nil,"No folder is created inside a read-only module")
+        atlas.movePage("Atlas/zeta",to:PageDropTarget(folder:"Atlas",anchor:"acdian",after:false))
+        try await eventually("Items in a read-only module can be reordered") { PageOrganizer.loadOrder(root:atlasRoot)["Atlas"] == ["zeta","acdian"] && atlas.sidebarEntriesOf("Atlas") == ["zeta","acdian"] }
+        atlas.movePage("Atlas/acdian/STATE.md",to:PageDropTarget(folder:"Atlas",anchor:"zeta",after:true))
+        await pause(0.3)
+        try check(fm.fileExists(atPath:atlasRoot.appendingPathComponent("Atlas/acdian/STATE.md").path),"Pages cannot be moved between folders of a read-only module")
         print("Modules: \(checks) checks passed")
     }
 }

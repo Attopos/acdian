@@ -78,8 +78,24 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
 /// Where a sidebar drag would land, shown while hovering a row.
 enum SidebarDrop: Equatable { case before, after, into }
 struct SidebarDropHighlight: Equatable { let path: String; let place: SidebarDrop }
-/// The sidebar's drop highlight, observed only by row indicators.
-@MainActor final class SidebarDragState: ObservableObject { @Published var highlight: SidebarDropHighlight? }
+/// One row's part of the drop highlight; only that row's indicator observes it.
+@MainActor final class SidebarRowDrop: ObservableObject { @Published var place: SidebarDrop? }
+/// The sidebar's drop highlight. A change touches only the row it leaves and
+/// the row it enters, so a drag never redraws the rest of the list.
+@MainActor final class SidebarDragState {
+    private(set) var highlight: SidebarDropHighlight?
+    private var rows: [String: SidebarRowDrop] = [:]
+    func row(_ path: String) -> SidebarRowDrop {
+        if let row = rows[path] { return row }
+        let row = SidebarRowDrop(); rows[path] = row; return row
+    }
+    func set(_ new: SidebarDropHighlight?) {
+        guard new != highlight else { return }
+        if let old = highlight, old.path != new?.path { rows[old.path]?.place = nil }
+        highlight = new
+        if let new { row(new.path).place = new.place }
+    }
+}
 /// Text waiting to go in at the editor's caret. A block insertion, such as an
 /// image embed, is given lines of its own.
 struct EditorInsertion: Equatable { let id = UUID(); let text: String; var block = false }
@@ -700,11 +716,19 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     let drag = SidebarDragState()
     var sidebarDrop: SidebarDropHighlight? { drag.highlight }
     var draggingPath: String?
-    func setSidebarDrop(_ highlight: SidebarDropHighlight?) { if drag.highlight != highlight { drag.highlight = highlight } }
+    func setSidebarDrop(_ highlight: SidebarDropHighlight?) { if highlight == nil || !dropSettling { drag.set(highlight) } }
+    // AppKit can report the pointer once more after a drop, and the mouse-up is
+    // swallowed by the drag, so the line is cleared again once the drop settles.
+    private(set) var dropSettling = false
+    func endSidebarDrop() {
+        setSidebarDrop(nil); dropSettling = true
+        DispatchQueue.main.asyncAfter(deadline:.now() + 0.25) { self.dropSettling = false; self.setSidebarDrop(nil) }
+    }
+    static func parentPath(_ path: String) -> String { path.split(separator:"/").dropLast().joined(separator:"/") }
     func movePage(_ relativePath: String, to target: PageDropTarget) {
         setSidebarDrop(nil); draggingPath = nil
         guard let root = index?.root, let entry = index.flatMap({ Self.entry(relativePath, in: $0.entries) }),
-              !isReadOnly(relativePath), !isReadOnly(target.folder) else { return }
+              Self.parentPath(relativePath) == target.folder && target.anchor != nil || !isReadOnly(relativePath) && !isReadOnly(target.folder) else { return }
         let affectsSelection = deletionAffectsSelection(entry)
         let openPath = persistedPage?.relativePath
         let action = {

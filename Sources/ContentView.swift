@@ -437,6 +437,7 @@ struct SidebarView: View {
             HStack { Text(model.query.isEmpty ? model.localized("页面") : model.localized("搜索结果")).font(.system(size:11,weight:.semibold)).tracking(0.6).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
                 // Dropping on the Pages header puts an item at the top of the open module.
                 let target = PageDropTarget(folder:model.activeModule?.folder ?? "")
+                model.endSidebarDrop()
                 return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }
             }; Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
             }
@@ -713,7 +714,7 @@ struct SidebarDropDelegate: DropDelegate {
     }
     func dropExited(info: DropInfo) { if model.sidebarDrop?.path == entry.relativePath { model.setSidebarDrop(nil) } }
     func performDrop(info: DropInfo) -> Bool {
-        let place = placement(info); model.setSidebarDrop(nil)
+        let place = placement(info); model.endSidebarDrop()
         let parent = entry.relativePath.split(separator:"/").dropLast().joined(separator:"/")
         let target = place == .into ? PageDropTarget(folder:entry.relativePath) : PageDropTarget(folder:parent,anchor:entry.name,after:place == .after)
         if place == .into, model.draggingPath == nil { onInto() }
@@ -752,24 +753,17 @@ enum SidebarDrops {
     }
 }
 extension View {
-    func sidebarDropIndicator(_ path: String, drag: SidebarDragState) -> some View { modifier(SidebarDropIndicator(path:path,drag:drag)) }
+    func sidebarDropIndicator(_ path: String, drag: SidebarDragState) -> some View { modifier(SidebarDropIndicator(row:drag.row(path))) }
 }
-/// The insertion line or folder highlight under a drag. Each row keeps its own
-/// state, so a move redraws only the rows it leaves and enters, not every row
-/// the lazy list has built.
+/// The insertion line or folder highlight under a drag.
 struct SidebarDropIndicator: ViewModifier {
-    let path: String
-    let drag: SidebarDragState
-    @State private var drop: SidebarDrop?
+    @ObservedObject var row: SidebarRowDrop
     func body(content: Content) -> some View {
+        let drop = row.place
         content.overlay(alignment:drop == .after ? .bottom : .top) {
             if drop == .before || drop == .after { Rectangle().fill(Color.acPink).frame(height:2).padding(.horizontal,8) }
         }
         .background(drop == .into ? Color.acPink.opacity(0.15) : .clear,in:RoundedRectangle(cornerRadius:6))
-        .onReceive(drag.$highlight) { highlight in
-            let place = highlight?.path == path ? highlight?.place : nil
-            if place != drop { drop = place }
-        }
     }
 }
 struct TrashView: View {
