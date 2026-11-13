@@ -90,7 +90,7 @@ import UniformTypeIdentifiers
         } else if let path = model.selected?.relativePath, path != documentPath { documentPath = path }
         guard let documentID else { return }
         var payload: [String:Any] = ["currentPath":documentPath,"documentID":documentID.uuidString,"tabID":model.activeTabID?.uuidString ?? "","openTabs":model.tabs.map(\.id.uuidString),
-                                     "title":model.isDraft ? model.draftTitle : model.selected?.name ?? "","draft":true,"fontSize":model.fontSize,"editable":!model.loading,"language":model.language.rawValue,"appearance":appearance,
+                                     "title":model.isDraft ? model.draftTitle : model.selected?.name ?? "","draft":true,"fontSize":model.fontSize,"editable":!model.loading && !model.selectedIsReadOnly,"language":model.language.rawValue,"appearance":appearance,
                                      "pageTitle":model.isDraft ? "" : (model.selected?.url.deletingPathExtension().lastPathComponent ?? "")]
         let sendText = !installed || lastSent.map { !model.text.sameBytes($0) } ?? true
         if model.refreshPending { model.refreshPending = false; if sendText && installed { payload["refresh"] = ["base":lastSent ?? ""] } }
@@ -113,7 +113,7 @@ import UniformTypeIdentifiers
         let id = model.splitDocumentID
         if documentID != id { documentID = id; documentPath = entry.relativePath; installed = false; lastSent = nil; lastRevision = -1; lastConfig = "" }
         var payload: [String:Any] = ["currentPath":documentPath,"documentID":id.uuidString,"tabID":id.uuidString,"openTabs":[id.uuidString],"title":entry.name,"draft":true,"fontSize":model.fontSize,
-                                     "editable":true,"language":model.language.rawValue,"appearance":appearance,"pageTitle":entry.url.deletingPathExtension().lastPathComponent]
+                                     "editable":!model.isReadOnly(entry.relativePath),"language":model.language.rawValue,"appearance":appearance,"pageTitle":entry.url.deletingPathExtension().lastPathComponent]
         let sendText = !installed || lastSent.map { !model.splitText.sameBytes($0) } ?? true
         if sendText {
             payload["text"] = model.splitText

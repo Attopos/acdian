@@ -18,11 +18,12 @@ struct PageModule: Codable, Identifiable, Equatable {
     var color: String
     var kind: Kind = .pages
     var hidden = false
+    var readOnly = false
 
-    init(name: String, folder: String, icon: String, color: String, kind: Kind = .pages, hidden: Bool = false) {
-        self.name = name; self.folder = folder; self.icon = icon; self.color = color; self.kind = kind; self.hidden = hidden
+    init(name: String, folder: String, icon: String, color: String, kind: Kind = .pages, hidden: Bool = false, readOnly: Bool = false) {
+        self.name = name; self.folder = folder; self.icon = icon; self.color = color; self.kind = kind; self.hidden = hidden; self.readOnly = readOnly
     }
-    private enum CodingKeys: String, CodingKey { case name, folder, icon, color, kind, hidden }
+    private enum CodingKeys: String, CodingKey { case name, folder, icon, color, kind, hidden, readOnly }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy:CodingKeys.self)
         folder = try values.decode(String.self,forKey:.folder)
@@ -31,6 +32,13 @@ struct PageModule: Codable, Identifiable, Equatable {
         color = try values.decodeIfPresent(String.self,forKey:.color) ?? "pink"
         kind = (try? values.decodeIfPresent(Kind.self,forKey:.kind)) ?? .pages
         hidden = try values.decodeIfPresent(Bool.self,forKey:.hidden) ?? false
+        readOnly = try values.decodeIfPresent(Bool.self,forKey:.readOnly) ?? false
+    }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy:CodingKeys.self)
+        try values.encode(name,forKey:.name); try values.encode(folder,forKey:.folder); try values.encode(icon,forKey:.icon)
+        try values.encode(color,forKey:.color); try values.encode(kind,forKey:.kind); try values.encode(hidden,forKey:.hidden)
+        if readOnly { try values.encode(readOnly,forKey:.readOnly) }
     }
     /// Whether a vault path lies inside this module's folder.
     func contains(_ path: String) -> Bool { path.hasPrefix(folder + "/") }

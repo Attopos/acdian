@@ -164,7 +164,7 @@ struct SplitMarkdownEditor: NSViewRepresentable {
         guard ready, let model, let entry = model.splitEntry, entry.ext == "md", !model.splitLoading else { return }
         let id = model.splitDocumentID
         var payload: [String:Any] = ["currentPath":entry.relativePath,"documentID":id.uuidString,"tabID":"split","openTabs":["split"],"title":entry.name,"draft":true,"fontSize":model.fontSize,
-                                     "editable":true,"language":model.language.rawValue,"appearance":appearance,"pageTitle":entry.url.deletingPathExtension().lastPathComponent]
+                                     "editable":!model.isReadOnly(entry.relativePath),"language":model.language.rawValue,"appearance":appearance,"pageTitle":entry.url.deletingPathExtension().lastPathComponent]
         let newDocument = installed != id
         if newDocument {
             payload["text"] = model.splitText

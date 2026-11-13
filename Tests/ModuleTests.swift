@@ -241,6 +241,27 @@ struct ModuleTests {
         try await eventually("The component market opens") { app.showingMarket && !app.showingTrash && app.selected == nil }
         app.showTrash()
         try await eventually("The trash replaces the market") { app.showingTrash && !app.showingMarket }
+        let atlasRoot = try vault("ReadOnly",[
+            "Atlas/acdian/STATE.md":"# State\n\nsynced",
+            "Notes/Page.md":"# Page",
+            ".acdian-modules.json":#"{"modules":[{"folder":"Atlas","name":"Atlas","icon":"map","color":"teal","kind":"pages","readOnly":true},{"folder":"Notes","name":"Notes","icon":"folder","color":"pink","kind":"pages"}]}"#,
+        ])
+        let atlas = try await model(atlasRoot)
+        try check(atlas.modules.first { $0.folder == "Atlas" }?.readOnly == true && atlas.modules.first { $0.folder == "Notes" }?.readOnly == false,"readOnly is read from the module list, and defaults to false")
+        let encoded = String(decoding:try JSONEncoder().encode(atlas.modules.first { $0.folder == "Notes" }!),as:UTF8.self)
+        try check(!encoded.contains("readOnly"),"A writable module is saved without a readOnly key")
+        try await open(atlas,"Atlas/acdian/STATE.md")
+        try check(atlas.selectedIsReadOnly,"A page inside a read-only module is read-only")
+        atlas.text = "# State\n\nedited"
+        _ = atlas.save()
+        try check((try? String(contentsOf:atlasRoot.appendingPathComponent("Atlas/acdian/STATE.md"),encoding:.utf8)) == "# State\n\nsynced","Saving never writes a read-only page")
+        if let entry = atlas.index?.files.first(where: { $0.relativePath == "Atlas/acdian/STATE.md" }) { atlas.delete(entry) }
+        await pause(0.3)
+        try check(fm.fileExists(atPath:atlasRoot.appendingPathComponent("Atlas/acdian/STATE.md").path),"A read-only page cannot be deleted")
+        atlas.movePage("Notes/Page.md",to:PageDropTarget(folder:"Atlas"))
+        await pause(0.3)
+        try check(fm.fileExists(atPath:atlasRoot.appendingPathComponent("Notes/Page.md").path),"Pages cannot be moved into a read-only module")
+        try check(atlas.newFolder(in:"Atlas") == nil,"No folder is created inside a read-only module")
         print("Modules: \(checks) checks passed")
     }
 }

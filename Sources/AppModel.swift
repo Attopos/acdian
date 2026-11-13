@@ -541,7 +541,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         insertion = nil; anchor = ""; loading = false; pdfPage = 1; pdfPageCount = 0; editorDocumentID = UUID()
     }
     func delete(_ entry: VaultEntry, completion: ((Bool) -> Void)? = nil) {
-        guard let root = index?.root else { completion?(false); return }
+        guard let root = index?.root, !isReadOnly(entry.relativePath) else { completion?(false); return }
         let affectsSelection = deletionAffectsSelection(entry)
         let action = {
             guard self.index?.root == root, self.saveSplit() else { completion?(false); return }
@@ -630,7 +630,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// Creates a folder inside `entry` when it is a folder, or next to it when
     /// it is a file, right below it, and starts editing its name.
     @discardableResult func newFolder(near entry: VaultEntry) -> String? {
-        guard let root = index?.root else { return nil }
+        guard let root = index?.root, !isReadOnly(entry.relativePath) else { return nil }
         let parent = entry.isDirectory ? entry.relativePath : (entry.relativePath as NSString).deletingLastPathComponent
         do {
             let path = try PageOrganizer(root:root).createFolder(localized("新建文件夹"),in:parent,after:entry.isDirectory ? nil : entry.name)
@@ -694,7 +694,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     func setSidebarDrop(_ highlight: SidebarDropHighlight?) { if drag.highlight != highlight { drag.highlight = highlight } }
     func movePage(_ relativePath: String, to target: PageDropTarget) {
         setSidebarDrop(nil); draggingPath = nil
-        guard let root = index?.root, let entry = index.flatMap({ Self.entry(relativePath, in: $0.entries) }) else { return }
+        guard let root = index?.root, let entry = index.flatMap({ Self.entry(relativePath, in: $0.entries) }),
+              !isReadOnly(relativePath), !isReadOnly(target.folder) else { return }
         let affectsSelection = deletionAffectsSelection(entry)
         let openPath = persistedPage?.relativePath
         let action = {
@@ -1070,7 +1071,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     @discardableResult func save(automatically: Bool = false) -> Bool {
         cancelAutosave()
         if isDraft { return saveDraft(automatically:automatically) }
-        guard let selected, selected.ext == "md", dirty else { return true }
+        guard let selected, selected.ext == "md", dirty, !isReadOnly(selected.relativePath) else { return true }
         do {
             let outcome = try VaultFileIO.saveMerging(text,at:selected.url,base:originalText,allowedRoot:index?.root)
             // Another device changed the page: the editor shows the merged text.
@@ -1115,7 +1116,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             guard self.leavePage(), let root = self.index?.root else { return }
             let tab = reused ?? (self.isDraft && self.draftFile == nil ? self.activeTabID : nil)
             self.clearDraftState()
-            self.draftFolder = self.activeModule?.kind == .pages ? self.activeModule!.folder : ""
+            self.draftFolder = self.activeModule.map { $0.kind == .pages && !$0.readOnly } == true ? self.activeModule!.folder : ""
             let path = ".acdian-draft-\(UUID().uuidString).md"
             self.openID = UUID(); self.loadID = UUID()
             self.selected = VaultEntry(relativePath:path,url:root.appendingPathComponent(path),name:"New Page",isDirectory:false,children:nil,modified:nil,size:0)
@@ -1214,7 +1215,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// Lets the user pick files to copy into the attachments folder and links
     /// them at the caret. The image picker of the slash command offers only images.
     func importAttachment(imagesOnly: Bool = false) {
-        guard index != nil, selected?.ext == "md" else { return }
+        guard index != nil, selected?.ext == "md", !selectedIsReadOnly else { return }
         services.pickFiles(message:localized("附件会复制到页面的 Attachments 文件夹，并插入链接。"),imagesOnly:imagesOnly) { self.insertAttachments($0) }
     }
     /// Whether files and pictures can be pasted or dropped into the open page now.
@@ -1298,6 +1299,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     // MARK: Modules
     private var activeModuleKey: String { "activeModule:" + (index?.root.path ?? "") }
     var activeModule: PageModule? { activeModuleID.flatMap { id in modules.first { $0.id == id } } }
+    func isReadOnly(_ relativePath: String) -> Bool { modules.contains { $0.readOnly && ($0.contains(relativePath) || $0.folder == relativePath) } }
+    var selectedIsReadOnly: Bool { !isDraft && selected.map { isReadOnly($0.relativePath) } == true }
     /// Modules whose folder is in the vault; a deleted folder's tile comes back if it is restored.
     var presentModules: [PageModule] {
         guard let index else { return [] }
@@ -1412,7 +1415,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     /// Creates a folder at the top of `folder` ("" is the vault root) and starts naming it.
     @discardableResult func newFolder(in folder: String) -> String? {
-        guard let root = index?.root else { return nil }
+        guard let root = index?.root, !isReadOnly(folder) else { return nil }
         do {
             let path = try PageOrganizer(root:root).createFolder(localized("新建文件夹"),in:folder)
             if !folder.isEmpty { setFolderExpanded(folder,true) }
@@ -1598,7 +1601,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     /// anchor when there is one. Names already in use get a number; nothing is
     /// overwritten. The copy and the rescan run off the main thread.
     func importFiles(_ urls: [URL], to target: PageDropTarget) {
-        guard let root = index?.root, !urls.isEmpty else { return }
+        guard let root = index?.root, !urls.isEmpty, !isReadOnly(target.folder) else { return }
         let destination = target.folder.isEmpty ? root : root.appendingPathComponent(target.folder,isDirectory:true)
         let request = UUID(); loadID = request; loading = true
         DispatchQueue.global(qos:.userInitiated).async {
@@ -1716,7 +1719,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     @discardableResult func saveSplit(automatically: Bool = false) -> Bool {
         splitSaveTask?.cancel(); splitSaveTask = nil
-        guard splitDirty, let entry = splitEntry else { return true }
+        guard splitDirty, let entry = splitEntry, !isReadOnly(entry.relativePath) else { return true }
         do {
             if case .merged(let merged) = try VaultFileIO.saveMerging(splitText,at:entry.url,base:splitOriginal,allowedRoot:index?.root) { splitText = Self.body(merged,entry) }
             attachmentsChanged(from:splitOriginal,to:splitText,page:entry.relativePath)
@@ -1782,7 +1785,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         return true
     }
     private func renamePage(_ entry: VaultEntry, title: String, reporting: Bool = false) -> VaultEntry? {
-        guard entry.ext == "md", let root = index?.root, !title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return nil }
+        guard entry.ext == "md", let root = index?.root, !isReadOnly(entry.relativePath), !title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return nil }
         let name = Self.draftFilenameBase(title) + ".md"
         guard name != entry.name else { return nil }
         let newPath: String
