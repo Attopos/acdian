@@ -162,7 +162,7 @@ private struct SVGScreen: UIViewRepresentable {
     let data: Data
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration(); config.defaultWebpagePreferences.allowsContentJavaScript = false; config.websiteDataStore = .nonPersistent()
-        let view = WKWebView(frame:.zero,configuration:config); view.isOpaque = false; view.backgroundColor = .clear
+        let view = MenuFreeWebView(frame:.zero,configuration:config); view.allowsLinkPreview = false; view.isOpaque = false; view.backgroundColor = .clear
         return view
     }
     func updateUIView(_ view: WKWebView, context: Context) {

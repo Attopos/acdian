@@ -290,3 +290,30 @@ test('Command-Shift-H highlights the selection and takes the highlight off again
  assert.ok(r.w.document.querySelector('.cm-live-highlight'),'the highlight is drawn');
  press();assert.equal(r.get().text,source);r.close();
 });
+test('the link button lights up on selected link text and a second click removes the link',async()=>{
+ const source='Visit [ACdian](https://a.com) and [more](b.md) now\n',r=setup(source);
+ r.view.focus();await new Promise(f=>setTimeout(f,5));
+ const select=(from,to)=>r.view.dispatch({selection:{anchor:from,head:to}});
+ const button=()=>r.w.document.querySelector('.cm-format-link');
+ select(source.indexOf('ACdian'),source.indexOf('ACdian')+6);await new Promise(f=>setTimeout(f,5));
+ assert.equal(button().getAttribute('aria-pressed'),'true');assert.equal(button().title.startsWith('Remove link'),true);
+ button().click();
+ assert.equal(r.get().text,'Visit ACdian and [more](b.md) now\n');
+ const range=r.view.state.selection.main;assert.equal(r.view.state.sliceDoc(range.from,range.to),'ACdian');
+ await new Promise(f=>setTimeout(f,5));assert.equal(button().getAttribute('aria-pressed'),'false');
+ r.w.acdianUndo();assert.equal(r.get().text,source);
+ select(0,source.indexOf(' now'));await new Promise(f=>setTimeout(f,5));
+ assert.equal(button().getAttribute('aria-pressed'),'true');button().click();
+ assert.equal(r.get().text,'Visit ACdian and more now\n');
+ assert.equal(r.view.state.sliceDoc(r.view.state.selection.main.from,r.view.state.selection.main.to),'Visit ACdian and more');
+ select(0,5);await new Promise(f=>setTimeout(f,5));
+ assert.equal(button().getAttribute('aria-pressed'),'false');r.close();
+});
+test('a link spanning a line break of the selection still lights the button',async()=>{
+ const source='First line\nsee [here](https://a.com)\n',r=setup(source);
+ r.view.focus();await new Promise(f=>setTimeout(f,5));
+ r.view.dispatch({selection:{anchor:0,head:source.indexOf('here')+4}});await new Promise(f=>setTimeout(f,5));
+ assert.equal(r.w.document.querySelector('.cm-format-link').getAttribute('aria-pressed'),'true');
+ r.w.document.querySelector('.cm-format-link').click();
+ assert.equal(r.get().text,'First line\nsee here\n');r.close();
+});

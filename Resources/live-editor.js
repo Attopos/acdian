@@ -985,6 +985,7 @@ configureRichText({post,uiText,currentPath:()=>metadata.currentPath,headings:hea
 // The text fills what the title leaves of the window, so a short page does not scroll.
 new ResizeObserver(()=>document.documentElement.style.setProperty('--page-title-height',titleBlock.offsetHeight+'px')).observe(titleBlock);
 window.acdianEditor=view;
+document.addEventListener('contextmenu',event=>event.preventDefault());
 view.contentDOM.addEventListener('mousedown',()=>document.documentElement.classList.add('cm-mouse-selecting'));
 window.addEventListener('mouseup',()=>document.documentElement.classList.remove('cm-mouse-selecting'),true);
 installTouchCommands(view);

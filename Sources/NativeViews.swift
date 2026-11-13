@@ -373,12 +373,15 @@ final class EditorWebView: WKWebView {
     override func concludeDragOperation(_ info: NSDraggingInfo?) { if !takesDrop { super.concludeDragOperation(info) } }
 }
 
+/// A PDF view without PDFKit's own right-click menu.
+final class MenuFreePDFView: PDFView { override func menu(for event: NSEvent) -> NSMenu? { nil } }
+
 struct PDFPane: NSViewRepresentable {
     let url: URL
     @ObservedObject var model: AppModel
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> PDFView {
-        let view = PDFView(); view.autoScales = true; view.displayMode = .singlePageContinuous
+        let view = MenuFreePDFView(); view.autoScales = true; view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical; view.backgroundColor = NSColor(calibratedWhite:0.09,alpha:1)
         context.coordinator.view = view; context.coordinator.model = model
         NotificationCenter.default.addObserver(context.coordinator,selector:#selector(Coordinator.pageChanged),name: .PDFViewPageChanged,object:view)

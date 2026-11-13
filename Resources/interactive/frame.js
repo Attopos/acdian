@@ -2,6 +2,7 @@
    frame (scripts only, no same origin, no network) and posts the block's HTML. */
 (() => {
   'use strict';
+  document.addEventListener('contextmenu', event => event.preventDefault());
   let started = false, theme = 'dark', language = 'en', lastHeight = 0;
   const themeListeners = new Set();
   const showError = message => {

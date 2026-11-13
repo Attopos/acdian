@@ -3,6 +3,7 @@
   'use strict';
 
   const content = document.getElementById('content');
+  document.addEventListener('contextmenu', event => event.preventDefault());
   const state = { currentPath: '', assets: {}, notes: {}, footnotes: new Map(), references: [] };
   const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const plainLabel = target => String(target).split('#')[0].split('/').pop().replace(/\.md$/i, '') || String(target);

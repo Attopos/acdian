@@ -242,6 +242,27 @@ function linkAt(state,from,to) {
   if(to>line.to)return null;
   return lineSpans(state,line).find(span=>(span.kind==='link'||span.kind==='wiki')&&from<=span.to&&to>=span.from&&(from<span.to||to>span.from))||null;
 }
+// Markdown links touching the selection, across all its lines.
+function linksIn(state,from,to) {
+  const found=[];
+  for(let n=state.doc.lineAt(from).number,last=state.doc.lineAt(to).number;n<=last;n++) {
+    const line=state.doc.line(n);
+    for(const span of lineSpans(state,line))if(span.kind==='link'&&from<=span.to&&to>=span.from&&(from<span.to||to>span.from||from===to))found.push(span);
+  }
+  return found;
+}
+// Takes the links off the selected text and keeps the text selected.
+function removeLinks(view) {
+  const {state}=view,range=state.selection.main;
+  if(state.readOnly)return false;
+  const links=linksIn(state,range.from,range.to);
+  if(!links.length)return false;
+  const changes=links.map(span=>({from:span.from,to:span.to,insert:state.doc.sliceString(span.bodyFrom,span.bodyTo)}));
+  const set=state.changes(changes);
+  const map=(pos,side)=>{const inside=links.find(span=>pos>span.from&&pos<span.to);return inside?set.mapPos(inside.from,1)+Math.max(0,Math.min(pos,inside.bodyTo)-inside.bodyFrom):set.mapPos(pos,side);};
+  view.dispatch({changes:set,selection:EditorSelection.range(map(range.anchor,range.anchor<=range.head?1:-1),map(range.head,range.head<range.anchor?1:-1)),userEvent:'input.format',...historyStep});
+  return true;
+}
 const linkTarget=url=>url.trim().replace(/ /g,'%20').replace(/\(/g,'%28').replace(/\)/g,'%29');
 function applyLink(view,url) {
   const {state}=view,range=state.selection.main;
@@ -425,7 +446,7 @@ function createToolbar(view) {
   bar.append(blockButton,separator);
   const inline=new Map();
   for(const [kind] of inlineButtons) {
-    const element=button('cm-format-'+kind,icons[kind],()=>{if(kind==='link'){openLink(view);return;}toggleFormat(kind)(view);});
+    const element=button('cm-format-'+kind,icons[kind],()=>{if(kind==='link'){if(!removeLinks(view))openLink(view);return;}toggleFormat(kind)(view);});
     inline.set(kind,element);bar.append(element);
   }
   const colorButton=button('cm-format-color',icons.color,()=>view.dispatch({effects:setMode.of(view.state.field(toolbarState).mode==='color'?null:'color')}));
@@ -467,10 +488,10 @@ function createToolbar(view) {
     blockButton.hidden=separator.hidden=!allowed;
     blockIcon.textContent=blockCommands.find(command=>command.id===block)?.icon||'T';
     blockButton.title=strings.turnInto;blockButton.setAttribute('aria-label',strings.turnInto);blockButton.setAttribute('aria-expanded',String(value.mode==='block'));
-    const link=linkAt(state,range.from,range.to);
+    const link=linkAt(state,range.from,range.to)||linksIn(state,range.from,range.to)[0]||null;
     for(const [kind,key] of inlineButtons) {
-      const element=inline.get(kind),label=strings.format[kind];
-      element.title=label+shortcutLabel(key);element.setAttribute('aria-label',label);
+      const element=inline.get(kind),label=kind==='link'&&link?.kind==='link'?strings.format.unlink:strings.format[kind];
+      element.title=label+(label===strings.format.unlink?'':shortcutLabel(key));element.setAttribute('aria-label',label);
       element.setAttribute('aria-pressed',String(kind==='link'?!!link:formatActive(state,kind)));
       if(kind==='link')element.disabled=link?.kind==='wiki';
     }
@@ -536,4 +557,4 @@ export function formatToolbar() {return [
     mousedown(event,view){if(event.button===0)view.dispatch({effects:setPointer.of(true)});return false;}
   })
 ];}
-export const formatToolbarTest={toggleFormat,setBlock,applyLink,openLink,formatActive,currentBlock};
+export const formatToolbarTest={toggleFormat,setBlock,applyLink,openLink,removeLinks,formatActive,currentBlock};

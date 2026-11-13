@@ -68,7 +68,7 @@ struct ReaderWebView: UIViewRepresentable {
             config.setURLSchemeHandler(relay,forURLScheme:"acdian-resource")
             config.userContentController.add(relay,name:"acdian")
             config.userContentController.addUserScript(WKUserScript(source:ReaderWebView.touchScript,injectionTime:.atDocumentEnd,forMainFrameOnly:true))
-            let view = WKWebView(frame:CGRect(x:0,y:0,width:390,height:800),configuration:config)
+            let view = MenuFreeWebView(frame:CGRect(x:0,y:0,width:390,height:800),configuration:config)
             view.isOpaque = false; view.backgroundColor = .clear; view.scrollView.backgroundColor = .clear
             // CodeMirror scrolls inside the page; the outer view must stay still.
             view.scrollView.isScrollEnabled = false; view.scrollView.bounces = false

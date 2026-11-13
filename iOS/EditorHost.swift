@@ -39,7 +39,7 @@ import UniformTypeIdentifiers
         let collapsed = UserDefaults.standard.bool(forKey:"commentsCollapsed") ? "1" : "0"
         config.userContentController.addUserScript(WKUserScript(source:"window.acdianTouch=true;try{localStorage.setItem('acdian.commentsCollapsed','\(collapsed)')}catch(e){}",injectionTime:.atDocumentStart,forMainFrameOnly:true))
         config.userContentController.addUserScript(WKUserScript(source:ReaderWebView.touchBasics,injectionTime:.atDocumentEnd,forMainFrameOnly:true))
-        view = WKWebView(frame:.zero,configuration:config)
+        view = MenuFreeWebView(frame:.zero,configuration:config)
         super.init()
         schemes.host = self
         config.userContentController.add(MessageRelay(self),name:"acdian")
@@ -244,5 +244,15 @@ struct EditorWebView: UIViewRepresentable {
         let view = host.view
         guard view.superview !== container, view.window == nil || container.window != nil else { return }
         view.frame = container.bounds; view.autoresizingMask = [.flexibleWidth,.flexibleHeight]; container.addSubview(view)
+    }
+}
+
+/// A web view without Apple's edit callout (Copy, Look Up, Translate, Share).
+/// The main menu, which holds the iPad keyboard shortcuts, is left alone.
+final class MenuFreeWebView: WKWebView {
+    override func buildMenu(with builder: UIMenuBuilder) {
+        super.buildMenu(with:builder)
+        guard builder.system == .context else { return }
+        for menu: UIMenu.Identifier in [.standardEdit,.lookup,.learn,.share,.replace,.find,.speech,.format,.textStyle,.spelling,.substitutions,.transformations,.writingDirection] { builder.remove(menu:menu) }
     }
 }
