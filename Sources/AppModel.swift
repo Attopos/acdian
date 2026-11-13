@@ -720,6 +720,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                         // The index changed meanwhile: the move is applied to the newer one.
                         let newIndex = self.indexGeneration == generation ? moved : current.moving(relativePath,to:newPath)
                         if self.loadID == request { self.loading = false }
+                        guard newPath != relativePath else { self.index = newIndex; return }
                         if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath); self.moduleFolderMoved(from:relativePath,to:newPath); self.componentSourcesMoved(from:relativePath,to:newPath) }
                         self.remapTabs(from:relativePath,to:newPath); self.searchMoved(from:relativePath,to:newPath)
                         self.index = newIndex; self.rebuildSearch()

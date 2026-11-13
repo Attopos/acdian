@@ -754,17 +754,22 @@ enum SidebarDrops {
 extension View {
     func sidebarDropIndicator(_ path: String, drag: SidebarDragState) -> some View { modifier(SidebarDropIndicator(path:path,drag:drag)) }
 }
-/// The insertion line or folder highlight under a drag. Only this redraws as
-/// the pointer moves, not the row or the sidebar around it.
+/// The insertion line or folder highlight under a drag. Each row keeps its own
+/// state, so a move redraws only the rows it leaves and enters, not every row
+/// the lazy list has built.
 struct SidebarDropIndicator: ViewModifier {
     let path: String
-    @ObservedObject var drag: SidebarDragState
+    let drag: SidebarDragState
+    @State private var drop: SidebarDrop?
     func body(content: Content) -> some View {
-        let drop = drag.highlight?.path == path ? drag.highlight?.place : nil
         content.overlay(alignment:drop == .after ? .bottom : .top) {
             if drop == .before || drop == .after { Rectangle().fill(Color.acPink).frame(height:2).padding(.horizontal,8) }
         }
         .background(drop == .into ? Color.acPink.opacity(0.15) : .clear,in:RoundedRectangle(cornerRadius:6))
+        .onReceive(drag.$highlight) { highlight in
+            let place = highlight?.path == path ? highlight?.place : nil
+            if place != drop { drop = place }
+        }
     }
 }
 struct TrashView: View {

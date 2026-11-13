@@ -234,7 +234,8 @@ struct VaultIndex {
     /// The same index after moving an item, and everything inside it, from
     /// `old` to `new`, placed where a rescan would place it.
     func moving(_ old: String, to new: String) -> VaultIndex {
-        guard old != new, let entry = Self.find(old, in: entries) else { return self }
+        guard let entry = Self.find(old, in: entries) else { return self }
+        if old == new { return reordering(old) }
         func remap(_ item: VaultEntry) -> VaultEntry {
             let path = new + item.relativePath.dropFirst(old.count)
             return VaultEntry(relativePath: path, url: root.appendingPathComponent(path, isDirectory: item.isDirectory),
@@ -260,6 +261,22 @@ struct VaultIndex {
             }
         }
         return remaining.updating(entries: parentPath.isEmpty ? place(remaining.entries) : insert(remaining.entries), adding: movedFiles)
+    }
+    /// The same index after an item was reordered within its folder.
+    func reordering(_ path: String) -> VaultIndex {
+        let parentPath = (path as NSString).deletingLastPathComponent
+        let order = PageOrganizer.loadOrder(root: root)[parentPath]
+        func place(_ list: [VaultEntry]) -> [VaultEntry] { PageOrganizer.arrange(list.sorted(by: PageOrganizer.defaultOrder), names: order, name: \.name) }
+        func insert(_ list: [VaultEntry]) -> [VaultEntry] {
+            list.map { item in
+                guard item.isDirectory, item.relativePath == parentPath || parentPath.hasPrefix(item.relativePath + "/") else { return item }
+                let children = item.relativePath == parentPath ? place(item.children ?? []) : insert(item.children ?? [])
+                return VaultEntry(relativePath: item.relativePath, url: item.url, name: item.name, isDirectory: true,
+                                  children: children, modified: item.modified, size: item.size)
+            }
+        }
+        return VaultIndex(root: root, entries: parentPath.isEmpty ? place(entries) : insert(entries), files: files,
+                          byPath: byPath, byFoldedPath: byFoldedPath, byBasename: byBasename)
     }
     private static func find(_ path: String, in list: [VaultEntry]) -> VaultEntry? {
         for item in list {
