@@ -29,5 +29,6 @@
 ## 文档同步
 
 - 每次修改在同一个提交里更新 `docs/STATE.md`；做了取舍就在 `docs/DECISIONS.md` 末尾追加一条。纯格式化、依赖升级等可在提交说明里写 `[skip-state]`。
+- `docs/STATE.md` 每次整份重写，不往后追加：只写现在、下一步、注意三节，保持在 25 行以内（超出时 commit-msg hook 会提醒）。做完的细节写进提交说明，取舍写进 `docs/DECISIONS.md`（只追加，每条不超过四行）。测试记录这类越积越多的文件只留最近几个版本，更早的移到 `docs/archive/`。
 - 这三份文档会自动同步到 Atlas（`~/Developer/atlas-ac`，github.com/Attopos/atlas-ac）和 ACdian 的 Atlas 模块，那边只读，只在这里改。
 - 出了错或被纠正，把教训补进本文件的规则。
