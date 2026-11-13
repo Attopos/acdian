@@ -82,7 +82,7 @@ body { margin: 0; color: var(--text); background: var(--background); font-size: 
 ::-webkit-scrollbar { width: 9px; height: 8px; }
 ::-webkit-scrollbar-thumb { border: 2px solid var(--background); border-radius: 6px; background: var(--scrollbar); }
 ::-webkit-scrollbar-track { background: transparent; }
-#reader { max-width: 760px; margin: 0 auto; padding: 43px 58px 110px; }
+#reader { max-width: 840px; margin: 0 auto; padding: 43px 58px 110px; }
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body > h1:first-child { margin-top: 2px; }
 .markdown-body > :last-child { margin-bottom: 0; }

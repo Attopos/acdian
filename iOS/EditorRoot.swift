@@ -417,7 +417,7 @@ struct DraftTitleField: View {
             .onSubmit { focused = false; model.editorFocus?() }
             .onChange(of:focused) { _,isFocused in if !isFocused { model.draftTitleEnded() } }
             .padding(.horizontal,36).padding(.top,24).padding(.bottom,4)
-            .frame(maxWidth:760,alignment:.leading).frame(maxWidth:.infinity)
+            .frame(maxWidth:840,alignment:.leading).frame(maxWidth:.infinity)
             .onAppear { focused = true }
     }
 }

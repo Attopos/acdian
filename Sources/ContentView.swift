@@ -170,8 +170,8 @@ struct ContentView: View {
     // As in Feishu, the text column sits in the middle of the page area beside
     // the sidebar, not of the whole window; outline and comments move it from there.
     private var centerShift: CGFloat { 0 }
-    // Where the 760-wide column starts in a page of this width, as --page-left in live-editor.css.
-    static func pageLeft(_ width: CGFloat, shift: CGFloat) -> CGFloat { max(0,((width - 760) / 2 - shift).rounded(.down)) }
+    // Where the 840-wide column starts in a page of this width, as --page-left in live-editor.css.
+    static func pageLeft(_ width: CGFloat, shift: CGFloat) -> CGFloat { max(0,((width - 840) / 2 - shift).rounded(.down)) }
     // The empty space beside the text, by the page's width, as in live-editor.css.
     static func pageSide(_ width: CGFloat) -> CGFloat { width > 700 ? 58 : width > 450 ? 28 : 19 }
     private func unsupported(_ file: VaultEntry) -> some View { VStack(spacing:18) { Image(systemName:"doc").font(.system(size:48,weight:.ultraLight)).foregroundStyle(Color.acPink); Text(file.name).font(.title2); Text(model.localized("此类文件可在系统默认应用中打开。")).foregroundStyle(.secondary); Button(model.localized("打开文件")) { NSWorkspace.shared.open(file.url) }.buttonStyle(.bordered) }.frame(maxWidth:.infinity,maxHeight:.infinity) }
@@ -353,7 +353,7 @@ struct DraftTitleView: View {
             .onSubmit { titleFocused = false; model.editorFocus?() }
             .onChange(of:titleFocused) { _,focused in if !focused { model.draftTitleEnded() } }
             .padding(.horizontal,side).padding(.top,43).padding(.bottom,8)
-            .frame(maxWidth:760,alignment:.leading)
+            .frame(maxWidth:840,alignment:.leading)
             .padding(.leading,left)
             .frame(maxWidth:.infinity,alignment:.leading)
             .onAppear { titleFocused = true }
@@ -887,15 +887,17 @@ struct OutlineRail: View {
     @State private var closing: Task<Void,Never>?
     static let railWidth: CGFloat = 20
     /// The rail's left edge: a little clear of the text, never off the page.
-    static func railLeft(_ textLeft: CGFloat) -> CGFloat { max(4,textLeft - railWidth - 26) }
+    static func railLeft(_ textLeft: CGFloat) -> CGFloat { max(4,textLeft - railWidth - 60) }
+    /// How far below the title's top the rail starts.
+    static let railDrop: CGFloat = 24
     private struct Row { let index: Int; let title: String; let level: Int }
     private var rows: [Row] { [Row(index:-1,title:title.isEmpty ? "New Page" : title,level:1)] + model.headings.enumerated().map { Row(index:$0.offset,title:$0.element.title,level:$0.element.level + 1) } }
     var body: some View {
         let left = Self.railLeft(textLeft)
         ZStack(alignment:.topLeading) {
-            rail.padding(.leading,left - 6).padding(.top,top - 6)
+            rail.padding(.leading,left - 6).padding(.top,top + Self.railDrop - 6)
             if open {
-                panel.padding(.leading,max(4,left - 14)).padding(.top,max(4,top - 14))
+                panel.padding(.leading,max(4,left - 14)).padding(.top,max(4,top + Self.railDrop - 14))
                     .transition(.opacity)
             }
         }.onAppear { if startsOpen { open = true } }
@@ -930,7 +932,7 @@ struct OutlineRail: View {
             }.padding(6)
         }
         .scrollIndicators(.never)
-        .frame(width:260).frame(maxHeight:max(120,min(height - max(4,top - 14) - 12,CGFloat(rows.count) * 32 + 14)))
+        .frame(width:260).frame(maxHeight:max(120,min(height - max(4,top + Self.railDrop - 14) - 12,CGFloat(rows.count) * 32 + 14)))
         .fixedSize(horizontal:false,vertical:true)
         .background(RoundedRectangle(cornerRadius:12).fill(Color.rail).overlay(RoundedRectangle(cornerRadius:12).strokeBorder(Color.faint,lineWidth:1)).shadow(color:.black.opacity(0.28),radius:16,y:6))
         .onHover(perform:hover)

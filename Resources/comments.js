@@ -190,7 +190,7 @@ const GAP=10,CARD=268,COLUMN=300,HEADER=52;
 // With the comment column open the text sits in the middle of the space between
 // whatever is on its left (the outline, or the page edge) and the column, as
 // Feishu does, narrowing down to TEXT_MIN before the column gives way.
-const COLUMN_GAP=48,TEXT_MIN=480,PAGE=760;
+const COLUMN_GAP=48,TEXT_MIN=480,PAGE=840;
 const collapsedKey='acdian.commentsCollapsed';
 const storedCollapsed=()=>{try{return localStorage.getItem(collapsedKey)==='1';}catch{return false;}};
 
