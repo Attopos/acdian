@@ -133,26 +133,20 @@ struct ContentView: View {
         if let file = model.selected {
             VStack(spacing:0) {
                 if file.ext == "md" {
-                    // The text column stays centred in the window when the outline fits
-                    // in the margin left of it with a clear gap. When it does not, the
-                    // outline stays and the text moves right just far enough to clear
-                    // it. Only a page too narrow for both gets the rail of short lines
-                    // that opens over the margin while the pointer is on it.
+                    // The text column always stays centred. The outline is a rail of
+                    // short lines in the margin just left of the text; pointing at it
+                    // opens the headings over the page, so the text never moves for it.
                     GeometryReader { geometry in
-                        let layout = Self.outlineLayout(geometry.size.width,shift:centerShift,showOutline:model.showOutline,push:model.splitEntry == nil)
-                        let width = geometry.size.width - layout.reserve
+                        let layout = Self.outlineLayout(geometry.size.width,shift:centerShift,showOutline:model.showOutline)
+                        let width = geometry.size.width
                         let title = model.isDraft ? model.draftTitle : file.url.deletingPathExtension().lastPathComponent
                         ZStack(alignment:.topLeading) {
                             VStack(spacing:0) {
                                 if model.isDraft { DraftTitleView(model:model,side:Self.pageSide(width),left:Self.pageLeft(width,shift:layout.shift)).id(model.editorDocumentID) }
                                 LiveMarkdownEditor(model:model,centerShift:layout.shift,leftEdge:layout.edge).frame(maxWidth:.infinity,maxHeight:.infinity)
-                            }.padding(.leading,layout.reserve)
-                            if !model.showOutline {
-                                Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = true } } label: { Image(systemName:"chevron.right.2").font(.system(size:11,weight:.medium)).frame(width:22,height:22).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.leading,geometry.size.width > 700 ? 20 : 2).padding(.top,geometry.size.width > 700 ? 39 : 4)
-                            } else if let docked = layout.outline {
-                                outline(title:title,width:docked,floating:false)
-                            } else {
-                                OutlineRail(model:model,title:title,textLeft:Self.pageLeft(width,shift:layout.shift) + Self.pageSide(width),top:geometry.size.width > 700 ? 49 : 30,height:geometry.size.height) { outline(title:title,width:240,floating:true) }
+                            }
+                            if model.showOutline {
+                                OutlineRail(model:model,title:title,textLeft:Self.pageLeft(width,shift:layout.shift) + Self.pageSide(width),top:width > 700 ? 49 : 30,height:geometry.size.height)
                             }
                         }
                     }
@@ -166,45 +160,12 @@ struct ContentView: View {
             }.id(file.ext == "md" ? "markdown" : file.id)
         }
     }
-    // A Feishu-style outline in the page's left margin: the page title first,
-    // then its headings, with no panel chrome of its own.
-    // The editor column is at most 760 wide with empty padding inside each edge.
-    // The outline docks in the margin left of the text only when that margin holds
-    // a readable outline and a clear gap before the text (Aaron found 12 crowded);
-    // it grows up to 240 with the margin. Narrower margins get the rail instead.
-    static let outlineWidths: ClosedRange<CGFloat> = 200...240
-    static let outlineGap: CGFloat = 48
-    static func outlineDockWidth(_ width: CGFloat, shift: CGFloat) -> CGFloat? {
-        let room = pageLeft(width,shift:shift) + pageSide(width) - outlineGap
-        return room >= outlineWidths.lowerBound ? min(room,outlineWidths.upperBound) : nil
-    }
-    /// How the page makes room for the outline: `reserve` is the space the editor
-    /// gives up on its left, `shift` the centre shift the editor then uses, and
-    /// `outline` the docked outline's width, nil for the rail or no outline.
-    /// `edge` is where text may start in the editor when the comment column moves it.
+    /// How the page lays out beside the outline. The outline never takes room from
+    /// the text any more, so `reserve` is 0 and `outline` nil; `edge` is where text
+    /// may start in the editor when the comment column moves it.
     struct OutlineLayout { var reserve: CGFloat = 0; var shift: CGFloat; var outline: CGFloat?; var edge: CGFloat = 0 }
-    /// Narrowest editor left beside a pushed-in outline; below it the rail shows.
-    static let pushedEditorMinimum: CGFloat = 480
-    /// A split page keeps the two columns' text the same width, so it never pushes.
     static func outlineLayout(_ width: CGFloat, shift: CGFloat, showOutline: Bool, push: Bool = true) -> OutlineLayout {
-        let side = pageSide(width)
-        guard showOutline else { return OutlineLayout(shift:shift,outline:nil,edge:side) }
-        if let dock = outlineDockWidth(width,shift:shift) {
-            guard push else { return OutlineLayout(shift:shift,outline:dock,edge:dock + outlineGap) }
-            // Beside a docked outline the column sits in the middle of the space
-            // right of the outline, never left of where it would be without it,
-            // so the margin on the right is no wider than the gap after the outline.
-            let middle = max(pageLeft(width,shift:shift),((width - dock - 760) / 2 + dock).rounded(.down))
-            let moved = (width - 760) / 2 - middle
-            return OutlineLayout(shift:moved,outline:dock,edge:dock + outlineGap)
-        }
-        guard push else { return OutlineLayout(shift:shift,outline:nil) }
-        // The outline keeps its narrowest width and the text starts one gap past it:
-        // the editor starts there less its own side padding, its column at its left edge.
-        let outline = outlineWidths.lowerBound
-        let reserve = max(0,outline + outlineGap - pageSide(width - outline))
-        guard width - reserve >= pushedEditorMinimum else { return OutlineLayout(shift:shift,outline:nil,edge:48) }
-        return OutlineLayout(reserve:reserve,shift:width,outline:outline,edge:pageSide(width - reserve))
+        OutlineLayout(shift:shift,outline:nil,edge:pageSide(width))
     }
     // As in Feishu, the text column sits in the middle of the page area beside
     // the sidebar, not of the whole window; outline and comments move it from there.
@@ -213,21 +174,6 @@ struct ContentView: View {
     static func pageLeft(_ width: CGFloat, shift: CGFloat) -> CGFloat { max(0,((width - 760) / 2 - shift).rounded(.down)) }
     // The empty space beside the text, by the page's width, as in live-editor.css.
     static func pageSide(_ width: CGFloat) -> CGFloat { width > 700 ? 58 : width > 450 ? 28 : 19 }
-    private func outline(title: String, width: CGFloat, floating: Bool) -> some View {
-        VStack(alignment:.leading,spacing:0) {
-            Button { withAnimation(.easeInOut(duration:0.18)) { model.showOutline = false } } label: { Image(systemName:"chevron.left.2").font(.system(size:11,weight:.medium)) }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("文章目录")).padding(.bottom,16)
-            ScrollView {
-                VStack(alignment:.leading,spacing:4) {
-                    Button { model.anchor = "#"; model.activeHeading = -1 } label: { Text(title.isEmpty ? "New Page" : title).font(.system(size:13,weight:.medium)).foregroundStyle(model.activeHeading < 0 ? Color.acPink : Color.primary.opacity(0.85)).lineLimit(2).multilineTextAlignment(.leading).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
-                    ForEach(Array(model.headings.enumerated()),id:\.offset) { index,heading in
-                        Button { model.anchor = heading.title; model.activeHeading = index } label: { Text(heading.title).font(.system(size:13)).foregroundStyle(index == model.activeHeading ? Color.acPink : heading.level <= 2 ? Color.primary.opacity(0.85) : Color.secondary).lineLimit(2).multilineTextAlignment(.leading).padding(.leading,CGFloat(max(0,heading.level-1))*12).padding(.vertical,5).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle()) }.buttonStyle(.plain)
-                    }
-                }.frame(maxWidth:.infinity,alignment:.leading)
-            }.scrollIndicators(.never) // .hidden still shows when the system always shows scroll bars.
-        }.padding(.leading,floating ? 20 : 24).padding(.trailing,floating ? 14 : 8).padding(.top,floating ? 14 : 43).padding(.bottom,floating ? 14 : 0).frame(width:width,alignment:.topLeading)
-        .background { if floating { RoundedRectangle(cornerRadius:10).fill(Color.rail).overlay(RoundedRectangle(cornerRadius:10).strokeBorder(Color.faint,lineWidth:1)).shadow(color:.black.opacity(0.28),radius:16,y:6) } }
-        .frame(maxHeight:floating ? nil : .infinity,alignment:.top)
-    }
     private func unsupported(_ file: VaultEntry) -> some View { VStack(spacing:18) { Image(systemName:"doc").font(.system(size:48,weight:.ultraLight)).foregroundStyle(Color.acPink); Text(file.name).font(.title2); Text(model.localized("此类文件可在系统默认应用中打开。")).foregroundStyle(.secondary); Button(model.localized("打开文件")) { NSWorkspace.shared.open(file.url) }.buttonStyle(.bordered) }.frame(maxWidth:.infinity,maxHeight:.infinity) }
     private var statusBar: some View {
         HStack(spacing:7) {
@@ -923,11 +869,10 @@ struct LanguageMenu: View {
     }
 }
 
-// The outline when the margin is too narrow for it: one short line per heading,
+// The outline: one short line per heading in the margin just left of the text,
 // longer for higher levels and pink for the part being read. Pointing at it opens
-// the whole outline over the margin and the text's edge; leaving closes it. The
-// text never moves for it.
-struct OutlineRail<Panel: View>: View {
+// a list of the headings over the page; leaving closes it. The text never moves.
+struct OutlineRail: View {
     @ObservedObject var model: AppModel
     let title: String
     /// Where the text starts in the page, so the rail stays in the empty margin.
@@ -935,40 +880,67 @@ struct OutlineRail<Panel: View>: View {
     let top: CGFloat
     /// The page's height, which the open outline stays inside.
     let height: CGFloat
-    @ViewBuilder let panel: () -> Panel
+    /// Opens the list at once, for pictures of it in tests.
+    var startsOpen = false
     @State private var open = false
+    @State private var hovered: Int?
     @State private var closing: Task<Void,Never>?
+    static let railWidth: CGFloat = 20
+    /// The rail's left edge: a little clear of the text, never off the page.
+    static func railLeft(_ textLeft: CGFloat) -> CGFloat { max(4,textLeft - railWidth - 26) }
+    private struct Row { let index: Int; let title: String; let level: Int }
+    private var rows: [Row] { [Row(index:-1,title:title.isEmpty ? "New Page" : title,level:1)] + model.headings.enumerated().map { Row(index:$0.offset,title:$0.element.title,level:$0.element.level + 1) } }
     var body: some View {
-        let leading = max(4,min(22,textLeft - 26))
+        let left = Self.railLeft(textLeft)
         ZStack(alignment:.topLeading) {
+            rail.padding(.leading,left - 6).padding(.top,top - 6)
             if open {
-                // About 30 points a heading, plus the close button and the panel's padding; longer outlines scroll.
-                panel().frame(height:max(120,min(height - max(4,top - 14) - 12,CGFloat(model.headings.count + 1) * 31 + 62)),alignment:.top)
-                    .padding(.leading,max(6,leading - 8)).padding(.top,max(4,top - 14))
-                    .onHover(perform:hover)
+                panel.padding(.leading,max(4,left - 14)).padding(.top,max(4,top - 14))
                     .transition(.opacity)
-            } else {
-                VStack(alignment:.leading,spacing:7) {
-                    line(level:1,active:model.activeHeading < 0)
-                    ForEach(Array(model.headings.prefix(48).enumerated()),id:\.offset) { index,heading in line(level:heading.level + 1,active:index == model.activeHeading) }
-                }
-                .padding(.vertical,6).padding(.horizontal,6).contentShape(Rectangle())
-                .onHover(perform:hover)
-                .help(model.localized("文章目录"))
-                .padding(.leading,leading - 6).padding(.top,top - 6)
-                .accessibilityElement(children:.ignore).accessibilityLabel(model.localized("文章目录"))
+            }
+        }.onAppear { if startsOpen { open = true } }
+    }
+    private var rail: some View {
+        VStack(alignment:.leading,spacing:8) {
+            ForEach(Array(rows.prefix(48).enumerated()),id:\.offset) { _,row in
+                Capsule().fill(row.index == model.activeHeading ? Color.acPink : Color.secondary.opacity(0.45))
+                    .frame(width:row.level <= 1 ? Self.railWidth : row.level == 2 ? 15 : row.level == 3 ? 11 : 8,height:2.5)
             }
         }
+        .padding(6).contentShape(Rectangle())
+        .onHover(perform:hover)
+        .accessibilityElement(children:.ignore).accessibilityLabel(model.localized("文章目录"))
     }
-    private func line(level: Int, active: Bool) -> some View {
-        Capsule().fill(active ? Color.acPink : Color.secondary.opacity(0.4)).frame(width:level <= 1 ? 16 : level == 2 ? 12 : level == 3 ? 9 : 6,height:2)
+    private var panel: some View {
+        ScrollView {
+            VStack(alignment:.leading,spacing:2) {
+                ForEach(rows,id:\.index) { row in
+                    let active = row.index == model.activeHeading
+                    Button { model.anchor = row.index < 0 ? "#" : row.title; model.activeHeading = row.index } label: {
+                        HStack(spacing:12) {
+                            Capsule().fill(active ? Color.acPink : Color.secondary.opacity(0.6)).frame(width:14,height:2.5)
+                            Text(row.title).font(.system(size:14,weight:active ? .semibold : .regular)).foregroundStyle(active ? Color.primary : Color.primary.opacity(0.85)).lineLimit(1).truncationMode(.tail)
+                        }
+                        .padding(.leading,8 + CGFloat(max(0,row.level - 2)) * 14).padding(.trailing,12).padding(.vertical,6)
+                        .frame(maxWidth:.infinity,alignment:.leading)
+                        .background(RoundedRectangle(cornerRadius:7).fill(hovered == row.index ? Color.primary.opacity(0.08) : .clear))
+                        .contentShape(Rectangle())
+                    }.buttonStyle(.plain).onHover { hovered = $0 ? row.index : (hovered == row.index ? nil : hovered) }
+                }
+            }.padding(6)
+        }
+        .scrollIndicators(.never)
+        .frame(width:260).frame(maxHeight:max(120,min(height - max(4,top - 14) - 12,CGFloat(rows.count) * 32 + 14)))
+        .fixedSize(horizontal:false,vertical:true)
+        .background(RoundedRectangle(cornerRadius:12).fill(Color.rail).overlay(RoundedRectangle(cornerRadius:12).strokeBorder(Color.faint,lineWidth:1)).shadow(color:.black.opacity(0.28),radius:16,y:6))
+        .onHover(perform:hover)
     }
-    // Moving from the rail onto the panel that replaces it reads as leaving and
-    // coming back, so a close waits a moment for the pointer to arrive.
+    // Moving from the rail onto the panel over it reads as leaving and coming
+    // back, so a close waits a moment for the pointer to arrive.
     private func hover(_ inside: Bool) {
         closing?.cancel()
         if inside { if !open { withAnimation(.easeOut(duration:0.12)) { open = true } } }
-        else { closing = Task { @MainActor in try? await Task.sleep(nanoseconds:220_000_000); guard !Task.isCancelled else { return }; withAnimation(.easeIn(duration:0.12)) { open = false } } }
+        else { closing = Task { @MainActor in try? await Task.sleep(nanoseconds:220_000_000); guard !Task.isCancelled else { return }; withAnimation(.easeIn(duration:0.12)) { open = false; hovered = nil } } }
     }
 }
 

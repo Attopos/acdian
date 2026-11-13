@@ -242,12 +242,12 @@ function linkAt(state,from,to) {
   if(to>line.to)return null;
   return lineSpans(state,line).find(span=>(span.kind==='link'||span.kind==='wiki')&&from<=span.to&&to>=span.from&&(from<span.to||to>span.from))||null;
 }
-// Markdown links touching the selection, across all its lines.
+// Markdown and [[page]] links touching the selection, across all its lines.
 function linksIn(state,from,to) {
   const found=[];
   for(let n=state.doc.lineAt(from).number,last=state.doc.lineAt(to).number;n<=last;n++) {
     const line=state.doc.line(n);
-    for(const span of lineSpans(state,line))if(span.kind==='link'&&from<=span.to&&to>=span.from&&(from<span.to||to>span.from||from===to))found.push(span);
+    for(const span of lineSpans(state,line))if((span.kind==='link'||span.kind==='wiki')&&from<=span.to&&to>=span.from&&(from<span.to||to>span.from||from===to))found.push(span);
   }
   return found;
 }
@@ -490,10 +490,9 @@ function createToolbar(view) {
     blockButton.title=strings.turnInto;blockButton.setAttribute('aria-label',strings.turnInto);blockButton.setAttribute('aria-expanded',String(value.mode==='block'));
     const link=linkAt(state,range.from,range.to)||linksIn(state,range.from,range.to)[0]||null;
     for(const [kind,key] of inlineButtons) {
-      const element=inline.get(kind),label=kind==='link'&&link?.kind==='link'?strings.format.unlink:strings.format[kind];
+      const element=inline.get(kind),label=kind==='link'&&link?strings.format.unlink:strings.format[kind];
       element.title=label+(label===strings.format.unlink?'':shortcutLabel(key));element.setAttribute('aria-label',label);
       element.setAttribute('aria-pressed',String(kind==='link'?!!link:formatActive(state,kind)));
-      if(kind==='link')element.disabled=link?.kind==='wiki';
     }
     bar.hidden=value.mode==='link';linkPanel.hidden=value.mode!=='link';menu.hidden=value.mode!=='block';colorPanel.hidden=value.mode!=='color';
     colorButton.title=strings.format.color;colorButton.setAttribute('aria-label',strings.format.color);colorButton.setAttribute('aria-expanded',String(value.mode==='color'));

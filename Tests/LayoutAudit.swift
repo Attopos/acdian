@@ -65,8 +65,7 @@ struct LayoutAudit {
             let editorLeft = web.convert(web.bounds,to:nil).minX - (model.showSidebar ? CGFloat(model.sidebarWidth + 1) : 0)
             if abs(editorLeft - layout.reserve) > 1 { problems.append("\(label): editor at \(editorLeft), expected \(layout.reserve)") }
             let textLeft = editorLeft + ContentView.pageLeft(web.bounds.width,shift:LiveEditorHost.shared.centerShift) + ContentView.pageSide(web.bounds.width)
-            if let docked = layout.outline { if textLeft < docked + ContentView.outlineGap - 0.5 { problems.append("\(label): outline over the text, text at \(textLeft)") } }
-            else if textLeft < 4 + 22 { problems.append("\(label): outline rail over the text, text at \(textLeft)") }
+            if OutlineRail.railLeft(textLeft) + OutlineRail.railWidth > textLeft - 4 { problems.append("\(label): outline rail over the text, text at \(textLeft)") }
             if layout.reserve > 0 { pushed.append(label) }
         }
         let sizes: [(CGFloat,CGFloat)] = [(920,620),(1000,700),(1100,720),(1260,840),(1440,900),(1512,982),(1728,1117),(1920,1080),(2560,1440),(3440,1440),(5120,1440)]

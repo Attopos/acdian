@@ -317,3 +317,13 @@ test('a link spanning a line break of the selection still lights the button',asy
  r.w.document.querySelector('.cm-format-link').click();
  assert.equal(r.get().text,'First line\nsee here\n');r.close();
 });
+test('a selected page link lights the link button and a click turns it into plain text',async()=>{
+ const source='相关：[[链式代理]] 和 [[网络|原理]]\n',r=setup(source);
+ r.view.focus();await new Promise(f=>setTimeout(f,5));
+ const button=()=>r.w.document.querySelector('.cm-format-link');
+ r.view.dispatch({selection:{anchor:source.indexOf('链式代理'),head:source.indexOf('链式代理')+4}});await new Promise(f=>setTimeout(f,5));
+ assert.equal(button().getAttribute('aria-pressed'),'true');assert.equal(button().disabled,false);
+ button().click();assert.equal(r.get().text,'相关：链式代理 和 [[网络|原理]]\n');
+ r.view.dispatch({selection:{anchor:r.get().text.indexOf('原理'),head:r.get().text.indexOf('原理')+2}});await new Promise(f=>setTimeout(f,5));
+ button().click();assert.equal(r.get().text,'相关：链式代理 和 原理\n');r.close();
+});
