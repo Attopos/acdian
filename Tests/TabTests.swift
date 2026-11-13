@@ -158,6 +158,19 @@ struct TabTests {
             try check(views["Keep.md"] == nil, "A closed tab's place is forgotten")
         }
 
+        // Background tabs close after half an hour unused; the front tab stays.
+        do {
+            let model = try await launch()
+            try await open(model,"A.md")
+            try await open(model,"B.md")
+            try await open(model,"Folder/C.md")
+            let now = Date()
+            model.closeIdleTabs(now:now.addingTimeInterval(AppModel.idleTabLimit - 60))
+            try check(paths(model) == ["A.md","B.md","Folder/C.md"], "Tabs unused for under half an hour stay")
+            model.closeIdleTabs(now:now.addingTimeInterval(AppModel.idleTabLimit + 60))
+            try check(paths(model) == ["Folder/C.md"] && model.selected?.relativePath == "Folder/C.md", "The front tab never closes")
+        }
+
         // Search reuses the text of files whose stamp did not change.
         do {
             let model = try await launch()
@@ -188,6 +201,6 @@ struct TabTests {
             try await eventually("A saved page stays searchable after a rescan") { !model.loading && model.matches.map(\.relativePath) == ["Next.md"] }
         }
 
-        print("Tabs: \(checks) checks passed for opening, reuse, closing, new pages, moves, trash, relaunch restore, kept tab text, disk checks, remembered places and search reuse")
+        print("Tabs: \(checks) checks passed for opening, reuse, closing, new pages, moves, trash, relaunch restore, kept tab text, disk checks, remembered places, idle closing and search reuse")
     }
 }

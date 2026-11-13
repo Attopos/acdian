@@ -158,7 +158,13 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     @Published private(set) var tabs: [PageTab] = [] {
         didSet { tabMemory = tabMemory.filter { id,_ in tabs.contains { $0.id == id } }; saveTabs() }
     }
-    @Published private(set) var activeTabID: UUID? = nil { didSet { saveTabs() } }
+    @Published private(set) var activeTabID: UUID? = nil {
+        didSet { for id in [oldValue,activeTabID].compactMap({ $0 }) { tabUsedAt[id] = Date() }; saveTabs() }
+    }
+    /// Tabs left in the background this long close on their own.
+    static let idleTabLimit: TimeInterval = 30 * 60
+    private var tabUsedAt: [UUID:Date] = [:]
+    private var idleTabTimer: Timer?
     // What a tab keeps while another one is in front: the page text as last
     // read from or written to disk, with the file stamp seen before reading it,
     // so the tab comes back without waiting for the disk; and where the reader was.
@@ -338,6 +344,9 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         if pagesRootOverride == nil { PageComments.baseStore = .standard }
         guard loadInitialVault else { return }
         watchOpenPage()
+        idleTabTimer = Timer.scheduledTimer(withTimeInterval:60,repeats:true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closeIdleTabs() }
+        }
         do { loadPages(try resolvePageStorage()) }
         catch { self.error = localizedError(error) }
     }
@@ -424,7 +433,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         }
         try? MetadataMerge.resolveConflicts(at:root.appendingPathComponent(ModuleStore.fileName)) { current,other in ModuleStore.mergedData(current,other) ?? current }
     }
-    deinit { trashTimer?.invalidate(); cleanupTimer?.invalidate(); diskTimer?.invalidate(); autosaveTask?.cancel() }
+    deinit { trashTimer?.invalidate(); cleanupTimer?.invalidate(); diskTimer?.invalidate(); idleTabTimer?.invalidate(); autosaveTask?.cancel() }
 
     // MARK: Changes made to the open page by other apps
     /// Set when the open page was re-read because its file changed on disk. The
@@ -1062,6 +1071,17 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             self.clearOpenDocument(); self.statusValue = .ready
             self.selectTab(near:i)
         }
+    }
+    /// Closes background tabs not shown for `idleTabLimit`. The front tab and
+    /// the page open in split view stay.
+    func closeIdleTabs(now: Date = Date()) {
+        tabUsedAt = tabUsedAt.filter { id,_ in tabs.contains { $0.id == id } }
+        var idle = Set<UUID>()
+        for tab in tabs where tab.id != activeTabID && (tab.path == nil || tab.path != splitPath) {
+            guard let used = tabUsedAt[tab.id] else { tabUsedAt[tab.id] = now; continue }
+            if now.timeIntervalSince(used) >= Self.idleTabLimit { idle.insert(tab.id) }
+        }
+        if !idle.isEmpty { tabs.removeAll { idle.contains($0.id) } }
     }
     /// Command-W closes the front tab, and the window once no page is open.
     func closeCurrentTab() {
