@@ -147,7 +147,9 @@ body.cm-table-col-resize .cm-content, body.cm-table-col-resize .cm-content * { c
 .cm-table-add:hover { opacity:1; background:var(--pressed-bg); color:var(--pressed-text); }
 .cm-table-add[hidden] { display:none; }
 .cm-table-add-row { height:16px; }
-.cm-table-handle { position:absolute; z-index:5; box-sizing:border-box; margin:0; padding:0; border:0; border-radius:4px; background:transparent; cursor:pointer; }
+.cm-table-drop { position:absolute; z-index:6; border-radius:1px; background:var(--pink); pointer-events:none; }
+.cm-table-drop[hidden] { display:none; }
+.cm-table-handle { position:absolute; z-index:5; box-sizing:border-box; margin:0; padding:0; border:0; border-radius:4px; background:transparent; cursor:grab; }
 .cm-table-handle::after { content:""; position:absolute; border-radius:2px; background:var(--subtle); opacity:.45; }
 .cm-table-handle-row { width:12px; }
 .cm-table-handle-row::after { left:5px; top:50%; width:3px; height:min(18px,60%); transform:translateY(-50%); }

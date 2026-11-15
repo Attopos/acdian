@@ -416,3 +416,29 @@ test('deleting the only row or the only column deletes the table',()=>{
  r.w.document.querySelector('.cm-table-handle-column').click();r.w.document.querySelector('.cm-table-menu-item').click();
  assert.equal(r.get().text,'');r.close();
 });
+test('dragging a row or column handle moves that row or column',()=>{
+ const source='| A | B | C |\n| --- | :---: | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n| 7 | 8 | 9 |\n',r=setup(source);r.view.focus();
+ const layout=()=>{
+  const lines=[...r.w.document.querySelectorAll('.cm-table-row:not(.cm-table-separator)')];
+  lines.forEach((line,index)=>{line.getBoundingClientRect=()=>({left:0,right:300,width:300,top:index*30,bottom:index*30+30,height:30});
+   [...line.querySelectorAll('.cm-table-cell')].forEach((cell,at)=>{cell.getBoundingClientRect=()=>({left:at*100,right:at*100+100,width:100,top:index*30,bottom:index*30+30,height:30});});});
+  return lines;
+ };
+ const drag=(kind,row,cell,x,y)=>{
+  const lines=layout();lines[row].querySelectorAll('.cm-table-cell')[cell].dispatchEvent(new r.w.MouseEvent('mousemove',{bubbles:true}));
+  const handle=r.w.document.querySelector('.cm-table-handle-'+kind);
+  handle.dispatchEvent(new r.w.MouseEvent('mousedown',{bubbles:true,button:0,clientX:0,clientY:0}));
+  r.w.dispatchEvent(new r.w.MouseEvent('mousemove',{clientX:x,clientY:y}));
+  assert.equal(r.w.document.querySelector('.cm-table-drop').hidden,false,'a line shows where it will land');
+  r.w.dispatchEvent(new r.w.MouseEvent('mouseup',{clientX:x,clientY:y}));
+  assert.equal(r.w.document.querySelector('.cm-table-drop').hidden,true);
+ };
+ drag('row',1,0,10,110);
+ assert.equal(r.get().text,'| A | B | C |\n| --- | :---: | --- |\n| 4 | 5 | 6 |\n| 7 | 8 | 9 |\n| 1 | 2 | 3 |\n','the first row goes to the end');
+ drag('row',3,0,10,40);
+ assert.equal(r.get().text,'| A | B | C |\n| --- | :---: | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n| 7 | 8 | 9 |\n','the last row moves up to just under the header');
+ drag('column',0,1,10,0);
+ assert.equal(r.get().text,'| B | A | C |\n| :---: | --- | --- |\n| 2 | 1 | 3 |\n| 5 | 4 | 6 |\n| 8 | 7 | 9 |\n','the column moves with its alignment');
+ assert.equal(r.w.document.querySelector('.cm-table-menu').hidden,true,'a drag does not open the menu');
+ r.w.acdianUndo();r.w.acdianUndo();r.w.acdianUndo();assert.equal(r.get().text,source);r.close();
+});

@@ -336,6 +336,40 @@ function deleteColumn(view,table,index) {
   view.focus();return true;
 }
 
+// Moves body row `from` to sit before row `to` (to may equal the row count, the
+// end). The header stays first, as a Markdown table needs it there.
+function moveRow(view,table,from,to) {
+  if(view.state.readOnly||from<1||from>=table.rows.length)return false;
+  to=clamp(to,1,table.rows.length);
+  if(to===from||to===from+1)return false;
+  const lines=table.rows.slice(1).map(row=>row.line.text),moved=lines.splice(from-1,1)[0];
+  const at=to>from?to-2:to-1;lines.splice(at,0,moved);
+  const start=table.rows[1].line.from,end=table.rows.at(-1).line.to,insert=lines.join('\n');
+  const anchor=start+lines.slice(0,at).reduce((sum,line)=>sum+line.length+1,0);
+  const parsed=parseRowText(moved,anchor,{from:anchor,text:moved});
+  view.dispatch({changes:{from:start,to:end,insert},selection:EditorSelection.cursor(parsed.cells[0]?.contentFrom??anchor),scrollIntoView:true,userEvent:'move.table-row'});
+  view.focus();return true;
+}
+// Moves column `from` to sit before column `to` in every row and the separator,
+// so its text, alignment and width all travel together.
+function moveColumn(view,table,from,to) {
+  if(view.state.readOnly)return false;
+  to=clamp(to,0,table.columns);
+  if(to===from||to===from+1)return false;
+  const {state}=view,changes=[];
+  const separator=parseRowText(state.doc.sliceString(table.separator.from,table.separator.to),table.separator.from,table.separator.line);
+  for(const row of [...table.rows,separator]) {
+    const cells=Array.from({length:table.columns},(_,index)=>row.cells[index]?state.doc.sliceString(row.cells[index].rawFrom,row.cells[index].rawTo):'  ');
+    const moved=cells.splice(from,1)[0];cells.splice(to>from?to-1:to,0,moved);
+    changes.push({from:row.from,to:row.to,insert:'|'+cells.join('|')+'|'});
+  }
+  const set=state.changes(changes),target=to>from?to-1:to;
+  view.dispatch({changes:set,scrollIntoView:true,userEvent:'move.table-column'});
+  const now=models(view.state).find(candidate=>candidate.from===table.from);
+  const cell=now?.rows[0].cells[target];if(cell)view.dispatch({selection:EditorSelection.cursor(cell.contentFrom)});
+  view.focus();return true;
+}
+
 // Hovering a table shows a + bar under its last row and one right of its last
 // column, as in Feishu; clicking adds a row or a column.
 export const tableAddControls=ViewPlugin.fromClass(class {
@@ -357,12 +391,15 @@ export const tableAddControls=ViewPlugin.fromClass(class {
     this.rowIndex=0;this.columnIndex=0;
     const handle=(className,kind)=>{
       const element=document.createElement('button');element.type='button';element.tabIndex=-1;element.className='cm-table-handle '+className;element.hidden=true;
-      element.addEventListener('mousedown',event=>event.preventDefault());
-      element.addEventListener('click',()=>this.openMenu(kind,element));
+      // A click opens the menu; dragging moves the row or column, with a line
+      // showing where it will land.
+      element.addEventListener('mousedown',event=>{event.preventDefault();if(event.button===0)this.startDrag(kind,event);});
+      element.addEventListener('click',()=>{if(this.dragged){this.dragged=false;return;}this.openMenu(kind,element);});
       element.addEventListener('mouseenter',()=>clearTimeout(this.hideTimer));
-      element.addEventListener('mouseleave',()=>this.later());
+      element.addEventListener('mouseleave',()=>{if(!this.dragging)this.later();});
       view.dom.append(element);return element;
     };
+    this.indicator=document.createElement('div');this.indicator.className='cm-table-drop';this.indicator.hidden=true;view.dom.append(this.indicator);
     this.rowHandle=handle('cm-table-handle-row','row');
     this.columnHandle=handle('cm-table-handle-column','column');
     this.menu=document.createElement('div');this.menu.className='cm-table-menu';this.menu.setAttribute('role','menu');this.menu.hidden=true;
@@ -380,6 +417,44 @@ export const tableAddControls=ViewPlugin.fromClass(class {
     view.scrollDOM.addEventListener('scroll',this.scroll,{passive:true});
   }
   current() {return this.table===null?null:models(this.view.state).find(table=>table.from===this.table)||null;}
+  rowLines() {
+    const line=[...this.view.contentDOM.querySelectorAll('.cm-table-row.cm-table-first')].find(element=>{try{return locate(this.view.state,this.view.posAtDOM(element))?.table.from===this.table;}catch{return false;}});
+    const lines=[];for(let element=line;element&&element.classList.contains('cm-table-row');element=element.nextElementSibling){if(!element.classList.contains('cm-table-separator'))lines.push(element);if(element.classList.contains('cm-table-last'))break;}
+    return lines;
+  }
+  startDrag(kind,down) {
+    const table=this.current();if(!table)return;
+    const from=kind==='row'?this.rowIndex:this.columnIndex;
+    if(kind==='row'&&from<1)return;
+    const host=this.view.dom.getBoundingClientRect(),lines=this.rowLines();if(!lines.length)return;
+    const headerCells=[...lines[0].querySelectorAll('.cm-table-cell')],box=lines[0].getBoundingClientRect(),bottom=lines.at(-1).getBoundingClientRect();
+    let target=null;
+    const move=event=>{
+      if(!this.dragging&&Math.hypot(event.clientX-down.clientX,event.clientY-down.clientY)<4)return;
+      this.dragging=true;this.menu.hidden=true;
+      if(kind==='row') {
+        const index=lines.findIndex((line,at)=>at>0&&event.clientY<line.getBoundingClientRect().top+line.getBoundingClientRect().height/2);
+        target=index<0?lines.length:index;
+        const edge=target<lines.length?lines[target].getBoundingClientRect().top:bottom.bottom;
+        Object.assign(this.indicator.style,{left:(box.left-host.left)+'px',top:(edge-host.top-1)+'px',width:box.width+'px',height:'2px'});
+      } else {
+        const index=headerCells.findIndex(cell=>event.clientX<cell.getBoundingClientRect().left+cell.getBoundingClientRect().width/2);
+        target=index<0?headerCells.length:index;
+        const edge=target<headerCells.length?headerCells[target].getBoundingClientRect().left:box.right;
+        Object.assign(this.indicator.style,{left:(edge-host.left-1)+'px',top:(box.top-host.top)+'px',width:'2px',height:(bottom.bottom-box.top)+'px'});
+      }
+      this.indicator.hidden=false;
+    };
+    const up=()=>{
+      window.removeEventListener('mousemove',move,true);window.removeEventListener('mouseup',up,true);
+      this.indicator.hidden=true;
+      if(!this.dragging)return;
+      this.dragging=false;this.dragged=true;setTimeout(()=>{this.dragged=false;},0);
+      const now=this.current();this.hide();
+      if(now&&target!==null)(kind==='row'?moveRow:moveColumn)(this.view,now,from,target);
+    };
+    window.addEventListener('mousemove',move,true);window.addEventListener('mouseup',up,true);
+  }
   openMenu(kind,anchor) {
     const strings=uiMessages(this.view.state).tableUI,item=document.createElement('button');
     item.type='button';item.tabIndex=-1;item.className='cm-table-menu-item';item.setAttribute('role','menuitem');
@@ -400,7 +475,7 @@ export const tableAddControls=ViewPlugin.fromClass(class {
     while(first.previousElementSibling?.classList.contains('cm-table-row')&&!first.classList.contains('cm-table-first'))first=first.previousElementSibling;
     while(last.nextElementSibling?.classList.contains('cm-table-row')&&!last.classList.contains('cm-table-last'))last=last.nextElementSibling;
     const host=view.dom.getBoundingClientRect(),top=first.getBoundingClientRect(),bottom=last.getBoundingClientRect();
-    if(this.menuOpen)return;
+    if(this.menuOpen||this.dragging)return;
     this.table=context.table.from;
     const strings=uiMessages(view.state).tableUI;
     this.row.title=strings.addRow;this.row.setAttribute('aria-label',strings.addRow);
@@ -418,14 +493,14 @@ export const tableAddControls=ViewPlugin.fromClass(class {
     this.row.hidden=this.column.hidden=false;
   }
   later() {clearTimeout(this.hideTimer);this.hideTimer=setTimeout(()=>this.hide(),250);}
-  hide() {clearTimeout(this.hideTimer);this.row.hidden=this.column.hidden=this.rowHandle.hidden=this.columnHandle.hidden=this.menu.hidden=true;this.menuOpen=false;this.table=null;}
+  hide() {if(this.dragging)return;clearTimeout(this.hideTimer);this.row.hidden=this.column.hidden=this.rowHandle.hidden=this.columnHandle.hidden=this.menu.hidden=true;this.menuOpen=false;this.table=null;}
   update(update) {if(update.docChanged&&this.table!==null)this.hide();}
   destroy() {
-    clearTimeout(this.hideTimer);this.row.remove();this.column.remove();this.rowHandle.remove();this.columnHandle.remove();this.menu.remove();
+    clearTimeout(this.hideTimer);this.row.remove();this.column.remove();this.rowHandle.remove();this.columnHandle.remove();this.menu.remove();this.indicator.remove();
     this.view.dom.ownerDocument.removeEventListener('mousedown',this.outside,true);
     this.view.contentDOM.removeEventListener('mousemove',this.move);
     this.view.contentDOM.removeEventListener('mouseleave',this.leave);
     this.view.scrollDOM.removeEventListener('scroll',this.scroll);
   }
 });
-export const tableTest={appendColumn,deleteRow,deleteColumn,models};
+export const tableTest={appendColumn,deleteRow,deleteColumn,moveRow,moveColumn,models};
