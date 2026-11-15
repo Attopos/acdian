@@ -379,3 +379,18 @@ test('slash commands that start with the typed word come first',()=>{
  const ids=[...r.w.document.querySelectorAll('.cm-slash-option')].map(option=>option.dataset.command);
  assert.equal(ids[0],'table');assert.ok(ids.includes('bullet'));r.close();
 });
+test('the Divider slash command inserts "--- " on its own line, and Contents is no longer offered',()=>{
+ const type=(r,text)=>{for(const ch of text)r.view.dispatch({changes:{from:r.view.state.selection.main.head,insert:ch},selection:{anchor:r.view.state.selection.main.head+ch.length},userEvent:'input.type'});};
+ let r=setup('Intro\n');r.view.focus();r.view.dispatch({selection:{anchor:6}});type(r,'/分割');
+ const option=r.w.document.querySelector('.cm-slash-option[data-command="divider"]');assert.ok(option,'divider command is offered');
+ option.click();
+ assert.equal(r.get().text,'Intro\n\n--- \n');assert.equal(r.view.state.selection.main.head,r.get().text.length);
+ assert.match(r.w.acdianLiveEditorTest.treeString(),/HorizontalRule/);assert.doesNotMatch(r.w.acdianLiveEditorTest.treeString(),/SetextHeading/);
+ assert.ok(r.w.document.querySelector('.cm-live-divider'),'the divider is drawn');
+ r.w.acdianInsertText('After');assert.equal(r.get().text,'Intro\n\n--- \nAfter');r.close();
+ r=setup('');r.view.focus();type(r,'/目录');
+ assert.equal(r.w.document.querySelector('.cm-slash-option[data-command="toc"]'),null);
+ r.close();r=setup('');r.view.focus();type(r,'/');
+ const ids=[...r.w.document.querySelectorAll('.cm-slash-option')].map(option=>option.dataset.command);
+ assert.ok(ids.includes('divider')&&!ids.includes('toc'));r.close();
+});

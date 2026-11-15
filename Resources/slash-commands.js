@@ -14,19 +14,19 @@ const commands = [
   {id:'code',label:'Code Block',description:'代码块',icon:'{ }',insert:'```\n\n```',caret:4,aliases:'code block fenced 代码块'},
   {id:'callout',label:'Callout',description:'提示块',icon:'▣',insert:'> [!idea|💡] ',aliases:'callout note info 提示块 提示 高亮块'},
   {id:'table',label:'Table',description:'表格',icon:'▦',table:true,aliases:'table grid sheet 表格 表 网格'},
-  {id:'toc',label:'Contents',description:'目录',icon:'☰',insert:'[TOC]\n',aliases:'toc contents table of contents outline 目录 大纲'},
+  {id:'divider',label:'Divider',description:'分割线',icon:'—',divider:true,aliases:'divider separator rule line hr 分割线 分隔线 横线 水平线'},
   // Asks the app to pick an image, which it copies into Attachments and embeds here.
   {id:'image',label:'Image',description:'图片',icon:'▨',action:'image',aliases:'image picture photo img 图片 图像 照片 插图'}
 ];
 // The blocks a line can be turned into; commands that hand off to the app are not blocks.
 export const newCallout='> [!idea|💡] ';
-export const blockCommands = commands.filter(command=>!command.action&&!command.table&&command.id!=='toc');
+export const blockCommands = commands.filter(command=>!command.action&&!command.table&&!command.divider);
 // What commands that hand off to the app do, such as picking an image.
 const slashActions = Facet.define({combine:values=>Object.assign({},...values)});
 const selectCommand = StateEffect.define();
 const closeMenu = StateEffect.define();
 const composing = StateEffect.define();
-const spanishAliases={text:'texto párrafo parrafo',h1:'título 1 titulo 1 encabezado 1',h2:'título 2 titulo 2 encabezado 2',h3:'título 3 titulo 3 encabezado 3',h4:'título 4 titulo 4 encabezado 4',quote:'cita',todo:'tareas pendiente casilla',bullet:'lista con viñetas vinetas',number:'lista numerada',code:'bloque de código codigo',callout:'aviso nota consejo',table:'tabla cuadrícula',image:'imagen foto'};
+const spanishAliases={text:'texto párrafo parrafo',h1:'título 1 titulo 1 encabezado 1',h2:'título 2 titulo 2 encabezado 2',h3:'título 3 titulo 3 encabezado 3',h4:'título 4 titulo 4 encabezado 4',quote:'cita',todo:'tareas pendiente casilla',bullet:'lista con viñetas vinetas',number:'lista numerada',code:'bloque de código codigo',callout:'aviso nota consejo',table:'tabla cuadrícula',divider:'separador línea',image:'imagen foto'};
 
 function context(state) {
   const selection = state.selection.main;
@@ -104,10 +104,26 @@ function insertTable(view,menu,rows,columns) {
   view.focus();return true;
 }
 
+// "--- " on a line of its own, with the caret on a new line below it. Directly
+// under text it would turn that text into a heading, so a blank line goes first.
+function insertDivider(view,menu) {
+  const {state}=view,line=state.doc.lineAt(menu.to);
+  const suffix=line.text.slice(menu.to-line.from).trim();
+  const above=line.number>1&&state.doc.line(line.number-1).text.trim()?'\n':'';
+  const insert=above+'--- \n'+suffix;
+  view.dispatch({
+    changes:{from:line.from,to:line.to,insert},selection:{anchor:line.from+above.length+5},
+    effects:closeMenu.of(null),annotations:isolateHistory.of('full'),
+    userEvent:'input.slash-command',scrollIntoView:true
+  });
+  view.focus();return true;
+}
+
 function applyCommand(view,id,size) {
   const menu=view.state.field(menuState),command=menu.options?.find(option=>option.id===id);
   if(!menu.open || !command || view.state.readOnly) return false;
   if(command.table) return insertTable(view,menu,size?.rows||3,size?.columns||3);
+  if(command.divider) return insertDivider(view,menu);
   if(command.action) {
     // The typed command and any list or quote marker go, so the image the app
     // inserts has the line to itself, which is how an embed shows as a picture.
