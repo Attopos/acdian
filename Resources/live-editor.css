@@ -41,17 +41,23 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-block-math .katex-display > .katex { display:inline-block; padding:0 4px; }
 .cm-editor .cm-block-selected .katex-display > .katex, .cm-editor .cm-block-selected img { background:var(--selected-bg); border-radius:3px; }
 .cm-editor .cm-placeholder { color:var(--placeholder); }
-/* Heading sizes and the space above them step down evenly from H1 to H4;
-   the space below stays small. Spacing follows the body font size. */
-.cm-editor .cm-heading { color:var(--text-strong); font-weight:650; letter-spacing:-.025em; line-height:1.35; min-height:0; padding-top:calc(var(--editor-font-size) * .5); padding-bottom:calc(var(--editor-font-size) * .25); }
-.cm-editor .cm-heading-1 { font-size:2em; font-weight:720; letter-spacing:-.04em; padding-top:calc(var(--editor-font-size) * 1.6); }
-.cm-editor .cm-heading-2 { font-size:1.6em; padding-top:calc(var(--editor-font-size) * 1.22); }
-.cm-editor .cm-heading-3 { font-size:1.35em; padding-top:calc(var(--editor-font-size) * .96); }
-.cm-editor .cm-heading-4 { font-size:1.2em; font-weight:650; padding-top:calc(var(--editor-font-size) * .76); }
-.cm-editor .cm-heading-5 { font-size:1.05em; letter-spacing:0; }
-.cm-editor .cm-heading-6 { font-size:1em; letter-spacing:0; }
+/* Heading sizes step down from just under the page title (2.125em) so H1
+   never competes with it, close to Notion and Obsidian: 1.75 / 1.45 / 1.25 /
+   1.1 / 1 / 1. The space above is about three times the space below, so a
+   heading sits with the text it introduces. Chinese headings keep near-normal
+   tracking; tight tracking that suits Latin display type crowds CJK glyphs. */
+.cm-editor .cm-heading { color:var(--text-strong); font-weight:650; letter-spacing:-.01em; line-height:1.35; min-height:0; padding-top:calc(var(--editor-font-size) * .6); padding-bottom:calc(var(--editor-font-size) * .3); }
+.cm-editor .cm-heading-1 { font-size:1.75em; font-weight:700; letter-spacing:-.02em; padding-top:calc(var(--editor-font-size) * 1.5); padding-bottom:calc(var(--editor-font-size) * .4); }
+.cm-editor .cm-heading-2 { font-size:1.45em; letter-spacing:-.015em; padding-top:calc(var(--editor-font-size) * 1.25); padding-bottom:calc(var(--editor-font-size) * .35); }
+.cm-editor .cm-heading-3 { font-size:1.25em; padding-top:calc(var(--editor-font-size) * 1); }
+.cm-editor .cm-heading-4 { font-size:1.1em; padding-top:calc(var(--editor-font-size) * .8); }
+.cm-editor .cm-heading-5 { font-size:1em; letter-spacing:0; padding-top:calc(var(--editor-font-size) * .7); }
+.cm-editor .cm-heading-6 { font-size:1em; letter-spacing:0; padding-top:calc(var(--editor-font-size) * .7); }
 /* H6 is the quietest level: body size, in the muted colour. */
 .cm-editor .cm-heading-6 { color:var(--muted); }
+/* A heading that opens the page or follows another heading needs no extra air above it. */
+.cm-editor .cm-content > .cm-line.cm-heading:first-child { padding-top:0; }
+.cm-editor .cm-content > .cm-line.cm-heading + :is(.cm-line.cm-heading,.cm-blank-line:not(.cm-input-blank-line,.cm-kept-blank-line) + .cm-line.cm-heading) { padding-top:calc(var(--editor-font-size) * .35); }
 .cm-editor .cm-heading-empty::after { content:attr(data-hint); color:var(--hint); pointer-events:none; }
 .cm-editor .cm-plain-syntax, .cm-editor .cm-plain-syntax * { color:inherit!important; font-weight:inherit!important; text-decoration:none!important; }
 .cm-editor .cm-divider-line.cm-divider-selected { background:var(--divider-selected); }
@@ -74,7 +80,13 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-list-dot { transform:scale(1.4); }
 .cm-editor .cm-task-widget { display:inline-flex; align-items:center; width:1.55em; vertical-align:middle; }
 .cm-editor .cm-task-widget input { accent-color:#d93b86; margin:0 6px 0 2px; width:14px; height:14px; cursor:pointer; }
-.cm-editor .cm-live-link { color:var(--accent-text); text-decoration:underline; text-decoration-thickness:1px; text-decoration-color:var(--link-line); text-underline-offset:4px; cursor:text; }
+/* A click opens the link, so the pointer says so; the underline firms up on hover. */
+.cm-editor .cm-live-link { color:var(--accent-text); text-decoration:underline; text-decoration-thickness:1px; text-decoration-color:var(--link-line); text-underline-offset:.22em; text-decoration-skip-ink:auto; cursor:pointer; transition:text-decoration-color .12s; }
+.cm-editor .cm-live-link:hover { text-decoration-color:currentColor; }
+.cm-editor .cm-list-indent { display:inline-block; overflow:hidden; vertical-align:top; white-space:pre; }
+/* An outline or anchor jump briefly tints the heading it lands on. */
+.cm-editor .cm-jump-flash { animation:cm-jump-flash 1.4s ease-out; border-radius:4px; }
+@keyframes cm-jump-flash { 0%,30% { background:var(--selected-bg); } 100% { background:transparent; } }
 .cm-editor .cm-code-line { font-family:"SFMono-Regular",Menlo,monospace; font-size:.85em; line-height:1.75; padding-left:16px; padding-right:16px; background:var(--code-bg); color:var(--text); }
 .cm-editor .cm-code-first { border-radius:8px 8px 0 0; padding-top:8px; }
 .cm-editor .cm-code-last { border-radius:0 0 8px 8px; padding-bottom:8px; }
@@ -100,7 +112,7 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-interactive-frame { display:block; width:100%; height:240px; border:0; background:transparent; color-scheme:normal; }
 .cm-editor .cm-activeLine { background:none; }
 .cm-editor .cm-tooltip { background:var(--tooltip-bg); border-color:var(--divider-line); color:var(--menu-text); }
-@media(max-width:700px){.cm-editor .cm-page-title{--page-side:28px;padding-top:30px;}.cm-editor .cm-content{padding:30px 28px 90px;}.cm-editor .cm-heading-1{font-size:1.875em;}}
+@media(max-width:700px){.cm-editor .cm-page-title{--page-side:28px;padding-top:30px;}.cm-editor .cm-content{padding:30px 28px 90px;}.cm-editor .cm-heading-1{font-size:1.625em;}}
 @media(max-width:450px){.cm-editor .cm-page-title{--page-side:19px;padding-top:24px;}.cm-editor .cm-content{padding:24px 19px 80px;}}
 .cm-editor .cm-heading span { text-decoration:none; }
 .cm-editor .cm-quote-line { border-left:3px solid #d93b8680; padding-left:calc(1.25em - 3px); color:var(--quote-text); }
@@ -323,13 +335,13 @@ body.cm-block-dragging,body.cm-block-dragging * { cursor:grabbing !important; us
 .cm-editor .cm-fold-closed { transform:rotate(-90deg); }
 /* A heading's arrow takes the heading's own size (--heading-scale) and sits in the middle of its first line. */
 .cm-editor .cm-heading { --heading-scale:1; }
-.cm-editor .cm-heading-1 { --heading-scale:2; }
-.cm-editor .cm-heading-2 { --heading-scale:1.6; }
-.cm-editor .cm-heading-3 { --heading-scale:1.35; }
-.cm-editor .cm-heading-4 { --heading-scale:1.2; }
-.cm-editor .cm-heading-5 { --heading-scale:1.05; }
+.cm-editor .cm-heading-1 { --heading-scale:1.75; }
+.cm-editor .cm-heading-2 { --heading-scale:1.45; }
+.cm-editor .cm-heading-3 { --heading-scale:1.25; }
+.cm-editor .cm-heading-4 { --heading-scale:1.1; }
+.cm-editor .cm-heading-5 { --heading-scale:1; }
 .cm-editor .cm-heading > .cm-fold-toggle { --heading-size:calc(var(--editor-font-size) * var(--heading-scale)); top:auto; height:calc(var(--heading-size) * 1.35); line-height:calc(var(--heading-size) * 1.35); font-size:max(18px, calc(var(--heading-size) * 1.04)); width:calc(var(--heading-size) * .8); left:calc(var(--heading-size) * -.95); }
-@media(max-width:700px){.cm-editor .cm-heading-1{--heading-scale:1.875;}}
+@media(max-width:700px){.cm-editor .cm-heading-1{--heading-scale:1.625;}}
 .cm-editor .cm-foldPlaceholder { background:transparent; border:0; color:var(--marker); padding:0 4px; }
 /* Footnotes */
 .cm-editor .cm-footnote-mark { color:var(--accent-text); cursor:pointer; font-size:.75em; padding:0 1px; }

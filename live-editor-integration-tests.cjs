@@ -1334,8 +1334,9 @@ test('extra blank lines between list items stay visible after the caret leaves',
   assert.equal(await kept.count(),1,'the blank line left between two list items is kept');
   const height = await kept.evaluate(line=>line.getBoundingClientRect().height);
   assert.ok(height>=27&&height<=29,'the kept blank line has the normal body line height');
-  const separators = await r.page.locator('.cm-blank-line:not(.cm-kept-blank-line):not(.cm-input-blank-line)').evaluateAll(lines=>lines.map(line=>line.getBoundingClientRect().height));
-  assert.equal(separators.length,3,'the separators, including the final line, stay');
+  const separators = await r.page.locator('.cm-blank-line:not(.cm-kept-blank-line):not(.cm-input-blank-line):not(.cm-block-gap)').evaluateAll(lines=>lines.map(line=>line.getBoundingClientRect().height));
+  assert.equal(separators.length,2,'the separators, including the final line, stay');
+  assert.equal(await r.page.locator('.cm-block-gap').count(),1,'the list ends with a paragraph gap before the text after it');
   for (const separator of separators) assert.ok(Math.abs(separator)<=0.5,'single separators keep zero height');
   await r.position(source.indexOf('\n\n\n')+1);
   assert.equal((await r.get()).selection.anchor,source.indexOf('\n\n\n')+1,'the caret can rest on the kept blank line');

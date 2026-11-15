@@ -135,6 +135,20 @@ function textEms(text) {
   const ems=measureContext?measureContext.measureText(expanded).width/size:expanded.length*.25;
   sourceEms.set(key,ems);return ems;
 }
+function listMarkerEms(text) {
+  const task=/^[-+*]\s+\[[ xX]\]/.exec(text),ordered=/^(\d+)[.)]\s/.exec(text);
+  return task?1.55:ordered?Math.max(1.25,textEms(ordered[1]+'.')+.35):1.25;
+}
+// A nested item starts under its parent's text, as in Notion and Typora, however many spaces the source uses.
+function listNesting(state,tree,pos) {
+  let ems=0;
+  for(let node=tree.resolveInner(pos,1);node;node=node.parent){
+    if(node.name!=='ListItem'||node.from>=pos)continue;
+    const line=state.doc.lineAt(node.from);if(line.from===state.doc.lineAt(pos).from)continue;
+    ems+=listMarkerEms(line.text.slice(node.from-line.from));
+  }
+  return ems;
+}
 function listLineStyle(hang,marker) {
   return `--cm-list-hang:${hang.toFixed(3)}em`+(marker?`;--cm-list-marker:${marker.toFixed(3)}em`:'');
 }
@@ -711,7 +725,9 @@ function decorations(state,reuse=new Map(),blocks=[]) {
     const bullet=/^(\s*)(?:([-+*])\s+|(\d+)[.)]\s+)/.exec(line.text);
     if(task||bullet) {
       const marker=task?1.55:bullet[3]?Math.max(1.25,textEms(bullet[3]+'.')+.35):1.25;
-      list.push(Decoration.line({class:'cm-list-line',attributes:{style:listLineStyle(textEms((task||bullet)[1])+marker,marker)}}).range(line.from));
+      const indent=(task||bullet)[1],nested=indent?listNesting(state,tree,line.from+indent.length):0,width=nested||textEms(indent);
+      if(nested)list.push(Decoration.mark({class:'cm-list-indent',attributes:{style:`width:${nested.toFixed(3)}em`}}).range(line.from,line.from+indent.length));
+      list.push(Decoration.line({class:'cm-list-line',attributes:{style:listLineStyle(width+marker,marker)}}).range(line.from));
     }
     if(task)list.push(Decoration.replace({widget:new TaskWidget(line.from,task[2].toLowerCase()==='x',state.facet(editorLanguage))}).range(line.from+task[1].length,line.from+task[0].length));
     else if(bullet)list.push(Decoration.replace({widget:new BulletWidget(bullet[3]?bullet[3]+'.':'•')}).range(line.from+bullet[1].length,line.from+bullet[0].length));
@@ -766,7 +782,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       // Tables, code blocks, quotes and callouts end without a paragraph gap,
       // so the blank line after one keeps a gap before whatever follows.
       const prev=n>1?state.doc.line(n-1).text:'',next=n<state.doc.lines?state.doc.line(n+1).text:'';
-      const gap=next.trim()&&/^\s*(?:\||```|~~~|>)/.test(prev);
+      const gap=next.trim()&&(/^\s*(?:\||```|~~~|>)/.test(prev)||/^\s*(?:[-+*]|\d+[.)])\s/.test(prev)&&!/^\s/.test(next));
       list.push(Decoration.line({class:'cm-blank-line'+(gap?' cm-block-gap':'')+(editableBlank(state,line)?' cm-input-blank-line':keptBlank(state,line)?' cm-kept-blank-line':'')}).range(line.from));
     }
   }
@@ -1133,20 +1149,27 @@ window.acdianUndo=()=>undo(view);
 window.acdianRedo=()=>redo(view);
 window.acdianScrollTo=raw=>{
   const anchor=decode(String(raw||'').replace(/^#/,''));let pos=0,found=!anchor;
-  for(let n=1;n<=view.state.doc.lines&&!found;n++){const line=view.state.doc.line(n),heading=/^#{1,6}\s+(.+?)(?:\s+#+)?$/.exec(line.text);if(heading&&(heading[1].toLowerCase()===anchor.toLowerCase()||heading[1].toLowerCase().replace(/\s+/g,'-')===anchor.toLowerCase())||line.text.endsWith(' ^'+anchor.replace(/^\^/,''))){pos=line.from;found=true;}}
+  const plain=text=>text.replace(/!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,(m,a,b)=>b||a).replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[*_`~=]+/g,'').trim().toLowerCase();
+  const slug=text=>plain(text).replace(/[^\p{L}\p{N}\s_-]/gu,'').replace(/\s/g,'-');
+  const wanted=plain(anchor),seen=new Map();
+  for(let n=1,fence=false;n<=view.state.doc.lines&&!found;n++){const line=view.state.doc.line(n);if(/^(?:```|~~~)/.test(line.text)){fence=!fence;continue;}if(fence)continue;const heading=/^#{1,6}\s+(.+?)(?:\s+#+)?$/.exec(line.text);
+    if(heading){const base=slug(heading[1]),count=seen.get(base)||0;seen.set(base,count+1);const id=count?base+'-'+count:base;if(plain(heading[1])===wanted||id===anchor.toLowerCase()||id===slug(anchor)){pos=line.from;found=true;}}
+    else if(line.text.endsWith(' ^'+anchor.replace(/^\^/,''))){pos=line.from;found=true;}}
   if(!found)return false;
   view.dispatch({selection:EditorSelection.cursor(pos)});
   if(!anchor){view.scrollDOM.scrollTop=0;headingFollowPausedUntil=performance.now()+400;reportHeading(-1);return true;}
-  // The scroll effect is lost when moving the caret re-lays out the live
-  // decorations, so the heading is brought to the middle of the scroller directly.
+  // The heading lands near the top with a little air, as in Notion, Obsidian and
+  // browsers, so the section it starts is what fills the view.
   const scroller=view.scrollDOM,offset=view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop,block=view.lineBlockAt(pos);
-  scroller.scrollTop=Math.max(0,offset+block.top+block.height/2-scroller.clientHeight/2);
+  const lineDOM=view.domAtPos(pos).node,element=lineDOM.nodeType===1?lineDOM:lineDOM.parentElement,headingLine=element?.closest?.('.cm-line'),airAbove=headingLine?parseFloat(getComputedStyle(headingLine).paddingTop)||0:0;
+  scroller.scrollTop=Math.max(0,offset+block.top+airAbove-Math.min(72,scroller.clientHeight*.12));
+  requestAnimationFrame(()=>{const target=view.domAtPos(pos).node,el=(target.nodeType===1?target:target.parentElement)?.closest?.('.cm-line');if(!el)return;el.classList.remove('cm-jump-flash');void el.offsetWidth;el.classList.add('cm-jump-flash');setTimeout(()=>el.classList.remove('cm-jump-flash'),1500);});
   // The jumped-to heading stays current even when the page cannot scroll it to the top.
   headingFollowPausedUntil=performance.now()+400;reportHeading(headingStarts(view.state).indexOf(pos));
   return true;
 };
-// The outline follows the reader: the last heading above the middle of the view,
-// where an outline jump puts its heading, is reported to the native outline
+// The outline follows the reader: the last heading in the top quarter of the view
+// (at most 120px down), where an outline jump puts its heading, is reported to the native outline
 // whenever it changes (-1 before the first one).
 // Headings are found with the same rules as the native outline list.
 let headingCache=null,reportedHeading=null,headingFrame=0,headingFollowPausedUntil=0;
@@ -1160,7 +1183,7 @@ function reportHeading(index){if(index!==reportedHeading){reportedHeading=index;
 function followHeading(){
   headingFrame=0;
   if(performance.now()<headingFollowPausedUntil)return;
-  const scroller=view.scrollDOM,top=scroller.scrollTop-(view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop)+scroller.clientHeight/2+8;
+  const scroller=view.scrollDOM,top=scroller.scrollTop-(view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop)+Math.min(120,scroller.clientHeight*.25);
   const list=headingStarts(view.state);let index=-1;
   for(let i=0;i<list.length&&view.lineBlockAt(list[i]).top<=top;i++)index=i;
   reportHeading(index);

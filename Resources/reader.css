@@ -86,19 +86,20 @@ body { margin: 0; color: var(--text); background: var(--background); font-size: 
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body > h1:first-child { margin-top: 2px; }
 .markdown-body > :last-child { margin-bottom: 0; }
-h1, h2, h3, h4, h5, h6 { color: var(--text-strong); font-weight: 650; line-height: 1.4; letter-spacing: -.025em; scroll-margin-top: 32px; }
-/* Same scale as the editor's headings (live-editor.css), relative to the reading size. */
-h1 { font-size: 2em; font-weight: 720; line-height: 1.3; margin: 1.3em 0 .8em; letter-spacing: -.04em; }
-h2 { font-size: 1.6em; margin: 1.55em 0 .7em; }
-h3 { font-size: 1.35em; margin: 1.35em 0 .6em; }
-h4 { font-size: 1.2em; margin: 1.3em 0 .6em; }
-h5 { font-size: 1.05em; margin: 1.4em 0 .65em; }
-h6 { font-size: 1em; margin: 1.4em 0 .65em; }
+h1, h2, h3, h4, h5, h6 { color: var(--text-strong); font-weight: 650; line-height: 1.35; letter-spacing: -.01em; scroll-margin-top: 72px; }
+/* Same scale and rhythm as the editor's headings (live-editor.css), relative to the reading size. */
+h1 { font-size: 1.75em; font-weight: 700; margin: .86em 0 .32em; letter-spacing: -.02em; }
+h2 { font-size: 1.45em; margin: .86em 0 .32em; letter-spacing: -.015em; }
+h3 { font-size: 1.25em; margin: .8em 0 .3em; }
+h4 { font-size: 1.1em; margin: .73em 0 .3em; }
+h5 { font-size: 1em; margin: .7em 0 .3em; letter-spacing: 0; }
+h6 { font-size: 1em; margin: .7em 0 .3em; letter-spacing: 0; }
+:is(h1, h2, h3, h4, h5, h6) + :is(h1, h2, h3, h4, h5, h6) { margin-top: .35em; }
 h6 { color: var(--muted); }
 p { margin: 0 0 .85em; }
 strong { color: var(--text-strong); font-weight: 650; }
 em { color: var(--em-text); }
-a { color: var(--accent-text); text-decoration-color: #d93b8650; text-decoration-thickness: 1px; text-underline-offset: 4px; cursor: pointer; transition: color .15s, text-decoration-color .15s; }
+a { color: var(--accent-text); text-decoration-color: #d93b8650; text-decoration-thickness: 1px; text-underline-offset: .22em; cursor: pointer; transition: color .15s, text-decoration-color .15s; }
 a:hover { color: var(--accent-hover); text-decoration-color: #e57bad; }
 a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--pink); outline-offset: 4px; border-radius: 3px; }
 .external-link::after { content: "↗"; margin-left: 3px; font-size: .75em; opacity: .65; text-decoration: none; display: inline-block; }
