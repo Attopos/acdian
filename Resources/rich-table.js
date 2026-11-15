@@ -1,5 +1,5 @@
 import { EditorState, EditorSelection, StateField, StateEffect } from '@codemirror/state';
-import { Decoration, EditorView } from '@codemirror/view';
+import { Decoration, EditorView, ViewPlugin } from '@codemirror/view';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 
 // Every cell remains a span in CodeMirror's one editable document. The source
@@ -277,3 +277,69 @@ export const tableColumnResize=EditorView.domEventHandlers({
     return true;
   }
 });
+
+// Adds an empty column at the right of every row. A separator with spaces keeps
+// equal columns; one written with dash counts gives the new column an average share.
+function appendColumn(view,table) {
+  if(view.state.readOnly)return false;
+  const {state}=view,changes=[];
+  for(const row of table.rows)changes.push({from:row.to,insert:row.trailing?'  |':' |  |'});
+  const separator=state.doc.sliceString(table.separator.from,table.separator.to),compact=!/\s/.test(separator.trim());
+  const counts=separator.trim().replace(/^\||\|$/g,'').split('|').map(cell=>(cell.match(/-/g)||[]).length);
+  const dashes=compact?'-'.repeat(Math.max(3,Math.round(counts.reduce((sum,count)=>sum+count,0)/counts.length))):' --- ';
+  changes.push({from:table.separator.to,insert:(separator.trimEnd().endsWith('|')?'':'|')+dashes+'|'});
+  const header=table.rows[0],cell=header.to+(header.trailing?1:3);
+  view.dispatch({changes,selection:EditorSelection.cursor(cell),scrollIntoView:true,userEvent:'input.table-column'});
+  view.focus();return true;
+}
+
+// Hovering a table shows a + bar under its last row and one right of its last
+// column, as in Feishu; clicking adds a row or a column.
+export const tableAddControls=ViewPlugin.fromClass(class {
+  constructor(view) {
+    this.view=view;this.table=null;this.hideTimer=null;
+    const bar=(className,label,run)=>{
+      const element=document.createElement('button');element.type='button';element.tabIndex=-1;element.className='cm-table-add '+className;element.textContent='+';element.hidden=true;
+      element.setAttribute('aria-label',label);
+      element.addEventListener('mousedown',event=>event.preventDefault());
+      element.addEventListener('click',()=>{const table=this.current();if(table)run(table);this.hide();});
+      element.addEventListener('mouseenter',()=>clearTimeout(this.hideTimer));
+      element.addEventListener('mouseleave',()=>this.later());
+      view.dom.append(element);return element;
+    };
+    this.row=bar('cm-table-add-row','Add row',table=>appendRow(view,{table,row:table.rows.at(-1),cell:{index:0}})&&view.focus());
+    this.column=bar('cm-table-add-column','Add column',table=>appendColumn(view,table));
+    this.move=event=>this.track(event);
+    this.leave=()=>this.later();
+    this.scroll=()=>this.hide();
+    view.contentDOM.addEventListener('mousemove',this.move);
+    view.contentDOM.addEventListener('mouseleave',this.leave);
+    view.scrollDOM.addEventListener('scroll',this.scroll,{passive:true});
+  }
+  current() {return this.table===null?null:models(this.view.state).find(table=>table.from===this.table)||null;}
+  track(event) {
+    const view=this.view,line=event.target?.closest?.('.cm-table-row');
+    if(!line||!view.state.facet(EditorView.editable)||view.state.readOnly){this.later();return;}
+    let context=null;try{context=locate(view.state,view.posAtDOM(line));}catch{}
+    if(!context){this.later();return;}
+    clearTimeout(this.hideTimer);
+    let first=line,last=line;
+    while(first.previousElementSibling?.classList.contains('cm-table-row')&&!first.classList.contains('cm-table-first'))first=first.previousElementSibling;
+    while(last.nextElementSibling?.classList.contains('cm-table-row')&&!last.classList.contains('cm-table-last'))last=last.nextElementSibling;
+    const host=view.dom.getBoundingClientRect(),top=first.getBoundingClientRect(),bottom=last.getBoundingClientRect();
+    this.table=context.table.from;
+    Object.assign(this.row.style,{left:(top.left-host.left)+'px',top:(bottom.bottom-host.top+4)+'px',width:top.width+'px'});
+    Object.assign(this.column.style,{left:(top.right-host.left+4)+'px',top:(top.top-host.top)+'px',height:(bottom.bottom-top.top)+'px'});
+    this.row.hidden=this.column.hidden=false;
+  }
+  later() {clearTimeout(this.hideTimer);this.hideTimer=setTimeout(()=>this.hide(),250);}
+  hide() {clearTimeout(this.hideTimer);this.row.hidden=this.column.hidden=true;this.table=null;}
+  update(update) {if(update.docChanged&&this.table!==null)this.hide();}
+  destroy() {
+    clearTimeout(this.hideTimer);this.row.remove();this.column.remove();
+    this.view.contentDOM.removeEventListener('mousemove',this.move);
+    this.view.contentDOM.removeEventListener('mouseleave',this.leave);
+    this.view.scrollDOM.removeEventListener('scroll',this.scroll);
+  }
+});
+export const tableTest={appendColumn,models};

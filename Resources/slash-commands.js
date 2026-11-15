@@ -13,19 +13,20 @@ const commands = [
   {id:'number',label:'Numbered List',description:'有序列表',icon:'1 ≡',insert:'1. ',aliases:'numbered number ordered list 有序列表 编号'},
   {id:'code',label:'Code Block',description:'代码块',icon:'{ }',insert:'```\n\n```',caret:4,aliases:'code block fenced 代码块'},
   {id:'callout',label:'Callout',description:'提示块',icon:'▣',insert:'> [!idea|💡] ',aliases:'callout note info 提示块 提示 高亮块'},
+  {id:'table',label:'Table',description:'表格',icon:'▦',table:true,aliases:'table grid sheet 表格 表 网格'},
   {id:'toc',label:'Contents',description:'目录',icon:'☰',insert:'[TOC]\n',aliases:'toc contents table of contents outline 目录 大纲'},
   // Asks the app to pick an image, which it copies into Attachments and embeds here.
   {id:'image',label:'Image',description:'图片',icon:'▨',action:'image',aliases:'image picture photo img 图片 图像 照片 插图'}
 ];
 // The blocks a line can be turned into; commands that hand off to the app are not blocks.
 export const newCallout='> [!idea|💡] ';
-export const blockCommands = commands.filter(command=>!command.action&&command.id!=='toc');
+export const blockCommands = commands.filter(command=>!command.action&&!command.table&&command.id!=='toc');
 // What commands that hand off to the app do, such as picking an image.
 const slashActions = Facet.define({combine:values=>Object.assign({},...values)});
 const selectCommand = StateEffect.define();
 const closeMenu = StateEffect.define();
 const composing = StateEffect.define();
-const spanishAliases={text:'texto párrafo parrafo',h1:'título 1 titulo 1 encabezado 1',h2:'título 2 titulo 2 encabezado 2',h3:'título 3 titulo 3 encabezado 3',h4:'título 4 titulo 4 encabezado 4',quote:'cita',todo:'tareas pendiente casilla',bullet:'lista con viñetas vinetas',number:'lista numerada',code:'bloque de código codigo',callout:'aviso nota consejo',image:'imagen foto'};
+const spanishAliases={text:'texto párrafo parrafo',h1:'título 1 titulo 1 encabezado 1',h2:'título 2 titulo 2 encabezado 2',h3:'título 3 titulo 3 encabezado 3',h4:'título 4 titulo 4 encabezado 4',quote:'cita',todo:'tareas pendiente casilla',bullet:'lista con viñetas vinetas',number:'lista numerada',code:'bloque de código codigo',callout:'aviso nota consejo',table:'tabla cuadrícula',image:'imagen foto'};
 
 function context(state) {
   const selection = state.selection.main;
@@ -44,6 +45,12 @@ function context(state) {
   const labels=uiMessages(state).commands;
   const options = commands.map(command=>({...command,label:labels[command.id][0],description:labels[command.id][1]}))
     .filter(command=>words.every(word=>(command.label+' '+command.description+' '+command.aliases+' '+spanishAliases[command.id]).toLowerCase().includes(word)));
+  // Commands whose name or a keyword starts with what was typed come first, so
+  // "/表" offers Table before lists that merely contain 表 (无序列表).
+  if(words.length){
+    const leads=command=>(command.label+' '+command.description+' '+command.aliases+' '+spanishAliases[command.id]).toLowerCase().split(/\s+/).some(term=>term.startsWith(words[0]));
+    options.sort((a,b)=>Number(leads(b))-Number(leads(a)));
+  }
   return {from:line.from,to:selection.head,slash:line.from+before.indexOf('/'),indent:match[1],query,options};
 }
 
@@ -77,9 +84,30 @@ const menuState = StateField.define({
   ]
 });
 
-function applyCommand(view,id) {
+// A new table of `rows` lines (the first is the header) and `columns` empty
+// cells, kept apart from neighbouring text by blank lines so it parses as a table.
+export function tableSource(rows,columns) {
+  const row='|'+Array(columns).fill('  ').join('|')+'|';
+  return [row,'|'+Array(columns).fill(' --- ').join('|')+'|',...Array(Math.max(0,rows-1)).fill(row)].join('\n');
+}
+function insertTable(view,menu,rows,columns) {
+  const {state}=view,line=state.doc.lineAt(menu.to);
+  const suffix=line.text.slice(menu.to-line.from).trim();
+  const above=line.number>1&&state.doc.line(line.number-1).text.trim()?'\n':'';
+  const below=line.number<state.doc.lines&&state.doc.line(line.number+1).text.trim()?'\n':'';
+  const insert=above+tableSource(rows,columns)+(suffix?'\n\n'+suffix:'')+below;
+  view.dispatch({
+    changes:{from:line.from,to:line.to,insert},selection:{anchor:line.from+above.length+2},
+    effects:closeMenu.of(null),annotations:isolateHistory.of('full'),
+    userEvent:'input.slash-command',scrollIntoView:true
+  });
+  view.focus();return true;
+}
+
+function applyCommand(view,id,size) {
   const menu=view.state.field(menuState),command=menu.options?.find(option=>option.id===id);
   if(!menu.open || !command || view.state.readOnly) return false;
+  if(command.table) return insertTable(view,menu,size?.rows||3,size?.columns||3);
   if(command.action) {
     // The typed command and any list or quote marker go, so the image the app
     // inserts has the line to itself, which is how an embed shows as a picture.
@@ -108,6 +136,35 @@ function createTooltip(view) {
   const title=document.createElement('div');title.className='cm-slash-title';
   const list=document.createElement('div');list.className='cm-slash-options';
   dom.append(title,list);
+  // Beside the Table option, a grid to pick the size: hover sets rows and
+  // columns, a click inserts that table. Enter on the option inserts 3 × 3.
+  const GRID=8,picker=document.createElement('div');picker.className='cm-table-picker';picker.hidden=true;
+  const pickerLabel=document.createElement('div');pickerLabel.className='cm-table-picker-label';
+  const grid=document.createElement('div');grid.className='cm-table-picker-grid';
+  picker.append(grid,pickerLabel);
+  let size={rows:3,columns:3};
+  const paint=()=>{
+    for(const cell of grid.children)cell.classList.toggle('cm-table-picker-on',Number(cell.dataset.row)<=size.rows&&Number(cell.dataset.column)<=size.columns);
+    pickerLabel.textContent=`${size.rows} × ${size.columns}`;
+  };
+  for(let row=1;row<=GRID;row++)for(let column=1;column<=GRID;column++) {
+    const cell=document.createElement('div');cell.className='cm-table-picker-cell';cell.dataset.row=String(row);cell.dataset.column=String(column);
+    cell.addEventListener('mouseenter',()=>{size={rows:row,columns:column};paint();});
+    cell.addEventListener('click',()=>applyCommand(view,'table',{rows:row,columns:column}));
+    grid.append(cell);
+  }
+  picker.addEventListener('mousedown',event=>event.preventDefault());
+  view.dom.append(picker);
+  const placePicker=()=>{
+    const menu=view.state.field(menuState),option=list.querySelector('[data-command="table"]');
+    const show=menu.open&&menu.options[menu.selected]?.table&&option;
+    if(!show){picker.hidden=true;return;}
+    if(picker.hidden){size={rows:3,columns:3};paint();}
+    picker.hidden=false;
+    const host=view.dom.getBoundingClientRect(),box=dom.getBoundingClientRect(),row=option.getBoundingClientRect();
+    const width=picker.offsetWidth,left=box.right+6+width<=innerWidth?box.right+6:box.left-6-width;
+    picker.style.left=(left-host.left)+'px';picker.style.top=(Math.max(8,Math.min(row.top,innerHeight-picker.offsetHeight-8))-host.top)+'px';
+  };
   let signature='',selected=-1;
   const render=()=>{
     const menu=view.state.field(menuState);
@@ -139,8 +196,9 @@ function createTooltip(view) {
       else if(active.offsetTop+active.offsetHeight>list.scrollTop+list.clientHeight)list.scrollTop=active.offsetTop+active.offsetHeight-list.clientHeight;
     }
     selected=menu.selected;
+    requestAnimationFrame(placePicker);setTimeout(placePicker,60);
   };
-  render();return {dom,update:render};
+  render();return {dom,update:render,destroy(){picker.remove();}};
 }
 
 function moveSelection(view,delta) {

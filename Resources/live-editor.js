@@ -10,7 +10,7 @@ import { touchInput, installTouchCommands, composing } from './touch-input.js';
 import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { comments, loadComments, commentsTest } from './comments.js';
-import { tableDecorations, tableKeymap, tableSelectionFilter, tableWidthField, tableColumnResize } from './rich-table.js';
+import { tableDecorations, tableKeymap, tableSelectionFilter, tableWidthField, tableColumnResize, tableAddControls } from './rich-table.js';
 import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
@@ -365,12 +365,6 @@ class InlineMathWidget extends WidgetType {
   toDOM() { const span=document.createElement('span'); span.className='cm-inline-math'; try { katex.render(this.tex,span,{throwOnError:false,trust:false}); } catch { span.textContent='$'+this.tex+'$'; } return span; }
   ignoreEvent() { return false; }
 }
-class HeadingHintWidget extends WidgetType {
-  constructor(level) { super(); this.level = level; }
-  eq(other) { return this.level === other.level; }
-  toDOM() { const span = document.createElement('span'); span.className = 'cm-heading-hint'; span.textContent = 'H' + this.level; span.setAttribute('aria-hidden','true'); return span; }
-  ignoreEvent() { return false; }
-}
 class DividerWidget extends WidgetType {
   constructor(from,to,language) { super(); Object.assign(this,{from,to,language}); }
   eq(other) { return this.from===other.from&&this.to===other.to&&this.language===other.language; }
@@ -667,12 +661,20 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       covered.push([line.from,line.to]);covered.sort((a,b)=>a[0]-b[0]);return false;
     }
     if(name==='Table') {list.push(...tableDecorations(state,node.node));tableRanges.push([node.from,node.to]);}
+    // Bare web addresses and <autolinks> open on a click, like [text](url) links.
+    if(name==='URL'&&!['Link','Image'].includes(node.node.parent?.name)) {
+      const text=state.doc.sliceString(node.from,node.to);
+      const target=/^www\./i.test(text)?'https://'+text:/^[^\s@:/]+@[^\s@]+\.[^\s@]+$/.test(text)?'mailto:'+text:text;
+      list.push(Decoration.mark({class:'cm-live-link',attributes:{'data-live-target':target,title:uiText(state,'openLink')}}).range(node.from,node.to));
+    }
     if(/^ATXHeading[1-6]$/.test(name)) {
       const level=name.slice(-1),line=state.doc.lineAt(node.from);
       // "#" without a space stays plain text; an empty "# " shows a grey H1 hint.
       if(/^ {0,3}#{1,6}[ \t]/.test(line.text)) {
-        list.push(Decoration.line({class:'cm-heading cm-heading-'+level}).range(line.from));
-        if(/^ {0,3}#{1,6}[ \t]+$/.test(line.text))list.push(Decoration.widget({widget:new HeadingHintWidget(level),side:1}).range(line.to));
+        // The hint is drawn by CSS, not a widget: a widget after the hidden "# "
+        // put the caret between elements, where it has no box for the input method.
+        const empty=/^ {0,3}#{1,6}[ \t]+$/.test(line.text);
+        list.push(Decoration.line({class:'cm-heading cm-heading-'+level+(empty?' cm-heading-empty':''),attributes:empty?{'data-hint':'H'+level}:{}}).range(line.from));
       } else list.push(Decoration.mark({class:'cm-plain-syntax'}).range(line.from,line.to));
     }
     if(/^SetextHeading[12]$/.test(name)) {
@@ -793,7 +795,11 @@ const dividerCaret=EditorView.editorAttributes.compute(['selection',liveField],s
 const boldCoverage=new WeakMap();
 function boldDelimiters(state,windows=decorationRanges(state)) {
   const ranges=[],tree=ensureSyntaxTree(state,state.doc.length,40)||syntaxTree(state),code=[],inline=[];
-  const add=(from,to,extra={})=>{if(to>from){const line=state.doc.lineAt(from);ranges.push(Decoration.mark({class:'cm-format-delimiter'+(extra.bold?' cm-live-bold-delimiter':'')+(from>line.from&&to<line.to?' cm-hidden-syntax':''),...extra}).range(from,to));}};
+  const add=(from,to,extra={})=>{if(to>from){const line=state.doc.lineAt(from);ranges.push(Decoration.mark({class:'cm-format-delimiter'+(extra.bold?' cm-live-bold-delimiter':'')+(from>line.from&&to<line.to?' cm-hidden-syntax':''),...extra}).range(from,to));
+    // A heading or quote with nothing typed yet is all hidden syntax, which leaves
+    // WebKit no caret box: the input method's candidates then open at the window's
+    // corner. Its last space keeps a real, invisible size so the caret has a place.
+    if(extra.kind==='prefix'&&to===line.to)ranges.push(Decoration.mark({class:'cm-caret-anchor'}).range(to-1,to));}};
   for(const [windowFrom,windowTo] of windows)tree.iterate({from:windowFrom,to:windowTo,enter(node){
     if(node.name==='FencedCode'||node.name==='CodeBlock') {
       code.push([node.from,node.to]);
@@ -964,7 +970,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),

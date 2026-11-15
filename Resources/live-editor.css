@@ -52,13 +52,14 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-heading-6 { font-size:1em; letter-spacing:0; }
 /* H6 is the quietest level: body size, in the muted colour. */
 .cm-editor .cm-heading-6 { color:var(--muted); }
-.cm-editor .cm-heading-hint { color:var(--hint); pointer-events:none; }
+.cm-editor .cm-heading-empty::after { content:attr(data-hint); color:var(--hint); pointer-events:none; }
 .cm-editor .cm-plain-syntax, .cm-editor .cm-plain-syntax * { color:inherit!important; font-weight:inherit!important; text-decoration:none!important; }
 .cm-editor .cm-divider-line.cm-divider-selected { background:var(--divider-selected); }
 .cm-editor .cm-live-strong { font-weight:700; color:var(--text-strong); }
 .cm-editor .cm-format-delimiter,.cm-editor .cm-live-bold-delimiter { font-size:0; line-height:0; }
 /* Hidden syntax with text on both sides takes no part in the line: even at no size it offers places to break, stranding the punctuation after it. At a line's start or end it stays, as the caret needs something to stand beside there. */
 .cm-editor .cm-hidden-syntax { position:absolute; }
+.cm-editor .cm-caret-anchor { font-size:calc(var(--editor-font-size) * var(--heading-scale,1)); line-height:normal; color:transparent; }
 .cm-editor .cm-whole-word { white-space:nowrap; }
 .cm-editor .cm-live-em { font-style:italic; color:var(--em-text); }
 .cm-editor .cm-live-strike { text-decoration:line-through; color:var(--strike); }
@@ -136,6 +137,17 @@ body.cm-table-col-resize .cm-content, body.cm-table-col-resize .cm-content * { c
 .cm-slash-description { color:var(--faint); font-size:11px; white-space:nowrap; }
 .cm-slash-footer { border-top:1px solid var(--line-faint); padding:9px 15px; font-size:11px; color:var(--faint); }
 .cm-slash-empty { color:var(--subtle); padding:18px 10px; font-size:13px; }
+.cm-table-picker { position:absolute; z-index:250; padding:10px; border:1px solid var(--menu-border); border-radius:10px; background:var(--menu-bg); box-shadow:0 12px 40px var(--menu-shadow); }
+.cm-table-picker[hidden] { display:none; }
+.cm-table-picker-grid { display:grid; grid-template-columns:repeat(8,16px); gap:3px; }
+.cm-table-picker-cell { width:16px; height:16px; box-sizing:border-box; border:1px solid var(--line); border-radius:3px; cursor:pointer; }
+.cm-table-picker-cell.cm-table-picker-on { border-color:var(--pink); background:var(--pink-soft); }
+.cm-table-picker-label { margin-top:8px; text-align:center; font:12px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; color:var(--subtle); }
+.cm-table-add { position:absolute; z-index:5; box-sizing:border-box; margin:0; padding:0; border:0; border-radius:4px; background:var(--hover-bg); color:var(--subtle); font:600 13px/1 -apple-system,BlinkMacSystemFont,sans-serif; cursor:pointer; opacity:.55; transition:opacity .12s,background .12s; }
+.cm-table-add:hover { opacity:1; background:var(--pressed-bg); color:var(--pressed-text); }
+.cm-table-add[hidden] { display:none; }
+.cm-table-add-row { height:16px; }
+.cm-table-add-column { width:16px; }
 .cm-editor .cm-divider-line { position:relative; }
 .cm-editor .cm-divider-syntax { opacity:0; }
 .cm-editor .cm-live-divider { position:absolute; inset:0; display:flex; align-items:center; min-height:1.8em; cursor:text; }

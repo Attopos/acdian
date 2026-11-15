@@ -327,3 +327,55 @@ test('a selected page link lights the link button and a click turns it into plai
  r.view.dispatch({selection:{anchor:r.get().text.indexOf('原理'),head:r.get().text.indexOf('原理')+2}});await new Promise(f=>setTimeout(f,5));
  button().click();assert.equal(r.get().text,'相关：链式代理 和 原理\n');r.close();
 });
+test('the Table slash command inserts a table, from Enter or from the size grid, with the caret in the first cell',async()=>{
+ const type=(r,text)=>{for(const ch of text)r.view.dispatch({changes:{from:r.view.state.selection.main.head,insert:ch},selection:{anchor:r.view.state.selection.main.head+ch.length},userEvent:'input.type'});};
+ let r=setup('Intro\n');r.view.focus();r.view.dispatch({selection:{anchor:6}});type(r,'/表格');
+ const option=r.w.document.querySelector('.cm-slash-option[data-command="table"]');assert.ok(option,'table command is offered');
+ option.click();
+ assert.equal(r.get().text,'Intro\n\n|  |  |  |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |');
+ assert.equal(r.view.state.selection.main.head,9);
+ assert.match(r.w.acdianLiveEditorTest.treeString(),/Table/);
+ r.w.acdianInsertText('名称');assert.ok(r.get().text.includes('| 名称 |'),'typing goes into the first header cell');r.close();
+ r=setup('');r.view.focus();type(r,'/table');
+ await new Promise(f=>setTimeout(f,30));
+ const picker=r.w.document.querySelector('.cm-table-picker');assert.ok(picker&&!picker.hidden,'the size grid shows beside the selected Table option');
+ const cell=picker.querySelector('[data-row="2"][data-column="4"]');cell.dispatchEvent(new r.w.MouseEvent('mouseenter'));
+ assert.equal(picker.querySelector('.cm-table-picker-label').textContent,'2 × 4');
+ assert.equal(picker.querySelectorAll('.cm-table-picker-on').length,8);
+ cell.click();
+ assert.equal(r.get().text,'|  |  |  |  |\n| --- | --- | --- | --- |\n|  |  |  |  |');
+ assert.equal(r.w.document.querySelector('.cm-table-picker'),null,'the grid goes with the menu');r.close();
+});
+test('the + bars under and beside a table add a row and a column',()=>{
+ const r=setup('| A | B |\n| --- | --- |\n| 1 | 2 |\n');r.view.focus();
+ const row=r.w.document.querySelector('.cm-table-row.cm-table-last');assert.ok(row);
+ row.dispatchEvent(new r.w.MouseEvent('mousemove',{bubbles:true}));
+ const addRow=r.w.document.querySelector('.cm-table-add-row'),addColumn=r.w.document.querySelector('.cm-table-add-column');
+ assert.equal(addRow.hidden,false);assert.equal(addColumn.hidden,false);
+ addColumn.click();
+ assert.equal(r.get().text,'| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |  |\n');
+ r.w.acdianInsertText('C');assert.equal(r.get().text,'| A | B | C |\n| --- | --- | --- |\n| 1 | 2 |  |\n');
+ r.w.document.querySelector('.cm-table-row.cm-table-last').dispatchEvent(new r.w.MouseEvent('mousemove',{bubbles:true}));
+ r.w.document.querySelector('.cm-table-add-row').click();
+ assert.equal(r.get().text,'| A | B | C |\n| --- | --- | --- |\n| 1 | 2 |  |\n|  |  |  |\n');
+ r.w.acdianUndo();assert.equal(r.get().text,'| A | B | C |\n| --- | --- | --- |\n| 1 | 2 |  |\n');r.close();
+});
+test('a column added to a table with set widths keeps dash-count widths',()=>{
+ const r=setup('| A | B |\n|--------|----|\n| 1 | 2 |\n');r.view.focus();
+ r.w.document.querySelector('.cm-table-row').dispatchEvent(new r.w.MouseEvent('mousemove',{bubbles:true}));
+ r.w.document.querySelector('.cm-table-add-column').click();
+ assert.equal(r.get().text.split('\n')[1],'|--------|----|------|');r.close();
+});
+test('bare web addresses and autolinks open on a single click',()=>{
+ const r=setup('Visit https://xsus.cloud/ now, <https://a.com>, www.b.org and [x](https://c.com)\n');
+ const links=[...r.w.document.querySelectorAll('.cm-live-link[data-live-target]')];
+ assert.deepEqual(links.map(link=>link.dataset.liveTarget),['https://xsus.cloud/','https://a.com','https://www.b.org','https://c.com']);
+ links[0].dispatchEvent(new r.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+ assert.deepEqual(r.messages.filter(m=>m.type==='external').map(m=>m.target),['https://xsus.cloud/']);r.close();
+});
+test('slash commands that start with the typed word come first',()=>{
+ const r=setup('');r.view.focus();
+ for(const ch of '/表')r.view.dispatch({changes:{from:r.view.state.selection.main.head,insert:ch},selection:{anchor:r.view.state.selection.main.head+ch.length},userEvent:'input.type'});
+ const ids=[...r.w.document.querySelectorAll('.cm-slash-option')].map(option=>option.dataset.command);
+ assert.equal(ids[0],'table');assert.ok(ids.includes('bullet'));r.close();
+});
