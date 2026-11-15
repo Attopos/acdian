@@ -147,6 +147,18 @@ body.cm-table-col-resize .cm-content, body.cm-table-col-resize .cm-content * { c
 .cm-table-add:hover { opacity:1; background:var(--pressed-bg); color:var(--pressed-text); }
 .cm-table-add[hidden] { display:none; }
 .cm-table-add-row { height:16px; }
+.cm-table-handle { position:absolute; z-index:5; box-sizing:border-box; margin:0; padding:0; border:0; border-radius:4px; background:transparent; cursor:pointer; }
+.cm-table-handle::after { content:""; position:absolute; border-radius:2px; background:var(--subtle); opacity:.45; }
+.cm-table-handle-row { width:12px; }
+.cm-table-handle-row::after { left:5px; top:50%; width:3px; height:min(18px,60%); transform:translateY(-50%); }
+.cm-table-handle-column { height:12px; }
+.cm-table-handle-column::after { top:5px; left:50%; height:3px; width:min(24px,60%); transform:translateX(-50%); }
+.cm-table-handle:hover { background:var(--hover-bg); }
+.cm-table-handle:hover::after { background:var(--pink); opacity:1; }
+.cm-table-handle[hidden],.cm-table-menu[hidden] { display:none; }
+.cm-table-menu { position:absolute; z-index:260; min-width:120px; padding:4px; border:1px solid var(--menu-border); border-radius:8px; background:var(--menu-bg); box-shadow:0 10px 30px var(--menu-shadow); }
+.cm-table-menu-item { display:block; width:100%; margin:0; padding:7px 10px; border:0; border-radius:5px; background:transparent; color:#e0524d; text-align:left; font:13px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; cursor:pointer; }
+.cm-table-menu-item:hover { background:var(--hover-bg); }
 .cm-table-add-column { width:16px; }
 .cm-editor .cm-divider-line { position:relative; }
 .cm-editor .cm-divider-syntax { opacity:0; }

@@ -1,6 +1,7 @@
 import { EditorState, EditorSelection, StateField, StateEffect } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin } from '@codemirror/view';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+import { uiMessages } from './ui-language.js';
 
 // Every cell remains a span in CodeMirror's one editable document. The source
 // pipes and padding stay in the DOM, with permanently hidden syntax marks.
@@ -293,6 +294,48 @@ function appendColumn(view,table) {
   view.focus();return true;
 }
 
+// The whole table's lines, with the blank line it leaves behind folded away.
+function tableLines(state,table) {
+  const first=state.doc.lineAt(table.from);let last=state.doc.lineAt(table.to);
+  if(last.number<state.doc.lines&&!state.doc.line(last.number+1).text.trim()&&first.number>1&&!state.doc.line(first.number-1).text.trim())last=state.doc.line(last.number+1);
+  return last.number<state.doc.lines?{from:first.from,to:last.to+1}:{from:first.number>1?first.from-1:first.from,to:last.to};
+}
+// Deletes one row. Deleting the header makes the next row the header; deleting
+// the only row deletes the table.
+function deleteRow(view,table,index) {
+  if(view.state.readOnly)return false;
+  const {state}=view,row=table.rows[index];if(!row)return false;
+  let change,anchor;
+  if(table.rows.length===1){change={...tableLines(state,table),insert:''};anchor=change.from;}
+  else if(row.header) {
+    const next=table.rows[1],separator=state.doc.sliceString(table.separator.line.from,table.separator.line.to);
+    change={from:row.line.from,to:next.line.to,insert:next.line.text+'\n'+separator};anchor=row.line.from+(next.cells[0].contentFrom-next.line.from);
+  } else {
+    const line=row.line;
+    change=line.number<state.doc.lines?{from:line.from,to:line.to+1,insert:''}:{from:line.from-1,to:line.to,insert:''};
+    const neighbour=table.rows[index+1]||table.rows[index-1];
+    anchor=neighbour.cells[0].contentFrom;anchor=anchor>line.from?anchor-(line.to+1-line.from):anchor;
+  }
+  view.dispatch({changes:change,selection:EditorSelection.cursor(Math.min(anchor,state.doc.length-(change.to-change.from)+change.insert.length)),scrollIntoView:true,userEvent:'delete.table-row'});
+  view.focus();return true;
+}
+// Deletes one column from every row and the separator; the last column deletes the table.
+function deleteColumn(view,table,index) {
+  if(view.state.readOnly)return false;
+  const {state}=view;
+  if(table.columns<=1){const change={...tableLines(state,table),insert:''};view.dispatch({changes:change,selection:EditorSelection.cursor(change.from),userEvent:'delete.table-column'});view.focus();return true;}
+  const separator=parseRowText(state.doc.sliceString(table.separator.from,table.separator.to),table.separator.from,table.separator.line);
+  const changes=[];
+  for(const row of [...table.rows,separator]) {
+    const cell=row.cells[index];if(!cell)continue;
+    if(index<row.cells.length-1)changes.push({from:cell.rawFrom,to:cell.rawTo+1});
+    else changes.push({from:Math.max(row.from,cell.rawFrom-1),to:cell.rawTo});
+  }
+  const set=state.changes(changes),header=table.rows[0],target=header.cells[Math.min(index,header.cells.length-2)]||header.cells[0];
+  view.dispatch({changes:set,selection:EditorSelection.cursor(set.mapPos(target.contentFrom,-1)),scrollIntoView:true,userEvent:'delete.table-column'});
+  view.focus();return true;
+}
+
 // Hovering a table shows a + bar under its last row and one right of its last
 // column, as in Feishu; clicking adds a row or a column.
 export const tableAddControls=ViewPlugin.fromClass(class {
@@ -307,8 +350,28 @@ export const tableAddControls=ViewPlugin.fromClass(class {
       element.addEventListener('mouseleave',()=>this.later());
       view.dom.append(element);return element;
     };
-    this.row=bar('cm-table-add-row','Add row',table=>appendRow(view,{table,row:table.rows.at(-1),cell:{index:0}})&&view.focus());
-    this.column=bar('cm-table-add-column','Add column',table=>appendColumn(view,table));
+    this.row=bar('cm-table-add-row','',table=>appendRow(view,{table,row:table.rows.at(-1),cell:{index:0}})&&view.focus());
+    this.column=bar('cm-table-add-column','',table=>appendColumn(view,table));
+    // Handles beside the row and above the column under the pointer open a small
+    // menu to delete that row or column, as in Feishu.
+    this.rowIndex=0;this.columnIndex=0;
+    const handle=(className,kind)=>{
+      const element=document.createElement('button');element.type='button';element.tabIndex=-1;element.className='cm-table-handle '+className;element.hidden=true;
+      element.addEventListener('mousedown',event=>event.preventDefault());
+      element.addEventListener('click',()=>this.openMenu(kind,element));
+      element.addEventListener('mouseenter',()=>clearTimeout(this.hideTimer));
+      element.addEventListener('mouseleave',()=>this.later());
+      view.dom.append(element);return element;
+    };
+    this.rowHandle=handle('cm-table-handle-row','row');
+    this.columnHandle=handle('cm-table-handle-column','column');
+    this.menu=document.createElement('div');this.menu.className='cm-table-menu';this.menu.setAttribute('role','menu');this.menu.hidden=true;
+    this.menu.addEventListener('mousedown',event=>event.preventDefault());
+    this.menu.addEventListener('mouseenter',()=>clearTimeout(this.hideTimer));
+    this.menu.addEventListener('mouseleave',()=>this.later());
+    view.dom.append(this.menu);
+    this.outside=event=>{if(!this.menu.hidden&&!this.menu.contains(event.target)&&!event.target.closest?.('.cm-table-handle'))this.hide();};
+    view.dom.ownerDocument.addEventListener('mousedown',this.outside,true);
     this.move=event=>this.track(event);
     this.leave=()=>this.later();
     this.scroll=()=>this.hide();
@@ -317,6 +380,16 @@ export const tableAddControls=ViewPlugin.fromClass(class {
     view.scrollDOM.addEventListener('scroll',this.scroll,{passive:true});
   }
   current() {return this.table===null?null:models(this.view.state).find(table=>table.from===this.table)||null;}
+  openMenu(kind,anchor) {
+    const strings=uiMessages(this.view.state).tableUI,item=document.createElement('button');
+    item.type='button';item.tabIndex=-1;item.className='cm-table-menu-item';item.setAttribute('role','menuitem');
+    item.textContent=kind==='row'?strings.deleteRow:strings.deleteColumn;
+    const index=kind==='row'?this.rowIndex:this.columnIndex;
+    item.addEventListener('click',()=>{const table=this.current();this.hide();if(table)(kind==='row'?deleteRow:deleteColumn)(this.view,table,index);});
+    this.menu.replaceChildren(item);this.menu.hidden=false;this.menuOpen=true;
+    const host=this.view.dom.getBoundingClientRect(),box=anchor.getBoundingClientRect();
+    Object.assign(this.menu.style,kind==='row'?{left:(box.left-host.left)+'px',top:(box.bottom-host.top+4)+'px'}:{left:(box.left-host.left)+'px',top:(box.bottom-host.top+4)+'px'});
+  }
   track(event) {
     const view=this.view,line=event.target?.closest?.('.cm-table-row');
     if(!line||!view.state.facet(EditorView.editable)||view.state.readOnly){this.later();return;}
@@ -327,19 +400,32 @@ export const tableAddControls=ViewPlugin.fromClass(class {
     while(first.previousElementSibling?.classList.contains('cm-table-row')&&!first.classList.contains('cm-table-first'))first=first.previousElementSibling;
     while(last.nextElementSibling?.classList.contains('cm-table-row')&&!last.classList.contains('cm-table-last'))last=last.nextElementSibling;
     const host=view.dom.getBoundingClientRect(),top=first.getBoundingClientRect(),bottom=last.getBoundingClientRect();
+    if(this.menuOpen)return;
     this.table=context.table.from;
+    const strings=uiMessages(view.state).tableUI;
+    this.row.title=strings.addRow;this.row.setAttribute('aria-label',strings.addRow);
+    this.column.title=strings.addColumn;this.column.setAttribute('aria-label',strings.addColumn);
+    this.rowIndex=context.table.rows.indexOf(context.row);
+    const rowBox=line.getBoundingClientRect(),cellElement=event.target.closest('.cm-table-cell');
+    if(cellElement)this.columnIndex=Number(cellElement.dataset.tableCell)||0;
+    const headerCell=first.querySelector(`.cm-table-cell[data-table-cell="${this.columnIndex}"]`),columnBox=(headerCell||cellElement||first).getBoundingClientRect();
+    Object.assign(this.rowHandle.style,{left:(top.left-host.left-18)+'px',top:(rowBox.top-host.top)+'px',height:rowBox.height+'px'});
+    Object.assign(this.columnHandle.style,{left:(columnBox.left-host.left)+'px',top:(top.top-host.top-16)+'px',width:columnBox.width+'px'});
+    this.rowHandle.title=this.rowHandle.ariaLabel=strings.row;this.columnHandle.title=this.columnHandle.ariaLabel=strings.column;
+    this.rowHandle.hidden=this.columnHandle.hidden=false;
     Object.assign(this.row.style,{left:(top.left-host.left)+'px',top:(bottom.bottom-host.top+4)+'px',width:top.width+'px'});
     Object.assign(this.column.style,{left:(top.right-host.left+4)+'px',top:(top.top-host.top)+'px',height:(bottom.bottom-top.top)+'px'});
     this.row.hidden=this.column.hidden=false;
   }
   later() {clearTimeout(this.hideTimer);this.hideTimer=setTimeout(()=>this.hide(),250);}
-  hide() {clearTimeout(this.hideTimer);this.row.hidden=this.column.hidden=true;this.table=null;}
+  hide() {clearTimeout(this.hideTimer);this.row.hidden=this.column.hidden=this.rowHandle.hidden=this.columnHandle.hidden=this.menu.hidden=true;this.menuOpen=false;this.table=null;}
   update(update) {if(update.docChanged&&this.table!==null)this.hide();}
   destroy() {
-    clearTimeout(this.hideTimer);this.row.remove();this.column.remove();
+    clearTimeout(this.hideTimer);this.row.remove();this.column.remove();this.rowHandle.remove();this.columnHandle.remove();this.menu.remove();
+    this.view.dom.ownerDocument.removeEventListener('mousedown',this.outside,true);
     this.view.contentDOM.removeEventListener('mousemove',this.move);
     this.view.contentDOM.removeEventListener('mouseleave',this.leave);
     this.view.scrollDOM.removeEventListener('scroll',this.scroll);
   }
 });
-export const tableTest={appendColumn,models};
+export const tableTest={appendColumn,deleteRow,deleteColumn,models};

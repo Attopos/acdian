@@ -394,3 +394,25 @@ test('the Divider slash command inserts "--- " on its own line, and Contents is 
  const ids=[...r.w.document.querySelectorAll('.cm-slash-option')].map(option=>option.dataset.command);
  assert.ok(ids.includes('divider')&&!ids.includes('toc'));r.close();
 });
+test('row and column handles open a menu that deletes that row or column',()=>{
+ const source='Intro\n\n| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n\nAfter\n',r=setup(source);r.view.focus();
+ const hover=(row,cell)=>r.w.document.querySelectorAll('.cm-table-row:not(.cm-table-separator)')[row].querySelectorAll('.cm-table-cell')[cell].dispatchEvent(new r.w.MouseEvent('mousemove',{bubbles:true}));
+ const choose=kind=>{r.w.document.querySelector('.cm-table-handle-'+kind).click();const item=r.w.document.querySelector('.cm-table-menu-item');assert.equal(item.textContent,kind==='row'?'Delete row':'Delete column');item.click();};
+ hover(1,1);assert.equal(r.w.document.querySelector('.cm-table-handle-row').hidden,false);assert.equal(r.w.document.querySelector('.cm-table-handle-column').hidden,false);
+ choose('row');assert.equal(r.get().text,'Intro\n\n| A | B | C |\n| --- | --- | --- |\n| 4 | 5 | 6 |\n\nAfter\n');
+ hover(0,1);choose('column');assert.equal(r.get().text,'Intro\n\n| A | C |\n| --- | --- |\n| 4 | 6 |\n\nAfter\n');
+ hover(0,1);choose('column');assert.equal(r.get().text,'Intro\n\n| A |\n| --- |\n| 4 |\n\nAfter\n');
+ r.w.acdianUndo();r.w.acdianUndo();r.w.acdianUndo();assert.equal(r.get().text,source);
+ hover(0,0);choose('row');assert.equal(r.get().text,'Intro\n\n| 1 | 2 | 3 |\n| --- | --- | --- |\n| 4 | 5 | 6 |\n\nAfter\n','deleting the header makes the next row the header');
+ assert.match(r.w.acdianLiveEditorTest.treeString(),/Table/);r.close();
+});
+test('deleting the only row or the only column deletes the table',()=>{
+ let r=setup('Intro\n\n| A |\n| --- |\n\nAfter\n');r.view.focus();
+ r.w.document.querySelector('.cm-table-cell').dispatchEvent(new r.w.MouseEvent('mousemove',{bubbles:true}));
+ r.w.document.querySelector('.cm-table-handle-row').click();r.w.document.querySelector('.cm-table-menu-item').click();
+ assert.equal(r.get().text,'Intro\n\nAfter\n');r.close();
+ r=setup('| A |\n| --- |\n| 1 |\n');r.view.focus();
+ r.w.document.querySelector('.cm-table-cell').dispatchEvent(new r.w.MouseEvent('mousemove',{bubbles:true}));
+ r.w.document.querySelector('.cm-table-handle-column').click();r.w.document.querySelector('.cm-table-menu-item').click();
+ assert.equal(r.get().text,'');r.close();
+});
