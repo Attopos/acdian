@@ -477,3 +477,87 @@ test('deleting or moving a block keeps the wider gap beside it',()=>{
  const r=setup('- a\n- b\n\nPara\n');
  r.w.acdianLiveEditorTest.blocks.moveBlock(r.view,1,0);assert.equal(r.get().text,'- b\n- a\n\nPara\n');r.close();
 });
+const typeInto=(r,text)=>{for(const ch of text)r.view.dispatch({changes:{from:r.view.state.selection.main.head,insert:ch},selection:{anchor:r.view.state.selection.main.head+ch.length},userEvent:'input.type'});};
+const tick=(ms=10)=>new Promise(f=>setTimeout(f,ms));
+test('find and replace in the page',async()=>{
+ const r=setup('apple banana apple\ncherry apple\n');r.view.focus();
+ r.w.acdianFind(true);await tick(30);
+ const panel=r.w.document.querySelector('.cm-acdian-find');assert.ok(panel,'the find card opens');
+ assert.equal(panel.querySelector('.cm-find-replace-row').hidden,false,'Option-Command-F shows the replace row');
+ const [find,replace]=panel.querySelectorAll('.cm-find-input');
+ find.value='apple';find.dispatchEvent(new r.w.Event('input',{bubbles:true}));
+ await tick();
+ assert.ok(r.w.document.querySelectorAll('.cm-searchMatch').length>=3,'matches are highlighted');
+ assert.match(panel.querySelector('.cm-find-count').textContent,/\/3$/,'the count shows three matches');
+ find.dispatchEvent(new r.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+ assert.equal(panel.querySelector('.cm-find-count').textContent,'1/3','Enter goes to the first match');
+ replace.value='pear';replace.dispatchEvent(new r.w.Event('input',{bubbles:true}));
+ [...panel.querySelectorAll('.cm-find-text')].at(-1).click();
+ assert.equal(r.get().text,'pear banana pear\ncherry pear\n');
+ r.w.acdianUndo();assert.equal(r.get().text,'apple banana apple\ncherry apple\n');r.close();
+});
+test('typing [[ offers pages and picking one finishes the link',async()=>{
+ const r=setup('See ');r.view.focus();r.view.dispatch({selection:{anchor:4}});
+ typeInto(r,'[[反');
+ await tick(250);
+ const request=r.messages.find(m=>m.type==='listPages');assert.ok(request,'the editor asks the app for the pages');
+ r.w.acdianReply({id:request.request,result:['CS/反向代理','CS/链式代理','Teaching/反向代理','Notes/Other']});
+ await tick(80);
+ const options=[...r.w.document.querySelectorAll('.cm-tooltip-autocomplete li')].map(li=>li.textContent);
+ assert.ok(options.length>=2&&options[0].startsWith('反向代理'),'pages starting with the typed text come first: '+options.join(','));
+ r.w.document.querySelector('.cm-tooltip-autocomplete li').dispatchEvent(new r.w.MouseEvent('mousedown',{bubbles:true}));
+ await tick(20);
+ assert.equal(r.get().text,'See [[CS/反向代理]]','a name used twice is linked by its path');r.close();
+});
+test('a pasted address becomes a titled link once the app finds the title',async()=>{
+ const r=setup('Read ');r.view.focus();r.view.dispatch({selection:{anchor:5}});
+ const paste=text=>{const event=new r.w.Event('paste',{bubbles:true,cancelable:true});event.clipboardData={files:[],types:['text/plain'],getData:()=>text};r.view.contentDOM.dispatchEvent(event);};
+ paste('https://example.com/post');
+ assert.equal(r.get().text,'Read https://example.com/post');
+ const request=r.messages.find(m=>m.type==='fetchTitle');assert.equal(request.url,'https://example.com/post');
+ r.w.acdianReply({id:request.request,result:'A [great] post'});await tick();
+ assert.equal(r.get().text,'Read [A \\[great\\] post](https://example.com/post)');
+ r.w.acdianUndo();assert.equal(r.get().text,'Read https://example.com/post','undo brings back the bare address');
+ r.view.dispatch({changes:{from:0,to:r.view.state.doc.length,insert:'some words'},selection:{anchor:5,head:10}});
+ paste('https://example.org');assert.equal(r.get().text,'some [words](https://example.org)','pasted over selected text, it links that text');r.close();
+});
+test('Option-Shift-Up and Down move the block with the caret',()=>{
+ const r=setup('# A\n\nPara one\n\nPara two\n');r.view.focus();
+ r.view.dispatch({selection:{anchor:r.get().text.indexOf('two')}});
+ assert.equal(r.w.acdianLiveEditorTest.blocks.moveCurrentBlock(r.view,-1),true);
+ assert.equal(r.get().text,'# A\n\nPara two\n\nPara one\n');
+ assert.equal(r.view.state.sliceDoc(r.view.state.selection.main.head,r.view.state.selection.main.head+3),'two','the caret stays in place inside the block');
+ r.w.acdianLiveEditorTest.blocks.moveCurrentBlock(r.view,1);assert.equal(r.get().text,'# A\n\nPara one\n\nPara two\n');r.close();
+});
+test('a slash after a space inside a line opens the menu and turns the line into the picked kind',()=>{
+ let r=setup('Some text');r.view.focus();r.view.dispatch({selection:{anchor:9}});
+ typeInto(r,' /h2');
+ const option=r.w.document.querySelector('.cm-slash-option[data-command="h2"]');assert.ok(option,'the menu opens inside the line');
+ option.click();assert.equal(r.get().text,'## Some text');r.close();
+ r=setup('Intro text');r.view.focus();r.view.dispatch({selection:{anchor:10}});typeInto(r,' /分割');
+ r.w.document.querySelector('.cm-slash-option[data-command="divider"]').click();
+ assert.equal(r.get().text,'Intro text\n\n--- \n','a divider goes in below the line');r.close();
+ r=setup('a/b and 1 / 2');r.view.focus();r.view.dispatch({selection:{anchor:13}});
+ assert.equal(r.w.document.querySelector('.cm-slash-menu'),null,'a slash in a path or a division does not open the menu');r.close();
+});
+test('the Toggle command inserts a folding block with a title and a body line',()=>{
+ const r=setup('');r.view.focus();typeInto(r,'/折叠');
+ r.w.document.querySelector('.cm-slash-option[data-command="toggle"]').click();
+ assert.equal(r.get().text,'> [!toggle] \n> ');assert.equal(r.view.state.selection.main.head,12);
+ r.w.acdianInsertText('标题');
+ assert.ok(r.w.document.querySelector('.cm-callout-toggle'),'it is drawn as a toggle');
+ assert.ok(r.w.document.querySelector('.cm-callout-toggle .cm-fold-toggle'),'it has a fold arrow');r.close();
+});
+test('an image caption can be added and edited under the picture',async()=>{
+ const r=setup('Intro\n\n![[Attachments/a.png|300]]\n\nEnd\n');r.view.focus();await tick(20);
+ const caption=r.w.document.querySelector('.cm-image-caption');assert.ok(caption,'an empty caption is offered');
+ assert.ok(caption.classList.contains('cm-image-caption-empty'));
+ caption.click();assert.equal(caption.isContentEditable||caption.contentEditable==='true',true);
+ caption.textContent='示意图';caption.dispatchEvent(new r.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+ assert.equal(r.get().text,'Intro\n\n![[Attachments/a.png|300|示意图]]\n\nEnd\n');
+ await tick(20);
+ const next=r.w.document.querySelector('.cm-image-caption');assert.equal(next.textContent,'示意图');r.close();
+ const md=setup('![old|200](pic.png)\n');await tick(20);
+ const c=md.w.document.querySelector('.cm-image-caption');c.click();c.textContent='new';c.dispatchEvent(new md.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+ assert.equal(md.get().text,'![new|200](pic.png)\n');md.close();
+});

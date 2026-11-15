@@ -64,6 +64,13 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         super.init()
         schemes.host = self; view.host = self
         config.userContentController.add(MessageRelay(self),name:"acdian")
+        NotificationCenter.default.addObserver(forName:Notification.Name("acdianFindInPage"),object:nil,queue:.main) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, note.userInfo?["split"] as? Bool != true else { return }
+                self.view.window?.makeFirstResponder(self.view)
+                self.view.evaluateJavaScript("window.acdianFind&&window.acdianFind(\((note.userInfo?["replace"] as? Bool) == true))",completionHandler:nil)
+            }
+        }
         view.setValue(false,forKey:"drawsBackground")
         view.navigationDelegate = self
         view.isInspectable = false
@@ -197,6 +204,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         if type == "ready" { ready = true; applyCenterShift(); render(); return }
         // Comments name their page by path and may arrive after it was left.
         if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
+        if model?.answerEditorRequest(value,reply:{ [weak self] script in self?.view.evaluateJavaScript(script,completionHandler:nil) }) == true { return }
         guard isCurrent, let model, let documentID, value["documentID"] as? String == documentID.uuidString else { return }
         let path = value["currentPath"] as? String ?? value["from"] as? String
         // Messages sent before the page heard of a rename still name the old path.

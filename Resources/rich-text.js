@@ -216,6 +216,47 @@ export function withImageWidth(source,width) {
   if(/\]\]\s*$/.test(plain))return plain.replace(/\]\](\s*)$/,`|${width}]]$1`);
   return plain.replace(/\]\(/,`|${width}](`);
 }
+// A picture's caption is its alt text: ![caption|300](file) or ![[file|300|caption]].
+export function withImageCaption(source,caption) {
+  const clean=caption.replace(/[\[\]|]/g,'').replace(/\s+/g,' ').trim();
+  return source.replace(/!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\n]+)\)/,(whole,embed,alt,src)=>{
+    if(embed!==undefined){const [target,...rest]=embed.split('|'),size=rest.find(part=>/^\d+(?:x\d+)?$/.test(part));return '![['+[target,size,clean].filter(Boolean).join('|')+']]';}
+    const sized=/^(.*?)\|?(\d+(?:x\d+)?)$/.exec(alt);
+    return '!['+[clean,sized?sized[2]:''].filter(Boolean).join('|')+']('+src+')';
+  });
+}
+// Under a picture on its own line: its caption, or a faint "Add a caption" while
+// the pointer is over it. A click edits it in place; Enter keeps it, Esc does not.
+export function imageCaption(image,state) {
+  const text=image.alt||'',editable=state.facet(EditorView.editable);
+  if(!text&&!editable)return null;
+  const caption=document.createElement('span');caption.className='cm-image-caption';caption.textContent=text;
+  if(!text){caption.classList.add('cm-image-caption-empty');caption.dataset.placeholder=host.uiText(state,'imageCaption');}
+  if(!editable)return caption;
+  caption.spellcheck=false;
+  let editing=false;
+  const finish=save=>{
+    if(!editing)return;editing=false;
+    caption.contentEditable='false';caption.classList.remove('cm-image-caption-editing');
+    const value=caption.textContent.replace(/\s+/g,' ').trim(),view=viewOf(image);
+    if(!save||value===text||!view){caption.textContent=text;return;}
+    const line=view.state.doc.lineAt(view.posAtDOM(image)),next=withImageCaption(line.text,value);
+    if(next!==line.text)view.dispatch({changes:{from:line.from,to:line.to,insert:next},userEvent:'input.caption'});
+    view.focus();
+  };
+  caption.addEventListener('mousedown',event=>event.stopPropagation());
+  caption.addEventListener('click',event=>{
+    event.preventDefault();event.stopPropagation();if(editing)return;
+    editing=true;caption.contentEditable='true';caption.classList.add('cm-image-caption-editing');caption.focus();
+    const range=document.createRange();range.selectNodeContents(caption);range.collapse(false);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+  });
+  caption.addEventListener('keydown',event=>{
+    event.stopPropagation();if(event.isComposing)return;
+    if(event.key==='Enter'){event.preventDefault();finish(true);}else if(event.key==='Escape'){event.preventDefault();finish(false);}
+  });
+  caption.addEventListener('blur',()=>finish(true));
+  return caption;
+}
 function measure(image) { viewOf(image)?.requestMeasure(); }
 function removeImage(view,image) {
   const at=view.posAtDOM(image),line=view.state.doc.lineAt(at),own=/^\s*(?:!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\))\s*$/.test(line.text);

@@ -118,6 +118,8 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "关闭标签页": ("Close tab", "Cerrar pestaña"),
         "搜索页面与内容": ("Search pages and content", "Buscar páginas y contenido"),
         "搜索页面": ("Search pages", "Buscar páginas"),
+        "在页面中查找": ("Find in page", "Buscar en la página"),
+        "查找并替换": ("Find and replace", "Buscar y reemplazar"),
         "刷新页面": ("Refresh pages", "Actualizar páginas"),
         "删除": ("Delete", "Eliminar"),
         "新建文件夹": ("New folder", "Nueva carpeta"),

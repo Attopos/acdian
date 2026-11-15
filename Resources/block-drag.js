@@ -53,7 +53,7 @@ function removal(state,blocks,index) {
 // Moves block `index` to sit before block `to` (to may equal the block count:
 // the end). The blank line a block leaves is taken with it; where it lands it
 // gets one, except between list items, which stay one per line.
-export function moveBlock(view,index,to) {
+export function moveBlock(view,index,to,keepCaret=false) {
   const {state}=view,blocks=blocksOf(state),block=blocks[index];
   if(!block||state.readOnly||to===index||to===index+1||to<0||to>blocks.length)return false;
   const text=state.doc.sliceString(block.from,block.to),remove=removal(state,blocks,index);
@@ -69,9 +69,19 @@ export function moveBlock(view,index,to) {
     at=last.to;insert=separator+text;offset=separator.length;
   }
   const changes=state.changes([remove,{from:at,insert}]);
-  const anchor=changes.mapPos(at,-1)+offset;
+  const head=state.selection.main.head,inside=keepCaret&&head>=block.from&&head<=block.to?head-block.from:0;
+  const anchor=changes.mapPos(at,-1)+offset+inside;
   view.dispatch({changes,selection:EditorSelection.cursor(anchor),scrollIntoView:true,userEvent:'move.block'});
   view.focus();return true;
+}
+// ⌥⇧↑ / ⌥⇧↓ move the block with the caret up or down past its neighbour.
+export function moveCurrentBlock(view,direction) {
+  const {state}=view;if(state.readOnly||state.selection.ranges.length!==1)return false;
+  const blocks=blocksOf(state),index=blockIndexAt(blocks,state.selection.main.head);
+  if(index<0)return false;
+  const to=direction<0?index-1:index+2;
+  if(to<0||to>blocks.length)return true;
+  return moveBlock(view,index,to,true);
 }
 function deleteBlock(view,index) {
   const {state}=view,blocks=blocksOf(state),block=blocks[index];if(!block||state.readOnly)return false;
@@ -103,8 +113,8 @@ export const blockHandles=ViewPlugin.fromClass(class {
     this.view=view;this.index=-1;this.hideTimer=null;this.dragging=false;this.dragged=false;
     const doc=view.dom.ownerDocument;
     this.handle=doc.createElement('button');this.handle.type='button';this.handle.tabIndex=-1;this.handle.className='cm-block-handle';this.handle.innerHTML=dots;this.handle.hidden=true;
-    this.handle.addEventListener('mousedown',event=>{event.preventDefault();if(event.button===0)this.startDrag(event);});
-    this.handle.addEventListener('click',()=>{if(this.dragged){this.dragged=false;return;}this.openMenu();});
+    this.handle.addEventListener('mousedown',event=>{event.preventDefault();if(event.button===0&&this.index>=0)this.startDrag(event);});
+    this.handle.addEventListener('click',()=>{if(this.dragged){this.dragged=false;return;}if(this.index<0)this.openInsert();else this.openMenu();});
     this.handle.addEventListener('mouseenter',()=>clearTimeout(this.hideTimer));
     this.indicator=doc.createElement('div');this.indicator.className='cm-block-drop';this.indicator.hidden=true;
     this.menu=doc.createElement('div');this.menu.className='cm-block-menu';this.menu.setAttribute('role','menu');this.menu.hidden=true;
@@ -138,14 +148,32 @@ export const blockHandles=ViewPlugin.fromClass(class {
     if(this.dragging||!this.menu.hidden)return;
     if(!this.usable()||event.target.closest?.('.cm-tooltip,.cm-table-menu,.cm-table-picker')){this.hide();return;}
     const index=this.indexAtY(event.clientY);
-    if(index<0){this.leave();return;}
+    if(index<0){this.trackEmpty(event);return;}
     clearTimeout(this.hideTimer);
+    this.plus=null;this.handle.classList.remove('cm-block-plus');this.handle.innerHTML=dots;
     const block=blocksOf(this.view.state)[index],line=this.firstLine(block),host=this.view.dom.getBoundingClientRect();
     const height=Math.max(20,Math.min(28,line.bottom-line.top));
     this.index=index;
     Object.assign(this.handle.style,{left:(Math.max(host.left+2,this.textLeft()-52)-host.left)+'px',top:((line.top+line.bottom)/2-height/2-host.top)+'px',height:height+'px'});
     const strings=uiMessages(this.view.state).blockUI;this.handle.title=strings.handle;this.handle.setAttribute('aria-label',strings.handle);
     this.handle.hidden=false;
+  }
+  // An empty line gets a + in the handle's place, which opens the insert menu there, as in Feishu.
+  trackEmpty(event) {
+    const view=this.view,line=view.lineBlockAtHeight(event.clientY-view.documentTop),text=view.state.doc.lineAt(line.from);
+    if(text.text.trim()||line.height<12||line.from!==text.from){this.leave();return;}
+    clearTimeout(this.hideTimer);
+    const host=view.dom.getBoundingClientRect(),top=view.documentTop+line.top,height=Math.min(28,line.height);
+    this.index=-1;this.plus=text.from;this.handle.classList.add('cm-block-plus');this.handle.textContent='+';
+    Object.assign(this.handle.style,{left:(Math.max(host.left+2,this.textLeft()-52)-host.left)+'px',top:(top+(line.height-height)/2-host.top)+'px',height:height+'px'});
+    const strings=uiMessages(view.state).blockUI;this.handle.title=strings.insert;this.handle.setAttribute('aria-label',strings.insert);
+    this.handle.hidden=false;
+  }
+  openInsert() {
+    const view=this.view,at=this.plus;if(at===null||at===undefined||view.state.readOnly)return;
+    this.hide();
+    view.dispatch({selection:EditorSelection.cursor(at)});view.focus();
+    view.dispatch({changes:{from:at,insert:'/'},selection:EditorSelection.cursor(at+1),userEvent:'input.type'});
   }
   hide() {if(this.dragging)return;clearTimeout(this.hideTimer);this.handle.hidden=this.menu.hidden=this.indicator.hidden=true;}
   // Where a drop at this height would go: before block `to`, and the line's place.
@@ -211,4 +239,4 @@ export const blockHandles=ViewPlugin.fromClass(class {
     doc.removeEventListener('mousedown',this.outside,true);doc.removeEventListener('keydown',this.key,true);
   }
 });
-export const blockDragTest={blocksOf,moveBlock};
+export const blockDragTest={blocksOf,moveBlock,moveCurrentBlock};

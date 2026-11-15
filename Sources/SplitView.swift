@@ -145,6 +145,13 @@ struct SplitMarkdownEditor: NSViewRepresentable {
         view = WKWebView(frame:NSRect(x:0,y:0,width:600,height:700),configuration:config)
         super.init()
         config.userContentController.add(MessageRelay(self),name:"acdian")
+        NotificationCenter.default.addObserver(forName:Notification.Name("acdianFindInPage"),object:nil,queue:.main) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, note.userInfo?["split"] as? Bool == true else { return }
+                self.view.window?.makeFirstResponder(self.view)
+                self.view.evaluateJavaScript("window.acdianFind&&window.acdianFind(\((note.userInfo?["replace"] as? Bool) == true))",completionHandler:nil)
+            }
+        }
         view.setValue(false,forKey:"drawsBackground")
         view.navigationDelegate = self
         view.isInspectable = false
@@ -187,6 +194,7 @@ struct SplitMarkdownEditor: NSViewRepresentable {
         guard message.frameInfo.isMainFrame, let value = message.body as? [String:Any], let type = value["type"] as? String else { return }
         if type == "ready" { ready = true; installed = nil; render(); return }
         if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
+        if model?.answerEditorRequest(value,reply:{ [weak self] script in self?.view.evaluateJavaScript(script,completionHandler:nil) }) == true { return }
         // The document ID alone names the page: it survives the page being renamed.
         guard let model, let id = installed, id == model.splitDocumentID, value["documentID"] as? String == id.uuidString else { return }
         if type == "change", var text = value["text"] as? String {

@@ -1150,6 +1150,45 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             if fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5).prefix(while: {$0.isNumber})) { pdfPage = max(1,n) }
         }
     }
+    /// ⌘F finds in the open page, ⌥⌘F also replaces; the editor in front (main or split) opens its find bar.
+    func findInPage(replace: Bool) {
+        NotificationCenter.default.post(name:Notification.Name("acdianFindInPage"),object:nil,userInfo:["replace":replace,"split":splitFocused && splitEntry != nil])
+    }
+    /// Answers the editor's requests that need the app: the pages a [[ link can
+    /// name, and the title of a web page pasted as a link. The reply is a script
+    /// for the editor; returns false for any other message.
+    func answerEditorRequest(_ value: [String:Any], reply: @escaping (String) -> Void) -> Bool {
+        guard let type = value["type"] as? String, ["listPages","fetchTitle"].contains(type), let id = value["request"] as? Int else { return false }
+        func send(_ result: Any) {
+            guard let data = try? JSONSerialization.data(withJSONObject:["id":id,"result":result]), let json = String(data:data,encoding:.utf8) else { return }
+            reply("window.acdianReply&&window.acdianReply(\(json));")
+        }
+        if type == "listPages" { send(index?.files.filter { $0.ext == "md" }.map { String($0.relativePath.dropLast(3)) } ?? []); return true }
+        let raw = value["url"] as? String ?? ""
+        Task { @MainActor in send(await Self.webTitle(raw) ?? NSNull()) }
+        return true
+    }
+    /// A web page's title, from og:title or <title>, for showing a pasted link by name.
+    nonisolated static func webTitle(_ raw: String) async -> String? {
+        guard let url = URL(string:raw), ["http","https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
+        var request = URLRequest(url:url,timeoutInterval:6)
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",forHTTPHeaderField:"User-Agent")
+        guard let (data,response) = try? await URLSession.shared.data(for:request), let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              (http.mimeType ?? "text/html").contains("html") else { return nil }
+        let head = Data(data.prefix(400_000))
+        let ascii = String(decoding:head,as:UTF8.self).lowercased()
+        let gbk = ascii.contains("charset=gb") || (http.textEncodingName?.lowercased().hasPrefix("gb") ?? false)
+        let html = gbk ? String(data:head,encoding:String.Encoding(rawValue:CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))) ?? "" : String(decoding:head,as:UTF8.self)
+        func first(_ pattern: String) -> String? {
+            guard let regex = try? NSRegularExpression(pattern:pattern,options:[.caseInsensitive,.dotMatchesLineSeparators]),
+                  let match = regex.firstMatch(in:html,range:NSRange(html.startIndex...,in:html)), let range = Range(match.range(at:1),in:html) else { return nil }
+            return String(html[range])
+        }
+        guard var title = first(#"<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']"#) ?? first(#"<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']"#) ?? first(#"<title[^>]*>(.*?)</title>"#) else { return nil }
+        for (entity,text) in [("&amp;","&"),("&lt;","<"),("&gt;",">"),("&quot;","\""),("&#39;","'"),("&#x27;","'"),("&nbsp;"," ")] { title = title.replacingOccurrences(of:entity,with:text) }
+        title = title.split(whereSeparator:\.isWhitespace).joined(separator:" ")
+        return title.isEmpty ? nil : String(title.prefix(200))
+    }
     func external(_ raw: String) {
         guard let url = URL(string:raw), ["https","http","mailto"].contains(url.scheme?.lowercased() ?? "") else { return }
         services.open(url)

@@ -1,6 +1,7 @@
 import { StateEffect, StateField, Prec, Facet } from '@codemirror/state';
 import { EditorView, keymap, showTooltip } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
+import { setBlock } from './format-toolbar.js';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { editorLanguage, uiMessages } from './ui-language.js';
 
@@ -13,6 +14,7 @@ const commands = [
   {id:'number',label:'Numbered List',description:'有序列表',icon:'1 ≡',insert:'1. ',aliases:'numbered number ordered list 有序列表 编号'},
   {id:'code',label:'Code Block',description:'代码块',icon:'{ }',insert:'```\n\n```',caret:4,aliases:'code block fenced 代码块'},
   {id:'callout',label:'Callout',description:'提示块',icon:'▣',insert:'> [!idea|💡] ',aliases:'callout note info 提示块 提示 高亮块'},
+  {id:'toggle',label:'Toggle',description:'折叠块',icon:'▸',insert:'> [!toggle] \n> ',caret:12,special:true,aliases:'toggle fold collapse details 折叠 折叠块 折叠列表 展开'},
   {id:'table',label:'Table',description:'表格',icon:'▦',table:true,aliases:'table grid sheet 表格 表 网格'},
   {id:'divider',label:'Divider',description:'分割线',icon:'—',divider:true,aliases:'divider separator rule line hr 分割线 分隔线 横线 水平线'},
   // Asks the app to pick an image, which it copies into Attachments and embeds here.
@@ -20,13 +22,13 @@ const commands = [
 ];
 // The blocks a line can be turned into; commands that hand off to the app are not blocks.
 export const newCallout='> [!idea|💡] ';
-export const blockCommands = commands.filter(command=>!command.action&&!command.table&&!command.divider);
+export const blockCommands = commands.filter(command=>!command.action&&!command.table&&!command.divider&&!command.special);
 // What commands that hand off to the app do, such as picking an image.
 const slashActions = Facet.define({combine:values=>Object.assign({},...values)});
 const selectCommand = StateEffect.define();
 const closeMenu = StateEffect.define();
 const composing = StateEffect.define();
-const spanishAliases={text:'texto párrafo parrafo',h1:'título 1 titulo 1 encabezado 1',h2:'título 2 titulo 2 encabezado 2',h3:'título 3 titulo 3 encabezado 3',h4:'título 4 titulo 4 encabezado 4',quote:'cita',todo:'tareas pendiente casilla',bullet:'lista con viñetas vinetas',number:'lista numerada',code:'bloque de código codigo',callout:'aviso nota consejo',table:'tabla cuadrícula',divider:'separador línea',image:'imagen foto'};
+const spanishAliases={text:'texto párrafo parrafo',h1:'título 1 titulo 1 encabezado 1',h2:'título 2 titulo 2 encabezado 2',h3:'título 3 titulo 3 encabezado 3',h4:'título 4 titulo 4 encabezado 4',quote:'cita',todo:'tareas pendiente casilla',bullet:'lista con viñetas vinetas',number:'lista numerada',code:'bloque de código codigo',callout:'aviso nota consejo',table:'tabla cuadrícula',toggle:'plegable desplegable',divider:'separador línea',image:'imagen foto'};
 
 function context(state) {
   const selection = state.selection.main;
@@ -34,7 +36,10 @@ function context(state) {
   const line = state.doc.lineAt(selection.head);
   const before = line.text.slice(0,selection.head-line.from);
   // A slash starts a block command, while paths and slashes in prose stay literal.
-  const match = /^( {0,3})(?:(?:#{1,6}|>|[-+*]|\d+[.)]) (?:\[[ xX]\] )?)?\/([^/\n]*)$/.exec(before);
+  let match = /^( {0,3})(?:(?:#{1,6}|>|[-+*]|\d+[.)]) (?:\[[ xX]\] )?)?\/([^/\n]*)$/.exec(before);
+  // Inside a line, a slash typed after a space opens the menu too ("空格 /", as in Feishu).
+  let inline=false;
+  if(!match){const mid=/\S[ \u3000]\/([^\s/]*)$/.exec(before);if(mid){match=[mid[0],'',mid[1]];inline=true;}}
   if(!match || /^\s/.test(match[2])) return null;
   const tree = ensureSyntaxTree(state,selection.head,30) || syntaxTree(state);
   for(let node=tree.resolveInner(selection.head,-1);node;node=node.parent) {
@@ -51,7 +56,8 @@ function context(state) {
     const leads=command=>(command.label+' '+command.description+' '+command.aliases+' '+spanishAliases[command.id]).toLowerCase().split(/\s+/).some(term=>term.startsWith(words[0]));
     options.sort((a,b)=>Number(leads(b))-Number(leads(a)));
   }
-  return {from:line.from,to:selection.head,slash:line.from+before.indexOf('/'),indent:match[1],query,options};
+  if(inline&&!options.length) return null;
+  return {from:line.from,to:selection.head,slash:inline?selection.head-match[2].length-1:line.from+before.indexOf('/'),indent:match[1],query,options,inline};
 }
 
 const menuState = StateField.define({
@@ -119,9 +125,29 @@ function insertDivider(view,menu) {
   view.focus();return true;
 }
 
+// A command picked from a slash typed inside a line: the " /query" goes, then a
+// block kind turns the whole line into it, and anything else goes in below.
+function applyInline(view,menu,command,size) {
+  const {state}=view,space=/[ \u3000]/.test(state.doc.sliceString(menu.slash-1,menu.slash))?1:0;
+  view.dispatch({changes:{from:menu.slash-space,to:menu.to},selection:{anchor:menu.slash-space},effects:closeMenu.of(null),userEvent:'delete.slash-command'});
+  if(!command.table&&!command.divider&&!command.action&&!command.special){setBlock(command.id)(view);view.focus();return true;}
+  const line=view.state.doc.lineAt(view.state.selection.main.head);
+  if(command.table||command.divider) {
+    // One new line: the table or divider puts its own blank line above it.
+    view.dispatch({changes:{from:line.to,insert:'\n'},selection:{anchor:line.to+1},userEvent:'input.slash-command'});
+    const below={from:line.to+1,to:line.to+1,indent:'',open:true};
+    return command.table?insertTable(view,below,size?.rows||3,size?.columns||3):insertDivider(view,below);
+  }
+  if(command.action){view.dispatch({changes:{from:line.to,insert:'\n\n'},selection:{anchor:line.to+2},userEvent:'input.slash-command'});view.focus();view.state.facet(slashActions)[command.action]?.(view);return true;}
+  const insert='\n\n'+command.insert;
+  view.dispatch({changes:{from:line.to,insert},selection:{anchor:line.to+2+(command.caret??command.insert.length)},annotations:isolateHistory.of('full'),userEvent:'input.slash-command'});
+  view.focus();return true;
+}
+
 function applyCommand(view,id,size) {
   const menu=view.state.field(menuState),command=menu.options?.find(option=>option.id===id);
   if(!menu.open || !command || view.state.readOnly) return false;
+  if(menu.inline) return applyInline(view,menu,command,size);
   if(command.table) return insertTable(view,menu,size?.rows||3,size?.columns||3);
   if(command.divider) return insertDivider(view,menu);
   if(command.action) {

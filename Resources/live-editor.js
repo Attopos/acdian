@@ -12,7 +12,8 @@ import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from '
 import { comments, loadComments, commentsTest } from './comments.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter, tableWidthField, tableColumnResize, tableAddControls } from './rich-table.js';
 import { blockHandles, blockDragTest } from './block-drag.js';
-import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
+import { editorExtras, findInPage } from './editor-extras.js';
+import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges, imageCaption } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -192,9 +193,10 @@ function fragment(source,state,kind='') {
     if (url) {
       image.src = url; image.loading = 'lazy';
       // Text given with a picture is its caption.
-      const caption=image.alt&&!html?document.createElement('span'):null;
+      const caption=kind==='image'?imageCaption(image,state):image.alt&&!html?document.createElement('span'):null;
       if (kind==='image') frameImage(image,state);
-      if (caption) { caption.className='cm-image-caption'; caption.textContent=image.alt; (image.closest('.cm-image-frame')||image).after(caption); }
+      else if (caption) { caption.className='cm-image-caption'; caption.textContent=image.alt; }
+      if (caption) (image.closest('.cm-image-frame')||image).after(caption);
     }
     else image.replaceWith(document.createTextNode(image.alt));
   });
@@ -327,8 +329,8 @@ function htmlBlockEnd(doc,n) {
   }
   return 0;
 }
-const calloutGroups={idea:['idea'],info:['info','todo','abstract','summary','tldr'],tip:['tip','hint','important','success','check','done'],warning:['warning','caution','attention'],danger:['danger','error','bug','failure','fail','missing'],question:['question','help','faq'],quote:['quote','cite','example']};
-const calloutIcons={note:'📝',idea:'💡',info:'ℹ️',tip:'✅',warning:'⚠️',danger:'❗',question:'❓',quote:'💬'};
+const calloutGroups={toggle:['toggle'],idea:['idea'],info:['info','todo','abstract','summary','tldr'],tip:['tip','hint','important','success','check','done'],warning:['warning','caution','attention'],danger:['danger','error','bug','failure','fail','missing'],question:['question','help','faq'],quote:['quote','cite','example']};
+const calloutIcons={toggle:'',note:'📝',idea:'💡',info:'ℹ️',tip:'✅',warning:'⚠️',danger:'❗',question:'❓',quote:'💬'};
 const calloutGroup=kind=>Object.keys(calloutGroups).find(group=>calloutGroups[group].includes(kind.toLowerCase()))||'note';
 // The last line of the display formula that starts on line n, or 0 if none does.
 // The closing $$ may share a line with the formula, on either side, and formulas
@@ -972,7 +974,7 @@ function simpleListBackspace(view) {
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
   history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
-  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
+  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
   keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'ArrowUp',run:intoTitle},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
@@ -992,6 +994,7 @@ configureRichText({post,uiText,currentPath:()=>metadata.currentPath,headings:hea
 // The text fills what the title leaves of the window, so a short page does not scroll.
 new ResizeObserver(()=>document.documentElement.style.setProperty('--page-title-height',titleBlock.offsetHeight+'px')).observe(titleBlock);
 window.acdianEditor=view;
+window.acdianFind=replace=>findInPage(view,!!replace);
 document.addEventListener('contextmenu',event=>event.preventDefault());
 view.contentDOM.addEventListener('mousedown',()=>document.documentElement.classList.add('cm-mouse-selecting'));
 window.addEventListener('mouseup',()=>document.documentElement.classList.remove('cm-mouse-selecting'),true);

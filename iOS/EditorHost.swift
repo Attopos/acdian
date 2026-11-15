@@ -156,6 +156,7 @@ import UniformTypeIdentifiers
         if type == "focus" { focused = value["focused"] as? Bool ?? false; return }
         if type == "imageMenu", let target = value["target"] as? String { imageMenu = (target,documentPath); return }
         if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
+        if model?.answerEditorRequest(value,reply:{ [weak self] script in self?.view.evaluateJavaScript(script,completionHandler:nil) }) == true { return }
         guard isCurrent, let model, let documentID, value["documentID"] as? String == documentID.uuidString else { return }
         if role == .split {
             if type == "change", let text = value["text"] as? String { lastSent = text; model.splitEdited(text,documentID:documentID) }
