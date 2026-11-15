@@ -64,7 +64,8 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-live-strong { font-weight:700; color:var(--text-strong); }
 .cm-editor .cm-format-delimiter,.cm-editor .cm-live-bold-delimiter { font-size:0; line-height:0; }
 /* Hidden syntax with text on both sides takes no part in the line: even at no size it offers places to break, stranding the punctuation after it. At a line's start or end it stays, as the caret needs something to stand beside there. */
-.cm-editor .cm-hidden-syntax { position:absolute; }
+/* Its box is full height but no width: CodeMirror maps clicks by these boxes, and a zero-height box at the top of the line pulled clicks on the word before it onto the hidden syntax. */
+.cm-editor .cm-hidden-syntax { position:absolute; width:0; height:calc(var(--editor-font-size) * var(--heading-scale,1) * 1.8); }
 .cm-editor .cm-caret-anchor { font-size:calc(var(--editor-font-size) * var(--heading-scale,1)); line-height:normal; color:transparent; }
 .cm-editor .cm-whole-word { white-space:nowrap; }
 .cm-editor .cm-live-em { font-style:italic; color:var(--em-text); }

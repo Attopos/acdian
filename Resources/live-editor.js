@@ -883,6 +883,21 @@ const formatSelectionFilter=EditorState.transactionFilter.of(tr=>{
   const pos=tr.newSelection.main.head,end=visiblePrefixEnd(tr.state,pos);
   return end!==null&&pos<end?[tr,{selection:EditorSelection.cursor(end),sequential:true}]:tr;
 });
+// Hidden syntax has no height, so a caret drawn against it shrinks to nothing at the top of the line. At a formatting boundary the caret leans on the visible text instead.
+const boundaryCaretFilter=EditorState.transactionFilter.of(tr=>{
+  if(tr.docChanged||!tr.selection||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
+  const range=tr.newSelection.main,pos=range.head,line=tr.state.doc.lineAt(pos);let ends=false,starts=false;
+  tr.state.field(boldDelimiterField).between(Math.max(0,pos-1),Math.min(tr.state.doc.length,pos+1),(from,to)=>{if(to===pos)ends=true;if(from===pos)starts=true;});
+  const assoc=ends&&!starts&&pos<line.to?1:starts&&!ends&&pos>line.from?-1:0;
+  return assoc&&assoc!==range.assoc?[tr,{selection:EditorSelection.cursor(pos,assoc,range.bidiLevel??undefined,range.goalColumn),sequential:true}]:tr;
+});
+// A click left of a list item's text, on its indent or bullet, puts the caret at the start of the text, as in Notion.
+const listClickFilter=EditorState.transactionFilter.of(tr=>{
+  if(!tr.isUserEvent('select.pointer')||tr.docChanged||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
+  const pos=tr.newSelection.main.head;if(inCode(tr.state,pos))return tr;
+  const line=tr.state.doc.lineAt(pos),marker=/^\s*[-+*]\s+\[[ xX]\]\s*|^\s*(?:[-+*]|\d+[.)])\s+/.exec(line.text);
+  return marker&&pos<line.from+marker[0].length?[tr,{selection:EditorSelection.cursor(line.from+marker[0].length,1),sequential:true}]:tr;
+});
 function beforeBlockPrefix(view) {
   const range=view.state.selection.main;
   if(!range.empty)return false;
@@ -989,7 +1004,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,boundaryCaretFilter,listClickFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
