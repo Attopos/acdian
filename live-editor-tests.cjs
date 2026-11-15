@@ -442,3 +442,38 @@ test('dragging a row or column handle moves that row or column',()=>{
  assert.equal(r.w.document.querySelector('.cm-table-menu').hidden,true,'a drag does not open the menu');
  r.w.acdianUndo();r.w.acdianUndo();r.w.acdianUndo();assert.equal(r.get().text,source);r.close();
 });
+test('blocks are top-level paragraphs, headings, code, quotes, dividers, tables and list items',()=>{
+ const source='---\ntags: [x]\n---\n# Title\n\nPara one\nsecond line\n\n- a\n  - nested\n- b\n\n```js\ncode\n```\n\n> quote\n\n--- \n\n| A |\n| --- |\n| 1 |\n',r=setup(source);
+ const blocks=JSON.parse(JSON.stringify(r.w.acdianLiveEditorTest.blocks.blocksOf(r.view.state).map(block=>[block.kind,r.view.state.sliceDoc(block.from,block.to)])));
+ assert.deepEqual(blocks,[['ATXHeading1','# Title'],['Paragraph','Para one\nsecond line'],['ListItem','- a\n  - nested'],['ListItem','- b'],['FencedCode','```js\ncode\n```'],['Blockquote','> quote'],['HorizontalRule','--- '],['Table','| A |\n| --- |\n| 1 |']]);r.close();
+});
+test('moving a block keeps blank lines between blocks and single lines between list items',()=>{
+ const source='# Title\n\nPara one\n\n- a\n- b\n\nPara two\n',r=setup(source);
+ const move=(from,to)=>r.w.acdianLiveEditorTest.blocks.moveBlock(r.view,from,to);
+ assert.equal(move(4,0),true);assert.equal(r.get().text,'Para two\n\n# Title\n\nPara one\n\n- a\n- b\n');
+ assert.equal(r.view.state.selection.main.head,0);
+ r.w.acdianUndo();assert.equal(r.get().text,source);
+ move(3,2);assert.equal(r.get().text,'# Title\n\nPara one\n\n- b\n- a\n\nPara two\n','list items stay one per line');
+ r.w.acdianUndo();
+ move(1,3);assert.equal(r.get().text,'# Title\n\n- a\n\nPara one\n\n- b\n\nPara two\n','a paragraph dropped inside a list gets blank lines, so it does not join an item');
+ r.w.acdianUndo();
+ move(0,5);assert.equal(r.get().text,'Para one\n\n- a\n- b\n\nPara two\n\n# Title\n','a block can go to the end');
+ r.w.acdianUndo();
+ assert.equal(move(1,1),false);assert.equal(move(1,2),false);assert.equal(r.get().text,source,'dropping a block where it already is changes nothing');r.close();
+});
+test('the block handle opens a menu that turns a block into another kind or deletes it',()=>{
+ const r=setup('# Title\n\nPara one\n\nPara two\n');r.view.focus();
+ const line=r.w.document.querySelectorAll('.cm-content > .cm-line')[2];
+ const box=line.getBoundingClientRect();
+ r.view.scrollDOM.dispatchEvent(new r.w.MouseEvent('mousemove',{bubbles:true,clientX:box.left+5,clientY:box.top+2}));
+ const handle=r.w.document.querySelector('.cm-block-handle');
+ if(handle.hidden){r.close();return;}
+ handle.click();
+ const menu=r.w.document.querySelector('.cm-block-menu');assert.equal(menu.hidden,false);
+ menu.querySelectorAll('.cm-block-menu-type')[2].click();
+ assert.match(r.get().text,/## /,'the hovered block became a level-2 heading');r.close();
+});
+test('deleting or moving a block keeps the wider gap beside it',()=>{
+ const r=setup('- a\n- b\n\nPara\n');
+ r.w.acdianLiveEditorTest.blocks.moveBlock(r.view,1,0);assert.equal(r.get().text,'- b\n- a\n\nPara\n');r.close();
+});

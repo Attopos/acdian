@@ -11,6 +11,7 @@ import { markdownInput } from './markdown-input.js';
 import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from './ui-language.js';
 import { comments, loadComments, commentsTest } from './comments.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter, tableWidthField, tableColumnResize, tableAddControls } from './rich-table.js';
+import { blockHandles, blockDragTest } from './block-drag.js';
 import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
@@ -970,7 +971,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
@@ -1162,5 +1163,5 @@ function followHeading(){
   reportHeading(index);
 }
 view.scrollDOM.addEventListener('scroll',()=>{if(!headingFrame)headingFrame=requestAnimationFrame(followHeading);},{passive:true});
-window.acdianLiveEditorTest={wordRanges,simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString(),keptTabs:()=>[...sessions.keys()],comments:commentsTest};
+window.acdianLiveEditorTest={wordRanges,simpleListEnter,simpleListBackspace,canonical,rawOffset,treeString:()=>syntaxTree(view.state).toString(),keptTabs:()=>[...sessions.keys()],comments:commentsTest,blocks:blockDragTest};
 post({type:'ready'});

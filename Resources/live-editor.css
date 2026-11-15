@@ -147,6 +147,20 @@ body.cm-table-col-resize .cm-content, body.cm-table-col-resize .cm-content * { c
 .cm-table-add:hover { opacity:1; background:var(--pressed-bg); color:var(--pressed-text); }
 .cm-table-add[hidden] { display:none; }
 .cm-table-add-row { height:16px; }
+.cm-block-handle { position:absolute; z-index:5; display:flex; align-items:center; justify-content:center; box-sizing:border-box; width:18px; margin:0; padding:0; border:0; border-radius:4px; background:transparent; color:var(--subtle); opacity:.75; cursor:grab; }
+.cm-block-handle:hover { opacity:1; background:var(--hover-bg); color:var(--text); }
+.cm-block-handle svg { width:9px; height:15px; fill:currentColor; }
+.cm-block-handle[hidden],.cm-block-drop[hidden],.cm-block-menu[hidden] { display:none; }
+.cm-block-drop { position:absolute; z-index:6; height:2px; border-radius:1px; background:var(--pink); pointer-events:none; }
+.cm-block-menu { position:absolute; z-index:260; width:236px; padding:4px; border:1px solid var(--menu-border); border-radius:9px; background:var(--menu-bg); box-shadow:0 12px 36px var(--menu-shadow); font:13px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; }
+.cm-block-menu-types { display:grid; grid-template-columns:repeat(5,1fr); gap:2px; padding:2px 2px 6px; margin-bottom:4px; border-bottom:1px solid var(--line-faint); }
+.cm-block-menu-type { height:30px; margin:0; padding:0; border:0; border-radius:5px; background:transparent; color:var(--pink); font:600 13px/1 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; cursor:pointer; white-space:nowrap; }
+.cm-block-menu-type:hover { background:var(--hover-bg); }
+.cm-block-menu-type[aria-checked="true"] { background:var(--pressed-bg); }
+.cm-block-menu-item { display:block; width:100%; margin:0; padding:7px 10px; border:0; border-radius:5px; background:transparent; color:var(--menu-text); text-align:left; font:inherit; cursor:pointer; }
+.cm-block-menu-item:hover { background:var(--hover-bg); }
+.cm-block-menu-danger { color:#e0524d; }
+body.cm-block-dragging,body.cm-block-dragging * { cursor:grabbing !important; user-select:none; -webkit-user-select:none; }
 .cm-table-drop { position:absolute; z-index:6; border-radius:1px; background:var(--pink); pointer-events:none; }
 .cm-table-drop[hidden] { display:none; }
 .cm-table-handle { position:absolute; z-index:5; box-sizing:border-box; margin:0; padding:0; border:0; border-radius:4px; background:transparent; cursor:grab; }
