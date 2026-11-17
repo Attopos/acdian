@@ -252,6 +252,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     @Published private(set) var anchorRequest = 0
     /// The outline entry for the part of the page being read: -1 is the page title.
     @Published var activeHeading = -1
+    @Published var commentTextLeft: CGFloat?
     @Published var pdfPage = 1 {
         didSet { if selected?.ext == "pdf", let tab = activeTabID { tabMemory[tab,default:TabMemory()].pdfPage = pdfPage } }
     }

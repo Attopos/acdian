@@ -147,7 +147,7 @@ struct ContentView: View {
                                 LiveMarkdownEditor(model:model,centerShift:layout.shift,leftEdge:layout.edge).frame(maxWidth:.infinity,maxHeight:.infinity)
                             }
                             if model.showOutline {
-                                OutlineRail(model:model,title:title,textLeft:Self.pageLeft(width,shift:layout.shift) + Self.pageSide(width),top:width > 700 ? 49 : 30,height:geometry.size.height)
+                                OutlineRail(model:model,title:title,textLeft:model.commentTextLeft ?? Self.pageLeft(width,shift:layout.shift) + Self.pageSide(width),top:width > 700 ? 49 : 30,height:geometry.size.height)
                             }
                         }
                     }

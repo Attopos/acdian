@@ -203,6 +203,7 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         guard message.frameInfo.isMainFrame, let value = message.body as? [String:Any], let type = value["type"] as? String else { return }
         if type == "ready" { ready = true; applyCenterShift(); render(); return }
         // Comments name their page by path and may arrive after it was left.
+        if type == "textLeft" { model?.commentTextLeft = (value["left"] as? Double).map { CGFloat($0) }; return }
         if type == "comments" { model?.storeComments(value["data"] as? String,page:value["currentPath"] as? String); return }
         if model?.answerEditorRequest(value,reply:{ [weak self] script in self?.view.evaluateJavaScript(script,completionHandler:nil) }) == true { return }
         guard isCurrent, let model, let documentID, value["documentID"] as? String == documentID.uuidString else { return }

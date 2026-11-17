@@ -270,6 +270,7 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     this.resize.disconnect();window.removeEventListener('acdian-relayout',this.relayout);this.dom.remove();
     this.view.scrollDOM.classList.remove('cm-comments-wide','cm-comments-narrow');
     for(const name of ['--comment-left','--column'])document.documentElement.style.removeProperty(name);
+    if(this.layoutKey)config.post({type:'textLeft',left:null});
   }
   setCollapsed(collapsed) {
     this.collapsed=collapsed;
@@ -462,6 +463,7 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
       this.layoutKey=m.key;const root=document.documentElement.style,[left,column]=m.key.split('|');
       if(m.key){root.setProperty('--comment-left',left+'px');root.setProperty('--column',column+'px');}
       else for(const name of ['--comment-left','--column'])root.removeProperty(name);
+      config.post({type:'textLeft',left:m.key?+left+(parseFloat(getComputedStyle(this.view.contentDOM).paddingLeft)||0):null});
       this.mode=mode;requestAnimationFrame(()=>this.schedule());return;
     }
     classes.toggle('cm-comments-wide',mode==='wide');classes.toggle('cm-comments-narrow',mode==='narrow');

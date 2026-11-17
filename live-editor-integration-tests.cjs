@@ -1536,6 +1536,23 @@ test('a disk refresh is dropped when the page was typed in after it was sent', a
   assert.equal((await get()).text, '# Fixture\n\nOne. Two\n');
 });
 
+test('when comments push the text left, the page tells the app where the text now starts, so the outline follows', async t => {
+  const text = '第一段文字，有一条评论。\n\n' + '填充段落。\n\n'.repeat(4);
+  const at = text.indexOf('一条评论');
+  const comments = JSON.stringify({ version: 1, threads: [{ id: 'a', from: at, to: at + 4, quote: '一条评论', created: 1, replies: [{ id: 'r1', text: '原因', created: 1 }] }] });
+  const { page } = await editor(t, text, { documentID: 'doc', tabID: 'tab', pageTitle: '评论', comments, language: 'zh-Hans' });
+  await page.setViewportSize({ width: 1180, height: 760 });
+  await page.waitForFunction(() => document.querySelector('.cm-scroller').classList.contains('cm-comments-wide'));
+  await page.waitForTimeout(250);
+  const result = await page.evaluate(() => {
+    const content = document.querySelector('.cm-content'), box = content.getBoundingClientRect();
+    const posted = window.__acdianMessages.filter(m => m.type === 'textLeft').at(-1);
+    return { posted: posted?.left, text: box.left + parseFloat(getComputedStyle(content).paddingLeft) };
+  });
+  assert.ok(result.posted != null, 'the moved text edge is reported');
+  assert.ok(Math.abs(result.posted - result.text) < 1.5, `reported ${result.posted}, text starts at ${result.text}`);
+});
+
 test('comment cards sit beside their text in a wide window and float below it in a narrow one', async t => {
   const text = '第一段文字，对应日期写入失败，应补预建和检查重试链路。\n\n' + '填充段落。\n\n'.repeat(6) + '第二段，也有一条评论。\n';
   const at = text.indexOf('日期写入失败'), second = text.indexOf('一条评论');
