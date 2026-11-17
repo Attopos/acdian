@@ -62,7 +62,8 @@ struct ContentView: View {
         HStack(spacing:0) {
             if model.showSidebar {
                 SidebarView().frame(width:model.sidebarWidth)
-                    .overlay(alignment:.trailing) { SidebarResizer().offset(x:4) }
+                    .overlay(alignment:.trailing) { SidebarResizer().frame(width:8).frame(maxHeight:.infinity).offset(x:4) }
+                    .zIndex(1)
                 Rectangle().fill(Color.faint).frame(width:1)
             }
             VStack(spacing:0) {
@@ -313,22 +314,35 @@ struct NewTabButton: View {
 }
 
 /// The sidebar's right edge. Dragging it sets the sidebar's width; a double
-/// click puts the width back to where it started.
-struct SidebarResizer: View {
+/// click puts the width back to where it started. It is an AppKit view: the
+/// window moves by its background, which took drags on a SwiftUI handle.
+struct SidebarResizer: NSViewRepresentable {
     @EnvironmentObject var model: AppModel
-    @State private var start: Double?
-    var body: some View {
-        Color.clear.frame(width:8).frame(maxHeight:.infinity).contentShape(Rectangle())
-            .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
-            .gesture(DragGesture(minimumDistance:1,coordinateSpace:.global)
-                .onChanged { drag in
-                    let origin = start ?? model.sidebarWidth; start = origin
-                    model.sidebarWidth = min(max((origin + drag.translation.width).rounded(),AppModel.sidebarWidths.lowerBound),AppModel.sidebarWidths.upperBound)
-                }
-                .onEnded { _ in start = nil; model.storeSidebarWidth() })
-            .simultaneousGesture(TapGesture(count:2).onEnded { model.sidebarWidth = AppModel.defaultSidebarWidth; model.storeSidebarWidth() })
-            .accessibilityLabel(model.localized("调整侧栏宽度"))
+    func makeNSView(context: Context) -> SidebarResizeHandle {
+        let view = SidebarResizeHandle(); view.model = model
+        view.setAccessibilityLabel(model.localized("调整侧栏宽度")); view.setAccessibilityRole(.splitter)
+        return view
     }
+    func updateNSView(_ view: SidebarResizeHandle, context: Context) { view.model = model }
+}
+final class SidebarResizeHandle: NSView {
+    weak var model: AppModel?
+    private var startX: CGFloat = 0
+    private var startWidth: Double = 0
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func resetCursorRects() { addCursorRect(bounds,cursor:.resizeLeftRight) }
+    override func mouseDown(with event: NSEvent) {
+        guard let model else { return }
+        if event.clickCount == 2 { model.sidebarWidth = AppModel.defaultSidebarWidth; model.storeSidebarWidth(); return }
+        startX = event.locationInWindow.x; startWidth = model.sidebarWidth
+    }
+    override func mouseDragged(with event: NSEvent) {
+        guard let model else { return }
+        let width = (startWidth + Double(event.locationInWindow.x - startX)).rounded()
+        model.sidebarWidth = min(max(width,AppModel.sidebarWidths.lowerBound),AppModel.sidebarWidths.upperBound)
+    }
+    override func mouseUp(with event: NSEvent) { model?.storeSidebarWidth() }
 }
 struct SidebarToggle: View {
     @EnvironmentObject var model: AppModel
