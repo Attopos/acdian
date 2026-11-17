@@ -1345,11 +1345,32 @@ test('extra blank lines between list items stay visible after the caret leaves',
   assert.equal(await r.page.locator('.cm-kept-blank-line').count(),0);
 });
 
-test('blank lines before the first and after the last text stay hidden', async t => {
+test('blank lines before the first text stay hidden; after the last text only the final line does', async t => {
   const source = '\n\nFirst\n\nLast\n\n\n';
   const r = await editor(t,source,{fontSize:16});
   await r.position(source.indexOf('First'));
-  assert.equal(await r.page.locator('.cm-kept-blank-line').count(),0);
+  assert.equal(await r.page.locator('.cm-kept-blank-line').count(),2);
+});
+
+test('an empty line typed between two lines of text stays when the caret leaves it', async t => {
+  const source = 'A\nB\n';
+  const r = await editor(t,source,{fontSize:16});
+  await r.position(1);
+  await r.page.keyboard.press('Enter');
+  await r.page.keyboard.press('ArrowDown');
+  assert.equal((await r.get()).text,'A\n\n\nB\n');
+  assert.equal(await r.page.locator('.cm-kept-blank-line').count(),1);
+});
+
+test('--- typed on an empty line under a paragraph becomes a divider, not a heading', async t => {
+  const source = 'A\n';
+  const r = await editor(t,source,{fontSize:16});
+  await r.position(1);
+  await r.page.keyboard.press('Enter');
+  for (const key of ['-','-','-']) await r.page.keyboard.press(key);
+  assert.equal((await r.get()).text,'A\n\n---\n');
+  assert.equal(await r.page.locator('.cm-heading').count(),0);
+  assert.equal(await r.page.locator('.cm-divider-line').count(),1);
 });
 
 async function visibleLines(page) {

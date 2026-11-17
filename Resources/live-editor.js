@@ -468,12 +468,12 @@ function editableBlank(state,line) {
 // Markdown needs one blank line between blocks, and that separator stays
 // hidden. Every further blank line in a run is an empty line the writer left
 // on purpose, so it keeps the height of a line: in a run, all but the last
-// show. Runs before the first or after the last text stay hidden.
+// show. Runs before the first text stay hidden; after the last text the
+// file's final empty line stays hidden too.
 function keptBlank(state,line) {
   const doc=state.doc;
   if(line.text.trim()||line.number>=doc.lines||doc.line(line.number+1).text.trim())return false;
   let next=line.number+1;while(next<=doc.lines&&!doc.line(next).text.trim())next++;
-  if(next>doc.lines)return false;
   let prev=line.number-1;while(prev>=1&&!doc.line(prev).text.trim())prev--;
   return prev>=1;
 }
@@ -482,9 +482,11 @@ function keptBlank(state,line) {
 // list item, quote or table right above would take the text in as its own.
 // Either way one more newline above keeps what the writer saw: the empty
 // line stays, and the new text starts its own paragraph.
-function needsSeparatorAbove(state,number) {
+function needsSeparatorAbove(state,number,typed='') {
   if(number<=1)return false;
   const above=state.doc.line(number-1);
+  // A - or = typed right under a paragraph would turn it into a heading (Setext), so "---" gets its own block and becomes a divider.
+  if(above.text.trim()&&/^ {0,3}[-=]/.test(typed)&&!/^\s*(?:#|>|\||```|~~~)/.test(above.text)&&!literalCodeLine(state,above))return true;
   if(above.text.trim())return /^\s*(?:[-+*]\s|\d+[.)]\s|>|\|)/.test(above.text)&&!literalCodeLine(state,above);
   let n=number-1;while(n>=1&&!state.doc.line(n).text.trim())n--;
   return n>=1&&!literalCodeLine(state,state.doc.line(n));
@@ -493,11 +495,11 @@ function needsSeparatorAbove(state,number) {
 // the transaction must type text into a line that was blank.
 function typedIntoBlank(tr) {
   if(!tr.docChanged||tr.startState.selection.ranges.length!==1)return null;
-  let found=null,count=0;
-  tr.changes.iterChanges((fromA,toA,_fromB,_toB,inserted)=>{count++;if(fromA===toA&&inserted.length&&inserted.line(1).text.trim())found=fromA;});
+  let found=null,count=0,typed='';
+  tr.changes.iterChanges((fromA,toA,_fromB,_toB,inserted)=>{count++;if(fromA===toA&&inserted.length&&inserted.line(1).text.trim()){found=fromA;typed=inserted.line(1).text;}});
   if(count!==1||found===null)return null;
   const line=tr.startState.doc.lineAt(found);
-  if(line.text.trim()||literalCodeLine(tr.startState,line)||!needsSeparatorAbove(tr.startState,line.number))return null;
+  if(line.text.trim()||literalCodeLine(tr.startState,line)||!needsSeparatorAbove(tr.startState,line.number,typed))return null;
   // A table row typed right under a table row continues the table.
   if(/^\s*\|/.test(tr.newDoc.lineAt(tr.changes.mapPos(line.from,1)).text)&&/^\s*\|/.test(tr.startState.doc.line(line.number-1).text))return null;
   return tr.changes.mapPos(line.from,-1);
@@ -531,7 +533,7 @@ const blankTypingComposition=ViewPlugin.fromClass(class {
     this.pending=null;
     if(pos>view.state.doc.length)return;
     const line=view.state.doc.lineAt(pos);
-    if(line.from!==pos||!line.text.trim()||!needsSeparatorAbove(view.state,line.number))return;
+    if(line.from!==pos||!line.text.trim()||!needsSeparatorAbove(view.state,line.number,line.text))return;
     view.dispatch({changes:separatorChanges(view.state.doc,pos),userEvent:'input.type'});
   }
 },{eventHandlers:{compositionend(){setTimeout(()=>this.flush(),0);}}});
@@ -549,6 +551,17 @@ function hiddenSourceLine(state,line) {
   });
   return hidden;
 }
+// An empty line typed between two lines of text would become Markdown's hidden
+// separator once the caret leaves it, and vanish. One more newline keeps it.
+const leftBlankFilter=EditorState.transactionFilter.of(tr=>{
+  if(tr.docChanged||!tr.selection)return tr;
+  const start=tr.startState,from=start.field(inputBlankField);if(from===null)return tr;
+  const line=start.doc.lineAt(from),head=tr.newSelection.main.head;
+  if(line.from!==from||line.text.trim()||(head>=line.from&&head<=line.to)||line.number<=1||line.number>=start.doc.lines)return tr;
+  const above=start.doc.line(line.number-1),below=start.doc.line(line.number+1);
+  if(!above.text.trim()||!below.text.trim()||literalCodeLine(start,above)||literalCodeLine(start,below))return tr;
+  return [tr,{changes:{from:line.from,insert:line.text.includes('\r')||above.text.endsWith('\r')?'\r\n':'\n'},sequential:true}];
+});
 const blankSelectionFilter=EditorState.transactionFilter.of(tr=>{
   if(tr.docChanged||!tr.selection||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
   const state=tr.state,range=tr.newSelection.main,line=state.doc.lineAt(range.head);
@@ -1004,7 +1017,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,boundaryCaretFilter,listClickFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,boundaryCaretFilter,listClickFilter,leftBlankFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
