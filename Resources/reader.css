@@ -28,7 +28,7 @@
   --code-bg: #19191e;
   --code-block-text: #d3cdd8;
   --quote-text: #b6abbc;
-  --mark-bg: #d93b8670;
+  --mark-bg: #d93b8659;
   --mark-text: #fff0f6;
   --selected-bg: #d93b8645;
   --editor-selection: #d93b8635;
@@ -123,7 +123,7 @@ blockquote > :last-child { margin-bottom: 0; }
 /* Emphasis keeps the quote's own color. Strong enough to win over light.css. */
 :root :is(blockquote, .callout) :is(strong, em, del, mark) { color: inherit; }
 blockquote blockquote { margin-bottom: 5px; }
-mark { background: var(--mark-bg); color: var(--mark-text); border-radius: 3px; padding: 1px 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+mark { background: var(--mark-bg); color: inherit; border-radius: 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 code, kbd, pre, samp { font-family: var(--code-font); }
 :not(pre) > code { color: var(--code-text); font-size: .87em; background: var(--code-soft); border: 1px solid var(--code-soft); border-radius: 5px; padding: 2px 5px; word-break: break-word; }
 pre { margin: 24px 0; background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 13px; line-height: 1.75; tab-size: 4; }

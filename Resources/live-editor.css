@@ -71,7 +71,8 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-live-em { font-style:italic; color:var(--em-text); }
 .cm-editor .cm-live-strike { text-decoration:line-through; color:var(--strike); }
 .cm-editor .cm-live-code { font-family:"SFMono-Regular",Menlo,monospace; font-size:.87em; color:var(--code-text); background:var(--code-soft); border-radius:4px; padding:.1em .3em; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
-.cm-editor .cm-live-highlight { background:var(--mark-bg); color:var(--mark-text); border-radius:3px; padding:.05em .15em; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
+/* Like Notion and Obsidian, a highlight only tints behind the text: no padding to widen it, and the text keeps its own colour. */
+.cm-editor .cm-live-highlight { background:var(--mark-bg); color:inherit; border-radius:2px; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
 /* Wrapped lines of a list item start under its text. live-editor.js sets the
    hang from the item's indent and marker width. */
 .cm-editor .cm-list-line { padding-left:var(--cm-list-hang); text-indent:calc(var(--cm-list-hang) * -1); }
@@ -243,7 +244,7 @@ body.cm-block-dragging,body.cm-block-dragging * { cursor:grabbing !important; us
 .cm-editor .cm-html-b,.cm-editor .cm-html-strong { font-weight:700; }
 .cm-editor .cm-html-i,.cm-editor .cm-html-em { font-style:italic; }
 .cm-editor .cm-html-small { font-size:.85em; }
-.cm-editor .cm-html-mark { background:var(--mark-bg); color:var(--mark-text); border-radius:2px; }
+.cm-editor .cm-html-mark { background:var(--mark-bg); color:inherit; border-radius:2px; }
 .cm-editor .cm-html-sub { vertical-align:sub; font-size:.75em; }
 .cm-editor .cm-html-sup { vertical-align:super; font-size:.75em; }
 .cm-editor .cm-html-kbd { padding:1px 5px; border:1px solid var(--line-strong); border-bottom-width:2px; border-radius:4px; font-size:.85em; }
