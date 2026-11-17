@@ -199,7 +199,7 @@ struct TabStrip: View {
     var atWindowEdge = true
     @State private var hoveredID: UUID?
     static let height: CGFloat = 40
-    static let gap: CGFloat = 7
+    static let gap: CGFloat = 14
     var body: some View {
         GeometryReader { geometry in
             let leading: CGFloat = model.showSidebar || !atWindowEdge || model.fullScreen ? 8 : 76
