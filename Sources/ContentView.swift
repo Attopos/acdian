@@ -198,7 +198,7 @@ struct TabStrip: View {
     /// The strip starts at the window's left edge, under the window controls when the sidebar is hidden.
     var atWindowEdge = true
     @State private var hoveredID: UUID?
-    static let height: CGFloat = 46
+    static let height: CGFloat = 52
     static let gap: CGFloat = 14
     var body: some View {
         GeometryReader { geometry in
@@ -243,7 +243,7 @@ struct TabButton: View {
 /// One Chrome-style tab: an icon, the title and a round close button, on a
 /// shape with rounded top corners and outward flares at the bottom.
 struct ChromeTab: View {
-    static let height: CGFloat = 34
+    static let height: CGFloat = 40
     static let flare: CGFloat = 8
     static let overlap: CGFloat = flare * 2
     static let maxWidth: CGFloat = 256
