@@ -73,6 +73,7 @@ struct ContentView: View {
                 if model.selected != nil, !model.showingTrash, !model.showingMarket { pageColumns }
                 else {
                     TabStrip().frame(height:TabStrip.height)
+                    Color.canvas.frame(height:TabStrip.gap)
                     if model.showingTrash { TrashView(model:model) }
                     else if model.showingMarket { ComponentMarketView() }
                     else { HomeArea() }
@@ -124,8 +125,8 @@ struct ContentView: View {
     }
     @ViewBuilder private func pageColumn(_ split: VaultEntry?, main: Bool, atWindowEdge: Bool) -> some View {
         VStack(spacing:0) {
-            if main { TabStrip(atWindowEdge:atWindowEdge).frame(height:TabStrip.height); documentBody }
-            else if let split { SplitTabBar(entry:split,atWindowEdge:atWindowEdge).frame(height:TabStrip.height); SplitPane(entry:split) }
+            if main { TabStrip(atWindowEdge:atWindowEdge).frame(height:TabStrip.height); Color.canvas.frame(height:TabStrip.gap); documentBody }
+            else if let split { SplitTabBar(entry:split,atWindowEdge:atWindowEdge).frame(height:TabStrip.height); Color.canvas.frame(height:TabStrip.gap); SplitPane(entry:split) }
         }
         .frame(maxHeight:.infinity)
         .background(PaneClickWatcher { if model.splitFocused == main { model.splitFocused = !main } })
@@ -198,6 +199,7 @@ struct TabStrip: View {
     var atWindowEdge = true
     @State private var hoveredID: UUID?
     static let height: CGFloat = 40
+    static let gap: CGFloat = 7
     var body: some View {
         GeometryReader { geometry in
             let leading: CGFloat = model.showSidebar || !atWindowEdge || model.fullScreen ? 8 : 76
