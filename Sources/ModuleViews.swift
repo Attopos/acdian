@@ -26,6 +26,8 @@ enum ModuleStyle {
     }
     static let frost = Color.adaptive(dark:NSColor.white.withAlphaComponent(0.07),light:NSColor(red:0.93,green:0.92,blue:0.95,alpha:1))
     static let frostEdge = Color.adaptive(dark:NSColor.white.withAlphaComponent(0.10),light:NSColor.black.withAlphaComponent(0.07))
+    static let lit = Color.adaptive(dark:NSColor.white.withAlphaComponent(0.18),light:NSColor.white)
+    static let litEdge = Color.adaptive(dark:NSColor.white.withAlphaComponent(0.35),light:NSColor(red:0.85,green:0.23,blue:0.53,alpha:0.35))
     static let dark = Color.adaptive(dark:NSColor(red:0.20,green:0.20,blue:0.23,alpha:1),light:NSColor(red:0.16,green:0.16,blue:0.19,alpha:1))
     /// An SF Symbol that exists on this Mac, or a plain folder.
     static func symbol(_ name: String) -> String { NSImage(systemSymbolName:name,accessibilityDescription:nil) != nil ? name : "folder" }
@@ -71,7 +73,7 @@ struct LauncherView: View {
                     ForEach(present.filter { !$0.hidden || showHidden }) { module in
                         ModuleTile(module:module) { editing = .edit(module) }
                             .opacity(module.hidden ? 0.45 : 1)
-                            .onDrag { dragging = module.id; return NSItemProvider(object:module.id as NSString) }
+                            .onDrag { dragging = module.id; return NSItemProvider(object:(SidebarDrops.modulePrefix + module.id) as NSString) }
                             .onDrop(of:[.text],isTargeted:nil) { _ in
                                 if let dragging { model.moveModule(dragging,before:module.id) }
                                 dragging = nil; return true
@@ -196,73 +198,75 @@ struct ModuleEditor: View {
     }
 }
 
-/// The compact module switcher at the top of the sidebar.
-struct ModuleBar: View {
+/// The modules pinned at the top of the sidebar, like pinned sites in a browser:
+/// icon tiles without names, always there, the open module's tile lit up.
+/// Clicking the open module's tile again goes back to all modules.
+struct ModuleDock: View {
     @EnvironmentObject var model: AppModel
+    let edit: (ModuleEditorTarget) -> Void
+    @State private var dragging: String?
+    private let columns = [GridItem(.adaptive(minimum:62),spacing:8)]
     var body: some View {
-        if let module = model.activeModule {
-            HStack(spacing:8) {
-                Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(nil) } } label: {
-                    Image(systemName:"chevron.left").font(.system(size:11,weight:.semibold)).frame(width:20,height:22).contentShape(Rectangle())
-                }.buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("所有模块"))
-                ModuleTileIcon(icon:module.icon,color:module.color,size:22,active:true)
-                Text(module.name).font(.system(size:13,weight:.semibold)).lineLimit(1)
-                Spacer()
-                Button { model.goHome() } label: { Image(systemName:"square.grid.2x2").font(.system(size:12)).frame(width:22,height:22).contentShape(Rectangle()) }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).help(model.localized("所有模块"))
-            }.padding(.horizontal,14).padding(.bottom,12)
+        LazyVGrid(columns:columns,spacing:8) {
+            ForEach(model.presentModules.filter { !$0.hidden }) { module in
+                ModuleDockTile(module:module,edit:edit)
+                    .onDrag { dragging = module.id; return NSItemProvider(object:(SidebarDrops.modulePrefix + module.id) as NSString) }
+            }
+            Button { edit(.new) } label: {
+                RoundedRectangle(cornerRadius:11,style:.continuous).strokeBorder(Color.secondary.opacity(0.3),style:StrokeStyle(lineWidth:1,dash:[4,3]))
+                    .overlay { Image(systemName:"plus").font(.system(size:14,weight:.light)).foregroundStyle(.secondary) }
+                    .frame(height:46).contentShape(Rectangle())
+            }.buttonStyle(.plain).help(model.localized("新建模块")).accessibilityIdentifier("newModule")
         }
+        .environment(\.moduleDockDragging,$dragging)
     }
 }
 
-/// The sidebar's home: one row per module, opening it like an app.
-struct SidebarModuleList: View {
-    @EnvironmentObject var model: AppModel
-    let edit: (ModuleEditorTarget) -> Void
-    var body: some View {
-        LazyVStack(spacing:2) {
-            ForEach(model.presentModules.filter { !$0.hidden }) { module in SidebarModuleRow(module:module,edit:edit) }
-            Button { edit(.new) } label: {
-                HStack(spacing:10) {
-                    RoundedRectangle(cornerRadius:7,style:.continuous).strokeBorder(Color.secondary.opacity(0.35),style:StrokeStyle(lineWidth:1,dash:[3,3]))
-                        .overlay { Image(systemName:"plus").font(.system(size:11)) }.frame(width:34,height:26)
-                    Text(model.localized("新建模块")).font(.system(size:12)); Spacer()
-                }.foregroundStyle(.secondary).padding(.horizontal,8).padding(.vertical,6).contentShape(Rectangle())
-            }.buttonStyle(.plain)
-        }
-    }
+private struct ModuleDockDraggingKey: EnvironmentKey { static let defaultValue: Binding<String?> = .constant(nil) }
+extension EnvironmentValues {
+    var moduleDockDragging: Binding<String?> { get { self[ModuleDockDraggingKey.self] } set { self[ModuleDockDraggingKey.self] = newValue } }
 }
-struct SidebarModuleRow: View {
+
+struct ModuleDockTile: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.moduleDockDragging) private var dragging
     let module: PageModule
     let edit: (ModuleEditorTarget) -> Void
     @State private var hovering = false
     @State private var dropTargeted = false
     var body: some View {
-        Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(module.id) } } label: {
-            HStack(spacing:10) {
-                ModuleTileIcon(icon:module.icon,color:module.color,size:26,hovering:hovering)
-                Text(module.name).font(.system(size:13,weight:.medium)).lineLimit(1).foregroundStyle(.primary)
-                Spacer(minLength:6)
-                Image(systemName:"chevron.right").font(.system(size:9,weight:.semibold)).foregroundStyle(.tertiary)
+        let active = model.activeModuleID == module.id
+        Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(active ? nil : module.id) } } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius:11,style:.continuous).fill(active ? ModuleStyle.lit : dropTargeted ? Color.acPink.opacity(0.18) : hovering ? ModuleStyle.frost.opacity(0.75) : ModuleStyle.frost)
+                RoundedRectangle(cornerRadius:11,style:.continuous).strokeBorder(active ? ModuleStyle.litEdge : dropTargeted || hovering ? Color.acPink.opacity(0.45) : ModuleStyle.frostEdge,lineWidth:active ? 1.5 : 1)
+                Image(systemName:ModuleStyle.symbol(module.icon)).font(.system(size:18,weight:.medium)).foregroundStyle(ModuleStyle.glyph(module.color,active:false))
             }
-            .padding(.horizontal,8).padding(.vertical,6).contentShape(Rectangle())
-            .background(dropTargeted ? Color.acPink.opacity(0.15) : hovering ? Color.wash : .clear,in:RoundedRectangle(cornerRadius:8))
+            .frame(height:46).contentShape(Rectangle())
+            .shadow(color:Color.acPink.opacity(active ? 0.28 : 0),radius:7)
+            .shadow(color:.black.opacity(active ? 0.10 : 0),radius:2,y:1)
         }
-        .buttonStyle(.plain).help(module.folder)
+        .buttonStyle(.plain).help(module.name)
+        .accessibilityLabel(module.name)
         .onHover { hovering = $0 }
         .contextMenu {
             Button { model.enterModule(module.id) } label: { Label(model.localized("打开"),systemImage:"arrow.up.forward.app") }
             Button { edit(.edit(module)) } label: { Label(model.localized("编辑模块…"),systemImage:"slider.horizontal.3") }
             Button { model.setModuleHidden(module.id,true) } label: { Label(model.localized("隐藏"),systemImage:"eye.slash") }
+            Divider()
+            Button { NSWorkspace.shared.activateFileViewerSelecting([model.index!.root.appendingPathComponent(module.folder)]) } label: { Label(model.localized("在 Finder 中显示"),systemImage:"folder") }
             if module.kind == .pages {
-                Divider()
                 Button(role:.destructive) { model.confirmDeleteModule(module.id) } label: { Label(model.localized("删除模块…"),systemImage:"trash") }
             }
         }
-        // Dropping a page or folder on a module moves it into the module's
-        // folder; files from Finder are copied there.
+        // A module tile dragged onto another moves before it; a page or folder
+        // dropped on a tile moves into that module, and files from Finder are copied there.
         .onDrop(of:SidebarDrops.types,isTargeted:$dropTargeted) { providers in
+            if model.draggingPath == nil, let moving = dragging.wrappedValue {
+                dragging.wrappedValue = nil
+                if moving != module.id { withAnimation(.easeInOut(duration:0.15)) { model.moveModule(moving,before:module.id) } }
+                return true
+            }
             let target = PageDropTarget(folder:module.folder)
             return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }
         }
