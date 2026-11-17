@@ -20,6 +20,9 @@ import AppKit
                 Button(model.localized("显示或隐藏目录")) { model.showOutline.toggle() }.keyboardShortcut("l",modifiers:[.command,.shift])
                 Button(model.localized("刷新页面")) { model.refresh() }.keyboardShortcut("r")
                 Button(model.localized("所有页面")) { model.goHome() }.keyboardShortcut("a",modifiers:[.command,.shift])
+                Divider()
+                Button(model.localized("后退")) { model.goBack() }.keyboardShortcut("[").disabled(model.backHistory.isEmpty)
+                Button(model.localized("前进")) { model.goForward() }.keyboardShortcut("]").disabled(model.forwardHistory.isEmpty)
             }
             CommandGroup(replacing:.appInfo) { Button(model.localized("关于 ACdian")) { NSApp.orderFrontStandardAboutPanel(options:[.applicationName:"ACdian",.applicationVersion:(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "1.2.9"),.credits:NSAttributedString(string:model.localized("本地 Markdown 阅读器"))]) } }
         }

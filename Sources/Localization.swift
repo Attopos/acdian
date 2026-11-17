@@ -112,6 +112,8 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "未被引用的附件已移到垃圾桶": ("Unused attachments moved to Trash", "Adjuntos sin usar movidos a la papelera"),
         "页面": ("Pages", "Páginas"),
         "所有页面": ("All pages", "Todas las páginas"),
+        "后退": ("Back", "Atrás"),
+        "前进": ("Forward", "Adelante"),
         "新建页面": ("New page", "Nueva página"),
         "新建页面 ⌘N": ("New page ⌘N", "Nueva página ⌘N"),
         "保存页面": ("Save page", "Guardar página"),

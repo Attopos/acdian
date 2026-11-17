@@ -1021,7 +1021,7 @@ function extensions() {return [
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
-  keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'ArrowUp',run:intoTitle},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
+  keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'ArrowUp',run:intoTitle},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap.filter(binding=>binding.key!=='Mod-['&&binding.key!=='Mod-]'),...historyKeymap,indentWithTab]),
   EditorView.updateListener.of(update=>{
     if(applyingExternal)return;
     if(update.docChanged){for(const tr of update.transactions)if(tr.docChanged){applyRawChanges(tr);revision++;}lastSource=rawSource;const selection=update.state.selection.main;post({type:'change',text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:selection.anchor,selectionHead:selection.head});}

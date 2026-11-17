@@ -129,3 +129,8 @@
 ## 2026-11-17 侧栏调宽把手改成 AppKit 视图
 
 - 窗口设了 isMovableByWindowBackground，透明的 SwiftUI 把手上按下拖动会移动窗口，DragGesture 收不到。改成 NSView（mouseDownCanMoveWindow 为 false，自己处理拖动和双击，光标用 cursor rect），并把侧栏放到 zIndex 1，右半边不被正文盖住。
+
+## 2026-11-17 ⌘[ / ⌘] 页面后退前进
+
+- 历史是全局的一条（像 Obsidian 的单窗格、浏览器的单标签），不按标签页分：链接点到已在别的标签页里的页面时会切标签，按标签记录的话 ⌘[ 回不到原页面。后退时页面已有标签就切过去，否则在当前标签打开；已删除的页面跳过；改名、移动时历史跟着改。
+- CodeMirror 默认把 Mod-[ / Mod-] 当减少／增加缩进，会抢走快捷键，去掉了；缩进仍用 Tab／⇧Tab。

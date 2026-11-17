@@ -148,8 +148,17 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private let pagesRootOverride: URL?
     private var pageStorageRoot: URL?
     @Published var selected: VaultEntry? {
-        didSet { if oldValue?.relativePath != selected?.relativePath { cancelAutosave() } }
+        didSet {
+            if oldValue?.relativePath != selected?.relativePath { cancelAutosave() }
+            if let path = selected?.relativePath { recordVisit(path) }
+        }
     }
+    // Pages shown before and after this one, like a browser's history: ⌘[ goes
+    // back and ⌘] forward, across tabs, so a followed link can be undone.
+    @Published private(set) var backHistory: [String] = []
+    @Published private(set) var forwardHistory: [String] = []
+    private var lastVisited: String?
+    private var historyStep: (path: String, back: Bool)?
     @Published var editorDocumentID = UUID() {
         didSet { if oldValue != editorDocumentID { cancelAutosave() } }
     }
@@ -1057,6 +1066,8 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         if activeTabID != id { activeTabID = id }
     }
     private func remapTabs(from old: String, to new: String) {
+        let move = { (path: String) in path == old || path.hasPrefix(old + "/") ? new + path.dropFirst(old.count) : path }
+        if old != new { backHistory = backHistory.map(move); forwardHistory = forwardHistory.map(move); lastVisited = lastVisited.map(move) }
         if let path = splitPath, path == old || path.hasPrefix(old + "/") { splitPath = new + path.dropFirst(old.count) }
         guard old != new, tabs.contains(where: { $0.path == old || $0.path?.hasPrefix(old + "/") == true }) else { return }
         tabs = tabs.map { tab in
@@ -1138,6 +1149,33 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         services.confirm(title:localized("放弃本地修改并重新载入？"),detail:localized("未保存的修改将丢失，重新读取磁盘中的最新文件。"),action:localized("重新载入"),cancel:localized("取消")) { reload in
             if reload { self.open(selected,skipConfirmation:true,fromDisk:true) } else { self.scheduleAutosave() }
         }
+    }
+    private func recordVisit(_ path: String) {
+        guard path != lastVisited else { return }
+        defer { lastVisited = path }
+        guard let previous = lastVisited else { return }
+        if let step = historyStep, step.path == path {
+            historyStep = nil
+            if step.back { if backHistory.last == path { backHistory.removeLast() }; forwardHistory.append(previous) }
+            else { if forwardHistory.last == path { forwardHistory.removeLast() }; backHistory.append(previous) }
+            return
+        }
+        historyStep = nil
+        if backHistory.last != previous { backHistory.append(previous) }
+        if backHistory.count > 200 { backHistory.removeFirst(backHistory.count - 200) }
+        forwardHistory.removeAll()
+    }
+    func goBack() { stepHistory(back:true) }
+    func goForward() { stepHistory(back:false) }
+    /// Opens the nearest page in that direction that still exists, in the current tab or its own.
+    private func stepHistory(back: Bool) {
+        guard let index else { return }
+        var stack = back ? backHistory : forwardHistory
+        while let path = stack.last, path == currentPagePath || !index.files.contains(where: { $0.relativePath == path }) { stack.removeLast() }
+        if back { backHistory = stack } else { forwardHistory = stack }
+        guard let path = stack.last, let entry = index.files.first(where: { $0.relativePath == path }) else { return }
+        historyStep = (path,back)
+        open(entry,inPlace:true)
     }
     func navigate(_ raw: String) {
         if raw.hasPrefix("#") { anchor = String(raw.dropFirst()); return }
