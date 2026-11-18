@@ -1153,10 +1153,23 @@ struct PageOrganizer {
 /// so the page's own Markdown is never changed. The editor writes and reads
 /// its contents; here it is only stored, and kept with the page when the page
 /// is renamed, moved, sent to the trash or restored.
+///
+/// Nothing here may lose a comment: every change first keeps the previous
+/// version in a history outside the pages folder, a damaged file is never
+/// overwritten without being kept, iCloud's conflict copies are folded in,
+/// and comments left behind by a page moved in another app find it again.
 enum PageComments {
     static let maximumSize = 4_000_000
-    static func sidecarName(_ pageName: String) -> String { "." + pageName + ".comments.json" }
+    static let suffix = ".comments.json"
+    static func sidecarName(_ pageName: String) -> String { "." + pageName + suffix }
     static func sidecar(of page: URL) -> URL { page.deletingLastPathComponent().appendingPathComponent(sidecarName(page.lastPathComponent)) }
+    /// The page name a comments file belongs to, or nil for any other name.
+    static func pageName(ofSidecar name: String) -> String? {
+        guard name.hasPrefix("."), name.hasSuffix(suffix), name.count > suffix.count + 1 else { return nil }
+        let page = String(name.dropFirst().dropLast(suffix.count))
+        guard !page.hasPrefix("."), page.lowercased().hasSuffix(".md") else { return nil }
+        return page
+    }
     /// The page at `path`, or nil when the path is not a Markdown page inside the vault.
     private static func page(_ path: String, root: URL) -> URL? {
         let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
@@ -1168,18 +1181,47 @@ enum PageComments {
     }
     /// Where the last-seen comments live for merging; off unless the app turns it on.
     nonisolated(unsafe) static var baseStore: PageBases?
+    /// Earlier versions of every page's comments; off unless the app turns it on.
+    nonisolated(unsafe) static var history: CommentHistory?
+
+    /// True for text that reads as a comments file.
+    static func isValid(_ json: String?) -> Bool {
+        guard let json, let data = json.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        return object["threads"] == nil || object["threads"] is [Any]
+    }
     static func read(page path: String, root: URL) -> String? {
-        let text = readFile(page: path, root: root)
+        guard let pageURL = page(path, root: root) else { return nil }
+        let url = sidecar(of: pageURL)
+        prepare(url)
+        var text = readFile(url)
+        if let damaged = text, !isValid(damaged) {
+            // A damaged file is kept, and the newest good version is shown instead;
+            // the next save then replaces the damage with it.
+            history?.keep(damaged, root: root, path: path, force: true)
+            text = history?.newestValid(root: root, path: path) ?? damaged
+        }
         if CloudFiles.isSynced(root) { baseStore?.store(text ?? "", root: root, path: path, kind: "comments") }
         return text
     }
-    private static func readFile(page path: String, root: URL) -> String? {
-        guard let url = page(path, root: root).map(sidecar(of:)),
-              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+    private static func readFile(_ url: URL) -> String? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
               attributes[.type] as? FileAttributeType == .typeRegular,
               ((attributes[.size] as? NSNumber)?.intValue ?? 0) <= maximumSize,
               let data = try? Data(contentsOf: url) else { return nil }
-        return String(data: data, encoding: .utf8)
+        return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+    }
+    /// Brings a comments file iCloud has not downloaded onto this device, and
+    /// folds in any conflict copies iCloud made of it.
+    private static func prepare(_ url: URL) {
+        let missing = access(url.path, F_OK) != 0 ? access(CloudFiles.placeholder(of: url).path, F_OK) == 0 : CloudFiles.isNotDownloaded(url)
+        if missing { _ = try? CloudFiles.coordinatedRead(url, timeout: 5) { _ in true } }
+        try? MetadataMerge.resolveConflicts(at: url) { current, other in
+            let mine = String(data: current, encoding: .utf8), theirs = String(data: other, encoding: .utf8)
+            if !isValid(theirs) { return current }
+            if !isValid(mine) { return other }
+            return MetadataMerge.comments(base: nil, local: mine, disk: theirs, now: Date().timeIntervalSince1970 * 1000).map { Data($0.utf8) } ?? current
+        }
     }
     /// Stores the comments of the page at `path`; nil or empty removes the file.
     /// Nothing is written for a page that is no longer there, so a late save
@@ -1190,26 +1232,41 @@ enum PageComments {
         guard FileManager.default.fileExists(atPath: pageURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else { return }
         let url = sidecar(of: pageURL)
         if let link = try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink, link { throw VaultCoreError.unsafeLocation(url) }
-        if merging ?? CloudFiles.isSynced(root) {
-            // In a synced folder another device may have written since: merge inside one coordinated write.
-            try FileCoordination.writing(url, options: .forReplacing) {
-                let disk = (try? Data(contentsOf: url)).flatMap { String(data: $0, encoding: .utf8) }
-                let merged = MetadataMerge.comments(base: baseStore?.read(root: root, path: path, kind: "comments"), local: json, disk: disk, now: Date().timeIntervalSince1970 * 1000)
-                if let merged, merged.utf8.count <= maximumSize { try Data(merged.utf8).write(to: url, options: .atomic) }
-                else if merged == nil, FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
-                baseStore?.store(merged ?? "", root: root, path: path, kind: "comments")
-            }
-            return
+        let local = (json?.isEmpty ?? true) ? nil : json
+        if let local, !isValid(local) { throw VaultCoreError.unsafeLocation(url) }
+        let merge = merging ?? CloudFiles.isSynced(root)
+        prepare(url)
+        // The read, merge and replace share one coordinated write, so another
+        // device or app cannot slip a change in between.
+        try FileCoordination.writing(url, options: .forReplacing) {
+            let disk = readFile(url)
+            var next: String?
+            if merge {
+                next = MetadataMerge.comments(base: baseStore?.read(root: root, path: path, kind: "comments"), local: local, disk: isValid(disk) ? disk : nil, now: Date().timeIntervalSince1970 * 1000)
+            } else { next = local }
+            next = next.map { stamped($0, page: pageURL) }
+            if let next, next.utf8.count > maximumSize { throw VaultCoreError.unsafeLocation(url) }
+            if merge { baseStore?.store(next ?? "", root: root, path: path, kind: "comments") }
+            guard next != disk else { return }
+            if let disk, !disk.isEmpty { history?.keep(disk, root: root, path: path, force: !isValid(disk) || next == nil) }
+            if let next { try Data(next.utf8).write(to: url, options: .atomic) }
+            else if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
         }
-        guard let json, !json.isEmpty else {
-            try FileCoordination.writing(url, options: .forDeleting) {
-                if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
-            }
-            return
-        }
-        let data = Data(json.utf8)
-        guard data.count <= maximumSize else { throw VaultCoreError.unsafeLocation(url) }
-        try FileCoordination.write(data, to: url)
+    }
+    /// Adds which page file the comments belong to, so comments left behind
+    /// when another app renames or moves the page can find it again.
+    static func stamped(_ json: String, page: URL) -> String {
+        guard let data = json.data(using: .utf8), var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return json }
+        var info: [String: Any] = ["name": page.lastPathComponent, "device": PageMerge.deviceName]
+        if let number = fileNumber(page) { info["file"] = number }
+        object["page"] = info
+        guard let out = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]), let text = String(data: out, encoding: .utf8) else { return json }
+        return text
+    }
+    static func fileNumber(_ url: URL) -> Int? {
+        var info = stat()
+        guard stat(url.path, &info) == 0 else { return nil }
+        return Int(info.st_ino)
     }
     /// Runs `move`, which moves a page, and takes the page's comments along,
     /// all in one coordinated operation.
@@ -1222,10 +1279,180 @@ enum PageComments {
     }
     /// Moves a page's comments after the page itself moved from `old` to `new`.
     /// A comments file already at the new name belongs to no page, as the page
-    /// could only move to a free name, so it is replaced.
+    /// could only move to a free name; it is folded into the moving one.
     private static func follow(from old: URL, to new: URL) {
         let source = sidecar(of: old), destination = sidecar(of: new)
         guard source.path != destination.path, FileManager.default.fileExists(atPath: source.path) else { return }
+        if let waiting = readFile(destination), isValid(waiting), let moving = readFile(source), isValid(moving),
+           let both = MetadataMerge.comments(base: nil, local: moving, disk: waiting, now: Date().timeIntervalSince1970 * 1000) {
+            try? Data(both.utf8).write(to: source, options: .atomic)
+        }
         _ = Darwin.rename(source.path, destination.path)
+    }
+
+    // MARK: Comments left behind
+
+    /// Comments files in `folders` (paths in the vault, "" for its top) whose page is not there.
+    static func orphans(root: URL, folders: [String]) -> [String] {
+        var found: [String] = []
+        for folder in folders {
+            let directory = folder.isEmpty ? root : root.appendingPathComponent(folder)
+            guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { continue }
+            let present = Set(names.map { CloudFiles.logicalName(ofPlaceholder: $0) ?? $0 })
+            let folded = Set(present.map { $0.precomposedStringWithCanonicalMapping.lowercased() })
+            for name in present {
+                guard let page = pageName(ofSidecar: name), !folded.contains(page.precomposedStringWithCanonicalMapping.lowercased()) else { continue }
+                found.append(folder.isEmpty ? name : folder + "/" + name)
+            }
+        }
+        return found.sorted()
+    }
+
+    /// Comments files whose page is gone are matched to the page that most
+    /// likely is the same one, moved or renamed in another app, and moved
+    /// beside it. A file with no clear match stays where it is, untouched.
+    /// Returns the page paths that received comments.
+    @discardableResult static func adoptOrphans(root: URL, orphans: [String], pages: [String]) -> [String] {
+        guard !orphans.isEmpty else { return [] }
+        var free = Set(pages.filter { $0.lowercased().hasSuffix(".md") })
+        for page in pages { if let url = self.page(page, root: root), FileManager.default.fileExists(atPath: sidecar(of: url).path) { free.remove(page) } }
+        var adopted: [String] = []
+        for orphan in orphans {
+            let source = root.appendingPathComponent(orphan)
+            prepare(source)
+            guard let text = readFile(source), isValid(text), let data = text.data(using: .utf8),
+                  let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
+            guard let target = match(object, orphan: orphan, root: root, candidates: free),
+                  let pageURL = page(target, root: root) else { continue }
+            let destination = sidecar(of: pageURL)
+            do {
+                try FileCoordination.moving([(source, destination)]) {
+                    guard !FileManager.default.fileExists(atPath: destination.path) else { return }
+                    if Darwin.rename(source.path, destination.path) != 0 { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+                }
+                free.remove(target); adopted.append(target)
+            } catch { continue }
+        }
+        return adopted
+    }
+    private static func match(_ object: [String: Any], orphan: String, root: URL, candidates: Set<String>) -> String? {
+        guard !candidates.isEmpty else { return nil }
+        let folder = (orphan as NSString).deletingLastPathComponent
+        let oldName = pageName(ofSidecar: (orphan as NSString).lastPathComponent) ?? ""
+        let info = object["page"] as? [String: Any]
+        // The same file on this Mac, under a new name or in a new folder.
+        if let number = info?["file"] as? Int, info?["device"] as? String == PageMerge.deviceName {
+            let same = candidates.filter { fileNumber(root.appendingPathComponent($0)) == number }
+            if same.count == 1 { return same.first }
+        }
+        let threads = object["threads"] as? [[String: Any]] ?? []
+        let quotes = threads.compactMap { $0["quote"] as? String }.filter { $0.count >= 4 }
+        let sameName = candidates.filter { ($0 as NSString).lastPathComponent == oldName }
+        if quotes.isEmpty {
+            // Only page comments: the page name is all there is to go by.
+            return sameName.count == 1 ? sameName.first : nil
+        }
+        func score(_ path: String) -> Double {
+            guard let text = try? VaultFileIO.readMarkdown(at: root.appendingPathComponent(path)) else { return 0 }
+            return Double(quotes.filter { text.contains($0) }.count) / Double(quotes.count)
+        }
+        // Nearby pages first; reading the whole vault is the last resort.
+        let near = candidates.filter { ($0 as NSString).deletingLastPathComponent == folder }
+        for group in [sameName, near, candidates] {
+            let scored = group.map { ($0, score($0)) }.filter { $0.1 >= 0.5 }.sorted { $0.1 > $1.1 }
+            if let best = scored.first, scored.count == 1 || scored[1].1 < best.1 { return best.0 }
+            if !scored.isEmpty { return nil }
+        }
+        return nil
+    }
+
+    // MARK: Recovery
+
+    /// Brings back comments that an earlier version of the page's comments had
+    /// and the current one lacks, newest earlier version first. Returns how
+    /// many comment threads came back.
+    @discardableResult static func restoreEarlier(page path: String, root: URL) throws -> Int {
+        guard let history else { return 0 }
+        let current = read(page: path, root: root)
+        let have = Set(threadIDs(current))
+        for version in history.versions(root: root, path: path) {
+            let missing = Set(threadIDs(version)).subtracting(have)
+            guard !missing.isEmpty else { continue }
+            guard let combined = union(current, version) else { continue }
+            try write(combined, page: path, root: root, merging: false)
+            return missing.count
+        }
+        return 0
+    }
+    static func threadIDs(_ json: String?) -> [String] {
+        guard let data = json?.data(using: .utf8), let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [] }
+        return (object["threads"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
+    }
+    /// Both versions' comments together, forgetting deletions, so an earlier
+    /// version can bring back what was deleted.
+    private static func union(_ current: String?, _ earlier: String) -> String? {
+        func clean(_ json: String?) -> String? {
+            guard let data = json?.data(using: .utf8), var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+            object["deletedThreads"] = nil; object["deletedReplies"] = nil
+            return (try? JSONSerialization.data(withJSONObject: object)).flatMap { String(data: $0, encoding: .utf8) }
+        }
+        return MetadataMerge.comments(base: nil, local: clean(current), disk: clean(earlier), now: Date().timeIntervalSince1970 * 1000)
+    }
+}
+
+/// Earlier versions of each page's comments, kept outside the pages folder so
+/// neither iCloud nor another app can take them away. A version is kept
+/// whenever the comments themselves change (not just where they sit in the
+/// text), at most every few minutes otherwise, and the newest 60 per page stay.
+struct CommentHistory {
+    let directory: URL
+    var limit = 60
+    var quiet: TimeInterval = 600
+    static var standard: CommentHistory {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return CommentHistory(directory: support.appendingPathComponent("acdian/Comment History", isDirectory: true))
+    }
+    func folder(root: URL, path: String) -> URL {
+        let key = SHA256.hash(data: Data((root.path + "\n" + path).utf8)).map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent(String(key.prefix(32)), isDirectory: true)
+    }
+    /// What the comments say, leaving out where they sit, to tell real changes from moves.
+    static func substance(_ json: String) -> String {
+        guard let data = json.data(using: .utf8), let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return json }
+        let threads = (object["threads"] as? [[String: Any]] ?? []).map { thread -> [String: Any] in
+            var kept: [String: Any] = [:]
+            for key in ["id", "solved", "replies", "whole"] { kept[key] = thread[key] }
+            return kept
+        }
+        return (try? JSONSerialization.data(withJSONObject: threads, options: [.sortedKeys])).flatMap { String(data: $0, encoding: .utf8) } ?? json
+    }
+    /// Newest first.
+    private func files(_ folder: URL) -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "json" }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
+    }
+    func keep(_ json: String, root: URL, path: String, force: Bool = false) {
+        let folder = folder(root: root, path: path)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? Data((root.path + "\n" + path + "\n").utf8).write(to: folder.appendingPathComponent("page.txt"), options: .atomic)
+        let existing = files(folder)
+        if !force, let newest = existing.first, let text = try? String(contentsOf: newest, encoding: .utf8) {
+            if text == json { return }
+            let age = Date().timeIntervalSince((try? newest.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+            if Self.substance(text) == Self.substance(json), age < quiet { return }
+        }
+        let stamp = String(format: "%015.0f", Date().timeIntervalSince1970 * 1000)
+        var name = stamp + ".json", number = 1
+        while FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path) { number += 1; name = stamp + "-\(number).json" }
+        try? Data(json.utf8).write(to: folder.appendingPathComponent(name), options: .atomic)
+        for old in files(folder).dropFirst(limit) { try? FileManager.default.removeItem(at: old) }
+    }
+    /// Every kept version, newest first.
+    func versions(root: URL, path: String) -> [String] {
+        files(folder(root: root, path: path)).compactMap { try? String(contentsOf: $0, encoding: .utf8) }
+    }
+    func newestValid(root: URL, path: String) -> String? {
+        versions(root: root, path: path).first { PageComments.isValid($0) }
     }
 }

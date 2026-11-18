@@ -18,6 +18,7 @@ import AppKit
                 Picker(model.localized("外观"),selection:$model.appearance) { ForEach(AppAppearance.allCases) { Text(model.localized($0.title)).tag($0) } }
                 Divider()
                 Button(model.localized("显示或隐藏目录")) { model.showOutline.toggle() }.keyboardShortcut("l",modifiers:[.command,.shift])
+                Button(model.localized("恢复本页之前的评论")) { model.restoreEarlierComments() }.disabled(model.selected?.ext != "md" || model.isDraft)
                 Button(model.localized("刷新页面")) { model.refresh() }.keyboardShortcut("r")
                 Button(model.localized("所有页面")) { model.goHome() }.keyboardShortcut("a",modifiers:[.command,.shift])
                 Divider()

@@ -171,7 +171,16 @@ final class PageTrash {
             let name = restoredName(entry.name, isDirectory: entry.isDirectory, number: number)
             do {
                 try move(directory.fd, payloadName, parent.fd, name)
-                if !entry.isDirectory { _ = renameat(directory.fd, commentsName, parent.fd, PageComments.sidecarName(name)) }
+                if !entry.isDirectory, renameatx_np(directory.fd, commentsName, parent.fd, PageComments.sidecarName(name), UInt32(RENAME_EXCL)) != 0, errno == EEXIST {
+                    // Comments already wait under the restored name: both are kept.
+                    let waiting = PageComments.sidecar(of: root.appendingPathComponent((components.dropLast() + [name]).joined(separator: "/")))
+                    let kept = storageURL.appendingPathComponent(id.uuidString).appendingPathComponent(commentsName)
+                    let read = { (url: URL) in (try? Data(contentsOf: url)).flatMap { String(data: $0, encoding: .utf8) } }
+                    if let merged = MetadataMerge.comments(base: nil, local: read(kept), disk: read(waiting), now: nowDate().timeIntervalSince1970 * 1000) {
+                        if let old = read(waiting) { PageComments.history?.keep(old, root: root, path: (components.dropLast() + [name]).joined(separator: "/"), force: true) }
+                        try? Data(merged.utf8).write(to: waiting, options: .atomic)
+                    }
+                }
                 // The data is restored already. Cleanup cannot turn this into
                 // a failed restore or cause a second copy on a later retry.
                 removeRecords(in: directory.fd)

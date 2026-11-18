@@ -131,7 +131,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
 
 @MainActor final class AppModel: ObservableObject {
     let services: PlatformServices = makePlatformServices()
-    @Published var index: VaultIndex? { didSet { indexGeneration &+= 1; followSplitEntry() } }
+    @Published var index: VaultIndex? { didSet { indexGeneration &+= 1; followSplitEntry(); findLeftComments() } }
     private var indexGeneration = 0
     @Published var loading = false {
         didSet { if oldValue && !loading { scheduleAutosave() } }
@@ -367,7 +367,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         self.pagesRootOverride = pagesRoot ?? argumentRoot
         self.language = AppLanguage.stored(in:preferences)
         self.pagesBackupPath = preferences.string(forKey:"pagesBackupPath")
-        if pagesRootOverride == nil { PageComments.baseStore = .standard }
+        if pagesRootOverride == nil { PageComments.baseStore = .standard; PageComments.history = .standard }
         guard loadInitialVault else { return }
         watchOpenPage()
         idleTabTimer = Timer.scheduledTimer(withTimeInterval:60,repeats:true) { [weak self] _ in
@@ -1875,6 +1875,46 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         guard let path, !path.isEmpty, let root = index?.root else { return }
         do { try PageComments.write(json,page:path,root:root) }
         catch { self.error = localized("评论保存失败：%@",localizedError(error)) }
+    }
+    /// Brings back comments of the open page that an earlier version had,
+    /// from the history kept outside the pages folder.
+    func restoreEarlierComments() {
+        guard let entry = selected, entry.ext == "md", !isDraft, let root = index?.root else { return }
+        guard saveBeforeLeaving() else { return }
+        do {
+            let count = try PageComments.restoreEarlier(page:entry.relativePath,root:root)
+            if count > 0 { editorDocumentID = UUID() }
+            self.error = count > 0 ? localized("已恢复 %d 条评论",count) : localized("这一页没有可以恢复的评论")
+        } catch { self.error = localized("评论保存失败：%@",localizedError(error)) }
+    }
+    // MARK: Comments left behind by pages moved in other apps
+    private var leftCommentsChecked = Date.distantPast
+    private var leftCommentsQueued = false
+    /// Looks, off the main thread, for comments whose page was renamed or moved
+    /// in another app, and moves them beside the page again.
+    private func findLeftComments() {
+        guard let index else { return }
+        let wait = 15 - Date().timeIntervalSince(leftCommentsChecked)
+        if wait > 0 {
+            guard !leftCommentsQueued else { return }
+            leftCommentsQueued = true
+            DispatchQueue.main.asyncAfter(deadline:.now() + wait) { [weak self] in self?.leftCommentsQueued = false; self?.findLeftComments() }
+            return
+        }
+        leftCommentsChecked = Date()
+        let root = index.root
+        var folders = [""]
+        func walk(_ entries: [VaultEntry]) { for entry in entries where entry.isDirectory { folders.append(entry.relativePath); walk(entry.children ?? []) } }
+        walk(index.entries)
+        let pages = index.files.filter { $0.ext == "md" }.map(\.relativePath)
+        DispatchQueue.global(qos:.utility).async {
+            let adopted = PageComments.adoptOrphans(root:root,orphans:PageComments.orphans(root:root,folders:folders),pages:pages)
+            guard !adopted.isEmpty else { return }
+            DispatchQueue.main.async {
+                guard self.index?.root == root, let path = self.selected?.relativePath, adopted.contains(path), !self.dirty, !self.isDraft else { return }
+                self.editorDocumentID = UUID()
+            }
+        }
     }
     func titleTyped(_ title: String) { typedTitle = title }
     func splitTitleTyped(_ title: String) { splitTypedTitle = title }

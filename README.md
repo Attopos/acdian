@@ -32,7 +32,7 @@ ACdian 自动准备本地页面的保存位置，打开后即可使用，无需�
 - 打开页面会在新标签页中显示，不关闭已打开的页面；已打开的页面直接切换到它的标签页。⌘W 或标签右侧 × 关闭标签页。重新打开 ACdian 时恢复上次未关闭的标签页并停留在上次的页面。后台标签页 30 分钟没用会自动关闭（当前标签页和分屏页面不关，关闭前已保存）。
 - 切换标签页时保留各自的滚动位置、光标和撤销记录，切换即时显示。
 - 输入后自动保存，短暂停止输入约半秒即写入；切换页面、关闭窗口或退出前会补存最新内容，不再询问是否保存。新页面有标题或正文后自动创建文件，空白未编辑页面不产生文件。⌘S 仍可立即保存，全文搜索用 ⌘F。
-- 评论：选中文字后点浮动工具栏的评论按钮，或按 ⇧⌘M，在窗口右侧单独一栏添加评论（栏头显示评论数，» 可收起，收起后右上角按钮再展开；评论栏没有底色，正文的宽度和位置始终不变）；不选文字时为整页评论。同一处可连续追加多条，双击或点铅笔编辑，清空保存即删除；✓ 解决后可在侧栏底部找回。正文右侧放不下评论栏时改为行尾小气泡，点开浮出卡片。评论存在页面旁的隐藏文件 `.页面名.md.comments.json`，Markdown 正文不变；页面重命名、移动、进垃圾桶和恢复时随之迁移。被评论的文字删光后评论随之删除，⌘Z 撤销时一并恢复；其他程序改过页面后，按原文和上下文重新找回位置。
+- 评论：选中文字后点浮动工具栏的评论按钮，或按 ⇧⌘M，在窗口右侧单独一栏添加评论（栏头显示评论数，» 可收起，收起后右上角按钮再展开；评论栏没有底色，正文的宽度和位置始终不变）；不选文字时为整页评论。同一处可连续追加多条，双击或点铅笔编辑，清空保存即删除；✓ 解决后可在侧栏底部找回。正文右侧放不下评论栏时改为行尾小气泡，点开浮出卡片。评论存在页面旁的隐藏文件 `.页面名.md.comments.json`，Markdown 正文不变；页面重命名、移动、进垃圾桶和恢复时随之迁移。被评论的文字删掉后评论不会消失，留在栏顶并标“原文已删除：……”，⌘Z 撤销时回到原文上，只有删掉卡片才会删除；其他程序改过页面后，按原文和上下文重新找回位置，找不到也照样保留。评论不丢的保障：每次改动前把上一版存进 `~/Library/Application Support/acdian/Comment History`（每页最近 60 版），“视图 › 恢复本页之前的评论”可找回；评论文件损坏时保留坏文件并显示最近一份完好的；iCloud 的冲突副本按条合并；在 Finder 或其他程序里改名、移动页面后，评论按文件、原文或文件名自动找回页面。
 - 插入附件：工具栏回形针，或 ⇧⌘I
 - 目录：正文左侧的一列长短线（越长层级越高，粉色是正在读的部分），指针移上去弹出标题列表，点击跳转；目录从不推挤正文。工具栏列表按钮或 ⇧⌘L 显示／隐藏。
 - 正文栏最宽 840（含左右各 58 留白）。
@@ -93,6 +93,13 @@ xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/Vau
 ```sh
 xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/Localization.swift Sources/PagesStorage.swift Sources/PageTrash.swift Sources/AppModel.swift Sources/Modules.swift Sources/Components.swift Tests/EditorSnapshotTests.swift -o .build/snapshot-tests
 .build/snapshot-tests
+```
+
+评论不丢失（历史版本、坏文件、找回改名移动的页面、恢复）验证：
+
+```sh
+xcrun swiftc -swift-version 5 -module-cache-path .build/module-cache Sources/VaultCore.swift Sources/PageTrash.swift Tests/CommentSafetyTests.swift -o .build/comment-safety-tests
+.build/comment-safety-tests
 ```
 
 iCloud 同步（未下载的页面、等待的清理、移到 iCloud）验证：

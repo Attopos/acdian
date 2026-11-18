@@ -2,7 +2,9 @@
 //
 // While a page is open, each comment's place is a range in the editor state:
 // it moves with every edit as CodeMirror maps it, and undo puts it back with
-// the text it covered. A comment whose text is deleted is deleted with it.
+// the text it covered. A comment whose text is deleted is kept, as a page
+// comment that shows the deleted words, so no comment is ever lost by an edit;
+// undo puts it back on its text, and only deleting the card removes it.
 // The page file itself is never changed: comments are kept in a hidden file
 // beside it, which stores each place twice, as offsets and as the quoted text
 // with a little context. Offsets alone break when another app edits the page;
@@ -15,7 +17,8 @@ import { editorLanguage, messagesForLanguage } from './ui-language.js';
 
 const CONTEXT=32;
 const newID=()=>globalThis.crypto?.randomUUID?.()??(Date.now().toString(36)+Math.random().toString(36).slice(2,10));
-const mapThread=(thread,mapping)=>thread.whole?thread:{...thread,from:mapping.mapPos(thread.from,1),to:mapping.mapPos(thread.to,-1)};
+const floating=thread=>thread.whole||thread.detached;
+const mapThread=(thread,mapping)=>floating(thread)?thread:{...thread,from:mapping.mapPos(thread.from,1),to:mapping.mapPos(thread.to,-1)};
 
 const addThread=StateEffect.define({map:mapThread});
 const updateThread=StateEffect.define();
@@ -26,19 +29,30 @@ const setActive=StateEffect.define();
 const outside=Transaction.addToHistory.of(false);
 
 const initial={threads:[],active:null,discarded:new Set()};
+// A comment whose text was deleted keeps the words and their surroundings.
+function detach(thread,doc) {
+  const from=Math.min(thread.from,doc.length),to=Math.min(Math.max(thread.to,from),doc.length);
+  const quote=thread.quote&&to<=from?thread.quote:doc.sliceString(from,to);
+  return {...thread,detached:true,quote,prefix:thread.prefix??doc.sliceString(Math.max(0,from-CONTEXT),from),suffix:thread.suffix??doc.sliceString(to,Math.min(doc.length,to+CONTEXT))};
+}
+function attach(thread,from,to) {
+  const {detached,quote,prefix,suffix,...rest}=thread;
+  return {...rest,from,to};
+}
 export const commentsField=StateField.define({
   create:()=>initial,
   update(value,tr) {
     let {threads,active,discarded}=value;
-    if(tr.docChanged&&threads.some(thread=>!thread.whole)) {
+    if(tr.docChanged&&threads.some(thread=>!floating(thread))) {
       let changed=false;const next=[];
       for(const thread of threads) {
-        if(thread.whole){next.push(thread);continue;}
+        if(floating(thread)){next.push(thread);continue;}
         const from=tr.changes.mapPos(thread.from,1),to=tr.changes.mapPos(thread.to,-1);
         if(from===thread.from&&to===thread.to){next.push(thread);continue;}
         changed=true;
-        // Its text is gone, so the comment goes too. Undo brings both back.
+        // Its text is gone, but the comment stays, holding the words it was on. Undo puts it back.
         if(to>from)next.push({...thread,from,to});
+        else next.push(detach(thread,tr.startState.doc));
       }
       if(changed)threads=next;
     }
@@ -51,7 +65,7 @@ export const commentsField=StateField.define({
         // The oldest place comes last in an undo, so it is the one kept.
         const kept=effect.value;
         if(discarded.has(kept.id)||kept.to<=kept.from)continue;
-        threads=threads.some(thread=>thread.id===kept.id)?threads.map(thread=>thread.id===kept.id?{...thread,from:kept.from,to:kept.to}:thread):[...threads,kept];
+        threads=threads.some(thread=>thread.id===kept.id)?threads.map(thread=>thread.id===kept.id?attach(thread,kept.from,kept.to):thread):[...threads,attach(kept,kept.from,kept.to)];
       }
       else if(effect.is(setActive))active=effect.value;
     }
@@ -62,7 +76,7 @@ export const commentsField=StateField.define({
   provide:field=>EditorView.decorations.from(field,value=>{
     const ranges=[];
     for(const thread of value.threads) {
-      if(thread.whole||thread.solved||thread.to<=thread.from)continue;
+      if(floating(thread)||thread.solved||thread.to<=thread.from)continue;
       ranges.push(Decoration.mark({class:'cm-comment-mark'+(thread.id===value.active?' cm-comment-active':''),attributes:{'data-comment':thread.id}}).range(thread.from,thread.to));
     }
     return Decoration.set(ranges,true);
@@ -75,7 +89,7 @@ const undoPlaces=invertedEffects.of(tr=>{
   if(!tr.docChanged)return [];
   const restored=[];
   for(const thread of tr.startState.field(commentsField).threads) {
-    if(thread.whole)continue;
+    if(floating(thread))continue;
     let touched=false;
     tr.changes.iterChangedRanges((from,to)=>{if(from<thread.to&&to>thread.from)touched=true;});
     if(touched)restored.push(restoreThread.of(thread));
@@ -91,6 +105,7 @@ export function serializeComments(state) {
     const item={id:thread.id,created:thread.created,replies:thread.replies};
     if(thread.solved)item.solved=true;
     if(thread.whole)item.whole=true;
+    else if(thread.detached)Object.assign(item,{detached:true,from:thread.from,to:thread.from,quote:thread.quote||'',prefix:thread.prefix||'',suffix:thread.suffix||''});
     else Object.assign(item,{from:thread.from,to:thread.to,quote:doc.sliceString(thread.from,thread.to),prefix:doc.sliceString(Math.max(0,thread.from-CONTEXT),thread.from),suffix:doc.sliceString(thread.to,Math.min(doc.length,thread.to+CONTEXT))});
     threads.push(item);
   }
@@ -141,8 +156,8 @@ export function anchorComment(text,saved) {
   }
   return best;
 }
-// The comments read from disk, placed in the given text. Comments whose text
-// cannot be found any more are dropped, as if their text had been deleted.
+// The comments read from disk, placed in the given text. A comment whose text
+// cannot be found any more is kept, shown with the words it was on.
 export function placeComments(text,json) {
   let data;
   try{data=typeof json==='string'&&json?JSON.parse(json):null;}catch{data=null;}
@@ -154,8 +169,14 @@ export function placeComments(text,json) {
     if(!replies.length)continue;
     const base={id:saved.id,created:Number(saved.created)||replies[0].created,replies,solved:!!saved.solved};
     if(saved.whole){threads.push({...base,whole:true,from:0,to:0});continue;}
-    const place=anchorComment(text,saved);
+    // A comment kept from deleted text goes back only where its exact words are again.
+    const quote=typeof saved.quote==='string'?saved.quote:'';
+    const place=saved.detached?(quote.length>=4&&text.includes(quote)?anchorComment(text,saved):null):anchorComment(text,saved);
     if(place&&place.to>place.from)threads.push({...base,whole:false,...place});
+    else {
+      const at=Math.max(0,Math.min(Number.isFinite(saved.from)?saved.from:0,text.length));
+      threads.push({...base,whole:false,detached:true,from:at,to:at,quote,prefix:typeof saved.prefix==='string'?saved.prefix:'',suffix:typeof saved.suffix==='string'?saved.suffix:''});
+    }
   }
   return threads;
 }
@@ -365,7 +386,8 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     card.thread=thread;
     card.dom.classList.toggle('solved',!!thread.solved);
     card.dom.classList.toggle('draft',!thread.replies.length);
-    card.quote.textContent=thread.whole?strings.page:this.view.state.sliceDoc(thread.from,thread.to).replace(/\s+/g,' ');
+    card.dom.classList.toggle('detached',!!thread.detached);
+    card.quote.textContent=thread.whole?strings.page:thread.detached?strings.detached.replace('%s',(thread.quote||'').replace(/\s+/g,' ')):this.view.state.sliceDoc(thread.from,thread.to).replace(/\s+/g,' ');
     card.quote.title=card.quote.textContent;
     card.resolve.innerHTML=thread.solved?icons.reopen:icons.resolve;
     card.resolve.title=thread.solved?strings.reopen:strings.resolve;card.resolve.setAttribute('aria-label',card.resolve.title);
@@ -440,12 +462,12 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     for(const [id,card] of this.cards) {
       const thread=card.thread;if(!thread)continue;
       let top;
-      if(thread.whole)top=pageTop;
+      if(floating(thread))top=pageTop;
       else {
         const pos=Math.min(thread.from,view.state.doc.length),coords=view.coordsAtPos(pos,1);
         top=coords?coords.top-box.top+scrollTop:view.documentTop-box.top+scrollTop+view.lineBlockAt(pos).top;
       }
-      items.push({id,top,height:card.dom.offsetHeight,whole:thread.whole});
+      items.push({id,top,height:card.dom.offsetHeight,whole:floating(thread)});
     }
     // The page says where text may start on the left (--left-edge, past the outline).
     const textRight=content.right-box.left+scrollLeft-(parseFloat(style.paddingRight)||0);
@@ -513,7 +535,7 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
       const pos=view.posAtCoords({x:event.clientX,y:event.clientY});
       const {threads,active:current}=view.state.field(commentsField);
       let id=null,size=Infinity;
-      if(pos!=null)for(const thread of threads)if(!thread.whole&&!thread.solved&&thread.from<=pos&&pos<=thread.to&&thread.to-thread.from<size){id=thread.id;size=thread.to-thread.from;}
+      if(pos!=null)for(const thread of threads)if(!floating(thread)&&!thread.solved&&thread.from<=pos&&pos<=thread.to&&thread.to-thread.from<size){id=thread.id;size=thread.to-thread.from;}
       if(id!==current&&(id||current))view.dispatch({effects:setActive.of(id),annotations:outside});
       return false;
     }

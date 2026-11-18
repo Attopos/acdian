@@ -224,7 +224,7 @@ test('saved comments find their text again after other apps edit the page',()=>{
  assert.equal(anchorComment(text.replace('日期写入失败',''),{...saved,prefix:'',suffix:''}),null,'a deleted quote is not found');
  r.close();
 });
-test('comments move with edits, are deleted with their text, and come back on undo',async()=>{
+test('comments move with edits, stay when their text is deleted, and go back on it on undo',async()=>{
  const text='第一段。\n\n这里是被评论的文字，后面还有。\n';
  const at=text.indexOf('被评论的文字');
  const saved=JSON.stringify({version:1,threads:[{id:'c1',from:at,to:at+6,quote:'被评论的文字',prefix:'',suffix:'',created:1,replies:[{id:'r1',text:'Commit 1',created:1},{id:'r2',text:'Commit 2',created:2}]},{id:'page',whole:true,created:1,replies:[{id:'r3',text:'整页',created:3}]}]});
@@ -238,17 +238,38 @@ test('comments move with edits, are deleted with their text, and come back on un
  assert.equal(r.view.state.sliceDoc(threads()[0].from,threads()[0].to),'被评论的文字','the comment moves with text typed above it');
  const from=r.view.state.doc.toString().indexOf('被评论的文字');
  r.view.dispatch({changes:{from:from-2,to:from+8},userEvent:'delete'});
- assert.deepEqual(plain(threads().map(t=>t.id)),['page'],'deleting the text deletes its comment');
- await new Promise(resolve=>setTimeout(resolve,10));
+ const kept=threads().find(t=>t.id==='c1');
+ assert.ok(kept&&kept.detached,'deleting the text keeps its comment');
+ assert.equal(kept.quote,'被评论的文字','the kept comment holds the words it was on');assert.equal(kept.replies.length,2);
+ assert.equal(r.w.document.querySelectorAll('.cm-comment-mark').length,0,'nothing in the text is marked any more');
+ assert.ok([...r.w.document.querySelectorAll('.cm-comment-card.detached .cm-comment-quote')].some(q=>q.textContent.includes('被评论的文字')),'its card shows the deleted words');
+ await new Promise(resolve=>setTimeout(resolve,1100));
  const last=r.messages.filter(m=>m.type==='comments').at(-1);
- assert.equal(last.currentPath,'评论.md');assert.ok(!JSON.parse(last.data).threads.some(t=>t.id==='c1'),'the deletion is saved');
+ assert.equal(last.currentPath,'评论.md');
+ const stored=JSON.parse(last.data).threads.find(t=>t.id==='c1');
+ assert.ok(stored&&stored.detached&&stored.quote==='被评论的文字'&&stored.replies.length===2,'the kept comment is saved with its replies');
  r.w.acdianUndo();
  const back=threads().find(t=>t.id==='c1');
- assert.ok(back,'undo brings the comment back');assert.equal(r.view.state.sliceDoc(back.from,back.to),'被评论的文字');assert.equal(back.replies.length,2);
+ assert.ok(back&&!back.detached,'undo puts the comment back on its text');assert.equal(r.view.state.sliceDoc(back.from,back.to),'被评论的文字');assert.equal(back.replies.length,2);
  const data=JSON.parse(serializeComments(r.view.state));
  assert.deepEqual(data.threads.map(t=>t.id).sort(),['c1','page']);
  assert.equal(data.threads.find(t=>t.id==='c1').quote,'被评论的文字');
  assert.equal(r.get().text,'新的开头'+text,'comments never change the page text');
+ r.close();
+});
+test('comments whose text another app deleted are kept, and return when the words do',()=>{
+ const r=setup('x');const {placeComments,serializeComments,commentsField}=r.w.acdianLiveEditorTest.comments;
+ const saved=JSON.stringify({version:1,threads:[{id:'gone',from:3,to:9,quote:'早已删掉的文字',prefix:'前面',suffix:'后面',created:1,replies:[{id:'r',text:'别丢',created:1}]}]});
+ const placed=plain(placeComments('完全不同的一页。',saved));
+ assert.equal(placed.length,1,'a comment whose text cannot be found is not dropped');
+ assert.ok(placed[0].detached&&placed[0].quote==='早已删掉的文字'&&placed[0].replies[0].text==='别丢');
+ const again=JSON.stringify({version:1,threads:[{...placed[0]}]});
+ const back=plain(placeComments('这里又有早已删掉的文字了。',again));
+ assert.ok(!back[0].detached&&back[0].to-back[0].from===7,'a kept comment goes back when its exact words come back');
+ r.w.acdianSetDocument({text:'别的内容。\n',currentPath:'p.md',documentID:'d2',tabID:'t',comments:saved,editable:true});
+ const round=JSON.parse(serializeComments(r.view.state));
+ assert.ok(round.threads[0].detached&&round.threads[0].quote==='早已删掉的文字','loading and saving again keeps it');
+ assert.equal(r.view.state.field(commentsField).threads.length,1);
  r.close();
 });
 test('a new comment is saved only once it has text, and can be edited',async()=>{
