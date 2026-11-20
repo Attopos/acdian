@@ -42,24 +42,22 @@ const roadmap = {
   s = await state();
   same(s.chain, ['http', 'key', 'proxy', 'switch'], 'Focusing lights every prerequisite, however far back');
   same(s.highlighted, ['alb', 'gateway', 'http', 'key', 'proxy', 'switch'], 'Direct successors light too, unrelated nodes do not');
-  same(s.path, ['key', 'proxy', 'switch'], 'The learning path lists unlearned prerequisites, earliest first');
+  same(s.path, ['http', 'key', 'proxy', 'switch'], 'The learning path lists every prerequisite, earliest first');
   same(await page.$$eval('g.node.dim', nodes => nodes.map(n => n.dataset.id).sort()), ['chain', 'gfw', 'lonely', 'nat'], 'Everything else dims');
   check(await page.$eval('#panel', panel => panel.textContent.includes('proxy before gateway')), 'The panel gives the reason for each relation');
 
   await page.evaluate(() => window.acdianRoadmap.focus('proxy'));
   s = await state();
   same(s.highlighted, ['chain', 'gateway', 'gfw', 'http', 'proxy'], 'Related nodes light on focus');
-  same(s.path, [], 'A node whose prerequisites are learned has an empty path');
+  same(s.path, ['http'], 'The path of a node lists its own prerequisites');
   await page.waitForTimeout(400);
   check(await page.$eval('g.edge[data-id="proxy~chain"]', e => getComputedStyle(e).opacity === '1'), 'A related edge shows while one of its ends is focused');
 
   await page.keyboard.press('3');
   await page.waitForTimeout(600);
-  const saves = await posted('save');
-  check(saves.length === 1 && saves[0].nodes.length === 1 && saves[0].nodes[0].id === 'proxy' && saves[0].nodes[0].status === 'learned' && saves[0].nodes[0].updated > 1, 'Pressing 3 marks the node learned and posts only that node');
-  check((await page.$eval('#head-count', e => e.textContent)).includes('2 / 10'), 'Progress follows');
-  await page.evaluate(() => window.acdianRoadmap.focus('gateway'));
-  same((await state()).path, ['key', 'switch'], 'A learned prerequisite leaves the path');
+  check((await posted('save')).length === 0, 'Number keys no longer change anything');
+  check(!(await page.$('#panel .segment')) && !(await page.$('g.node .dot')), 'No learning status is shown on nodes or in the panel');
+  check((await page.$eval('#head-count', e => e.textContent)).includes('10 个节点'), 'The header counts nodes instead of progress');
 
   await page.keyboard.press('Escape');
   check((await state()).focus === null, 'Esc leaves focus');
