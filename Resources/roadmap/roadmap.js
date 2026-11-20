@@ -10,8 +10,9 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const fold = s => String(s ?? '').normalize('NFKC').toLowerCase();
 const now = () => Math.floor(Date.now() / 1000);
 
-const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 68, PAD_BOTTOM = 24, REGION_GAP = 64, ARC_ROOM = 44;
-const FAR = 0.5, NEAR = 1.3, PANEL = 352;
+const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 68, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
+const FAR = 0.5, NEAR = 1.3;
+const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
 const KIND_NAMES = { requires: '先学', applies: '应用', related: '相关' };
 const COLORS = ['pink', 'black', 'rose', 'plum', 'amber', 'teal', 'sky', 'graphite'];
@@ -30,24 +31,42 @@ const STRINGS = {
 };
 const T = (key, ...args) => { let text = STRINGS[S.language]?.[key] ?? key; args.forEach((value, i) => { text = text.replace('%' + (i + 1), value); }); return text; };
 
-const GLYPHS = {
-  network: '<circle cx="8" cy="3.4" r="1.7"/><circle cx="3.3" cy="12.4" r="1.7"/><circle cx="12.7" cy="12.4" r="1.7"/><path d="M7.2 4.9 4.1 10.9M8.8 4.9l3.1 6M5 12.4h6"/>',
-  spark: '<path d="M8 1.8C8.5 5.5 10.5 7.5 14.2 8 10.5 8.5 8.5 10.5 8 14.2 7.5 10.5 5.5 8.5 1.8 8 5.5 7.5 7.5 5.5 8 1.8Z"/>',
-  pulse: '<path d="M1.5 8.6h2.9l2-5.2 3.1 9.4 2-4.2h3"/>',
-  cloud: '<path d="M4.7 12.6a3 3 0 0 1-.5-5.96 4 4 0 0 1 7.74.98 2.5 2.5 0 0 1-.44 4.98Z"/>',
-  window: '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2.2"/><path d="M1.8 6.2h12.4M4.2 4.5h.01M6.1 4.5h.01"/>',
-  database: '<ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.24 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.24 2 5 2s5-.9 5-2"/>',
-  prism: '<path d="M7 2.6 12.6 13H1.4ZM.8 9.2 4 8.4M9.6 7.4l5.6-1.6M10.4 9l4.8.2M11.2 10.6l4 1.8"/>',
-  nodes: '<circle cx="3.4" cy="8" r="1.8"/><circle cx="12.4" cy="3.6" r="1.8"/><circle cx="12.4" cy="12.4" r="1.8"/><path d="M5 7.2 10.8 4.4M5 8.8l5.8 2.8"/>',
-  chip: '<rect x="4" y="4" width="8" height="8" rx="1.6"/><path d="M6.5 1.8V4M9.5 1.8V4M6.5 12v2.2M9.5 12v2.2M1.8 6.5H4M1.8 9.5H4M12 6.5h2.2M12 9.5h2.2"/>',
-  gauge: '<path d="M2.4 11.6a6 6 0 1 1 11.2 0M8 9.4l2.8-3.6"/><circle cx="8" cy="9.6" r=".9"/>',
-  braces: '<path d="M5.6 2.4c-1.5 0-2 .7-2 1.9v1.6c0 1-.5 1.6-1.4 2.1.9.5 1.4 1.100 1.4 2.1v1.600c0 1.2.5 1.900 2 1.900M10.4 2.4c1.5 0 2 .7 2 1.9v1.6c0 1 .5 1.600 1.400 2.100-.9.5-1.400 1.100-1.400 2.100v1.600c0 1.200-.5 1.900-2 1.900"/>',
-  shield: '<path d="M8 1.800 13 3.600v4.200c0 3-2 5.200-5 6.400-3-1.200-5-3.400-5-6.400V3.600ZM5.800 8l1.600 1.600 2.900-3.200"/>',
-  layers: '<path d="M8 2 14 5.200 8 8.400 2 5.200ZM2.600 8.200 8 11l5.400-2.800M2.600 11 8 13.800l5.400-2.800"/>',
-  dot: '<circle cx="8" cy="8" r="4.5"/>',
+const ICONS = {
+  'activity': '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />',
+  'app-window': '<rect x="2" y="4" width="20" height="16" rx="2" /><path d="M10 4v4" /><path d="M2 8h20" /><path d="M6 4v4" />',
+  'braces': '<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1" /><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1" />',
+  'check': '<path d="M20 6 9 17l-5-5" />',
+  'chevron-down': '<path d="m6 9 6 6 6-6" />',
+  'chevron-right': '<path d="m9 18 6-6-6-6" />',
+  'circle-dashed': '<path d="M10.1 2.182a10 10 0 0 1 3.8 0" /><path d="M13.9 21.818a10 10 0 0 1-3.8 0" /><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7" /><path d="M2.182 13.9a10 10 0 0 1 0-3.8" /><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69" /><path d="M21.818 10.1a10 10 0 0 1 0 3.8" /><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69" /><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7" />',
+  'circle': '<circle cx="12" cy="12" r="10" />',
+  'cloud': '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
+  'cpu': '<rect width="16" height="16" x="4" y="4" rx="2" /><rect width="6" height="6" x="9" y="9" rx="1" /><path d="M15 2v2" /><path d="M15 20v2" /><path d="M2 15h2" /><path d="M2 9h2" /><path d="M20 15h2" /><path d="M20 9h2" /><path d="M9 2v2" /><path d="M9 20v2" />',
+  'database': '<ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" />',
+  'file-text': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" />',
+  'gauge': '<path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" />',
+  'layers': '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />',
+  'link-2': '<path d="M9 17H7A5 5 0 0 1 7 7h2" /><path d="M15 7h2a5 5 0 1 1 0 10h-2" /><line x1="8" x2="16" y1="12" y2="12" />',
+  'list-checks': '<path d="m3 17 2 2 4-4" /><path d="m3 7 2 2 4-4" /><path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" />',
+  'log-in': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" x2="3" y1="12" y2="12" />',
+  'log-out': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" />',
+  'maximize': '<path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />',
+  'minus': '<path d="M5 12h14" />',
+  'network': '<rect x="16" y="16" width="6" height="6" rx="1" /><rect x="2" y="16" width="6" height="6" rx="1" /><rect x="9" y="2" width="6" height="6" rx="1" /><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" /><path d="M12 12V8" />',
+  'pencil': '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" />',
+  'plus': '<path d="M5 12h14" /><path d="M12 5v14" />',
+  'pyramid': '<path d="M2.5 16.88a1 1 0 0 1-.32-1.43l9-13.02a1 1 0 0 1 1.64 0l9 13.01a1 1 0 0 1-.32 1.44l-8.51 4.86a2 2 0 0 1-1.98 0Z" /><path d="M12 2v20" />',
+  'route': '<circle cx="6" cy="19" r="3" /><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" /><circle cx="18" cy="5" r="3" />',
+  'search': '<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />',
+  'shield-check': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" />',
+  'sparkles': '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" /><path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" />',
+  'workflow': '<rect width="8" height="8" x="3" y="3" rx="2" /><path d="M7 11v4a2 2 0 0 0 2 2h4" /><rect width="8" height="8" x="13" y="13" rx="2" />',
+  'x': '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
 };
-const glyph = name => GLYPHS[name] || GLYPHS.dot;
-const glyphSVG = name => `<svg viewBox="0 0 16 16" class="glyph" aria-hidden="true">${glyph(name)}</svg>`;
+const GLYPH_ICONS = { network: 'network', spark: 'sparkles', pulse: 'activity', cloud: 'cloud', window: 'app-window', database: 'database', prism: 'pyramid', nodes: 'workflow', chip: 'cpu', gauge: 'gauge', braces: 'braces', shield: 'shield-check', layers: 'layers', dot: 'circle' };
+const glyph = name => ICONS[GLYPH_ICONS[name] || name] || ICONS.circle;
+const ic = (name, cls = '') => `<svg viewBox="0 0 24 24" class="ic${cls ? ' ' + cls : ''}" aria-hidden="true">${ICONS[name] || ICONS.circle}</svg>`;
+const glyphSVG = name => `<svg viewBox="0 0 24 24" class="ic glyph" aria-hidden="true">${glyph(name)}</svg>`;
 
 const S = { doc: null, pages: new Map(), mentions: [], theme: 'dark', language: 'zh-Hans', editable: false, platform: 'mac', nodes: [], edges: [], byId: new Map(), domains: [], layout: null,
   zoom: 'mid', focus: null, query: '', matches: [], showMentions: false, editing: false, t: d3.zoomIdentity, chain: new Set(), highlighted: new Set(), dirtyNodes: new Set(), dirtyEdges: new Set(), removed: {}, undo: [], legendClosed: true, loaded: false };
@@ -116,7 +135,7 @@ function wrap(text, width, font) {
 function layout() {
   const titleFont = `550 14px ${FONT}`;
   const widest = Math.max(96, ...S.nodes.map(n => textWidth(n.d.title || '', titleFont)));
-  const W = Math.round(Math.min(208, Math.max(148, widest + 52)));
+  const W = Math.round(Math.min(208, Math.max(148, widest + 56)));
   const groups = S.domains.map(domain => ({ domain, nodes: S.nodes.filter(n => n.d.domain === domain.id) })).filter(g => g.nodes.length || S.editing);
   const capstones = groups.filter(g => g.nodes.length && g.nodes.every(n => (n.d.level ?? 0) >= 3));
   const lanes = groups.filter(g => !capstones.includes(g));
@@ -124,6 +143,17 @@ function layout() {
   for (const group of lanes) {
     group.columns = [0, 1, 2].map(level => group.nodes.filter(n => Math.min(2, Math.max(0, n.d.level ?? 0)) === level));
     group.rows = Math.max(1, ...group.columns.map(c => c.length));
+    const level = n => Math.min(2, Math.max(0, n.d.level ?? 0)), at = new Map();
+    const settle = () => group.columns.forEach(stack => stack.forEach((n, i) => at.set(n.id, (group.rows - stack.length) / 2 + i)));
+    const pull = (n, side) => {
+      const near = [...(S.ins.get(n.id) || []).map(e => e.a), ...(S.outs.get(n.id) || []).map(e => e.b)].filter(o => o.d.domain === n.d.domain && Math.sign(level(o) - level(n)) === side);
+      return near.length ? near.reduce((sum, o) => sum + at.get(o.id), 0) / near.length : at.get(n.id);
+    };
+    for (let sweep = 0; sweep < 6; sweep++) for (const column of sweep % 2 ? [1, 0] : [1, 2]) {
+      settle();
+      const side = sweep % 2 ? 1 : -1, weight = new Map(group.columns[column].map(n => [n.id, pull(n, side)]));
+      group.columns[column].sort((a, b) => weight.get(a.id) - weight.get(b.id) || a.i - b.i);
+    }
   }
   const regions = []; let y = 0;
   const across = lanes.length > 6 ? 3 : 2;
@@ -131,7 +161,7 @@ function layout() {
     const pair = lanes.slice(i, i + across), rows = Math.max(...pair.map(g => g.rows)), height = PAD_TOP + rows * NODE_H + (rows - 1) * ROW_GAP + PAD_BOTTOM;
     pair.forEach((group, column) => {
       const x = column * (regionW + REGION_GAP);
-      regions.push({ id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y, w: regionW, h: height });
+      regions.push({ id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y, w: regionW, h: height, row: i / across, col: column });
       group.columns.forEach((stack, level) => stack.forEach((node, row) => {
         node.w = W; node.gx = x + PAD_X + level * (W + COL_GAP);
         node.gy = y + PAD_TOP + (rows - stack.length) * pitch / 2 + row * pitch;
@@ -197,7 +227,7 @@ function routeAll() {
   const gutters = new Map(), lanes = new Map(), ports = new Map();
   const take = (map, key) => { const n = map.get(key) || 0; map.set(key, n + 1); return spread(n); };
   const laneYs = [...new Set(S.nodes.flatMap(n => [Math.round(n.y - 14), Math.round(n.y + NODE_H + 14)]))];
-  const order = [...S.edges].sort((a, b) => (a.d.kind === 'related') - (b.d.kind === 'related'));
+  const order = [...S.edges].sort((a, b) => (a.a.d.domain !== a.b.d.domain) - (b.a.d.domain !== b.b.d.domain) || (a.d.kind === 'related') - (b.d.kind === 'related'));
   for (const edge of order) {
     let a = edge.a, b = edge.b;
     const arrow = directed(edge.d.kind), HEAD = arrow ? 7 : 0;
@@ -242,15 +272,43 @@ function routeAll() {
   const pairs = new Map();
   for (const edge of S.edges) {
     if (!directed(edge.d.kind) || edge.a.d.domain === edge.b.d.domain) continue;
-    const key = edge.a.d.domain + '>' + edge.b.d.domain; pairs.set(key, (pairs.get(key) || 0) + 1);
+    const key = edge.a.d.domain + '>' + edge.b.d.domain; if (!pairs.has(key)) pairs.set(key, []); pairs.get(key).push(edge);
   }
-  const region = id => S.layout.regions.find(r => r.id === id);
-  S.layout.links = [...pairs].map(([key, count]) => {
-    const [from, to] = key.split('>').map(region); if (!from || !to) return null;
-    const a = [from.x + from.w / 2, from.y + from.h / 2], b = [to.x + to.w / 2, to.y + to.h / 2];
-    const clip = (r, p, q) => { const dx = q[0] - p[0], dy = q[1] - p[1], tx = dx ? (r.w / 2 + 10) / Math.abs(dx) : Infinity, ty = dy ? (r.h / 2 + 10) / Math.abs(dy) : Infinity, t = Math.min(tx, ty, 1); return [p[0] + dx * t, p[1] + dy * t]; };
-    const p = clip(from, a, b), q = clip(to, b, a);
-    return { key, count, path: `M${p}L${q}`, q, angle: Math.atan2(q[1] - p[1], q[0] - p[0]) * 180 / Math.PI };
+  const regions = S.layout.regions, grid = regions.filter(r => !r.capstone), half = REGION_GAP / 2;
+  const rowsN = Math.max(0, ...grid.map(r => r.row + 1)), colsN = Math.max(0, ...grid.map(r => r.col + 1));
+  const inRow = r => grid.filter(x => x.row === r), inCol = col => grid.filter(x => x.col === col);
+  const hY = r => r <= 0 ? Math.min(...inRow(0).map(x => x.y)) - half : r >= rowsN ? Math.max(...inRow(rowsN - 1).map(x => x.y + x.h)) + half : (Math.max(...inRow(r - 1).map(x => x.y + x.h)) + Math.min(...inRow(r).map(x => x.y))) / 2;
+  const vX = col => col <= 0 ? Math.min(...inCol(0).map(x => x.x)) - half : col >= colsN ? Math.max(...inCol(colsN - 1).map(x => x.x + x.w)) + half : (Math.max(...inCol(col - 1).map(x => x.x + x.w)) + Math.min(...inCol(col).map(x => x.x))) / 2;
+  const tracks = new Map(), docks = new Map();
+  const track = key => { const n = tracks.get(key) || 0; tracks.set(key, n + 1); return (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 11; };
+  const dock = (...sides) => { const n = Math.max(...sides.map(s => docks.get(s) || 0)); sides.forEach(s => docks.set(s, n + 1)); return (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 22; };
+  const cx = r => r.x + r.w / 2, cy = r => r.y + r.h / 2;
+  const through = (from, to) => {
+    if (from.capstone && !to.capstone) return through(to, from).reverse();
+    if (to.capstone) {
+      if (from.capstone || from.col === colsN - 1) { const y = cy(from) + dock(from.id + 'r'); return [[from.x + from.w, y], [to.x, y]]; }
+      const up = from.row === rowsN - 1 && rowsN > 1, gutter = up ? from.row : from.row + 1;
+      const x = cx(from) + dock(from.id + (up ? 't' : 'b')), y = hY(gutter) + track('h' + gutter);
+      return [[x, up ? from.y : from.y + from.h], [x, y], [to.x, y]];
+    }
+    const dr = to.row - from.row, dc = to.col - from.col;
+    if (!dr && Math.abs(dc) === 1) { const y = cy(from) + dock(from.id + (dc > 0 ? 'r' : 'l'), to.id + (dc > 0 ? 'l' : 'r')); return [[dc > 0 ? from.x + from.w : from.x, y], [dc > 0 ? to.x : to.x + to.w, y]]; }
+    if (!dc && Math.abs(dr) === 1) { const x = cx(from) + dock(from.id + (dr > 0 ? 'b' : 't'), to.id + (dr > 0 ? 't' : 'b')); return [[x, dr > 0 ? from.y + from.h : from.y], [x, dr > 0 ? to.y : to.y + to.h]]; }
+    if (!dr) { const y = hY(from.row + 1) + track('h' + (from.row + 1)), x0 = cx(from) + dock(from.id + 'b'), x1 = cx(to) + dock(to.id + 'b'); return [[x0, from.y + from.h], [x0, y], [x1, y], [x1, to.y + to.h]]; }
+    if (!dc) { const x = vX(from.col) + track('v' + from.col), y0 = cy(from) + dock(from.id + 'l'), y1 = cy(to) + dock(to.id + 'l'); return [[from.x, y0], [x, y0], [x, y1], [to.x, y1]]; }
+    const down = dr > 0, gutter = down ? from.row + 1 : from.row, y = hY(gutter) + track('h' + gutter), x0 = cx(from) + dock(from.id + (down ? 'b' : 't')), start = [x0, down ? from.y + from.h : from.y];
+    if (Math.abs(dr) === 1) { const x1 = cx(to) + dock(to.id + (down ? 't' : 'b')); return [start, [x0, y], [x1, y], [x1, down ? to.y : to.y + to.h]]; }
+    const column = dc > 0 ? to.col : to.col + 1, x = vX(column) + track('v' + column), y1 = cy(to) + dock(to.id + (dc > 0 ? 'l' : 'r'));
+    return [start, [x0, y], [x, y], [x, y1], [dc > 0 ? to.x : to.x + to.w, y1]];
+  };
+  const span = key => { const [from, to] = key.split('>').map(id => regions.find(r => r.id === id)); return from && to ? Math.abs((to.row ?? 0) - (from.row ?? 0)) + Math.abs((to.col ?? colsN) - (from.col ?? colsN)) : 0; };
+  S.layout.links = [...pairs].sort((a, b) => span(a[0]) - span(b[0])).map(([key, edges]) => {
+    const [from, to] = key.split('>').map(id => regions.find(r => r.id === id)); if (!from || !to || from === to) return null;
+    const points = through(from, to), last = points[points.length - 1], before = points[points.length - 2];
+    const length = Math.hypot(last[0] - before[0], last[1] - before[1]) || 1, ux = (last[0] - before[0]) / length, uy = (last[1] - before[1]) / length;
+    const first = points[0], after = points[1], lead = Math.hypot(after[0] - first[0], after[1] - first[1]) || 1;
+    const body = [[first[0] + (after[0] - first[0]) / lead * 3, first[1] + (after[1] - first[1]) / lead * 3], ...points.slice(1, -1), [last[0] - ux * 9, last[1] - uy * 9]];
+    return { key, from, to, edges, count: edges.length, tint: from.tint, path: rounded(body, 14), q: [last[0] - ux * 2, last[1] - uy * 2], angle: Math.atan2(uy, ux) * 180 / Math.PI, mid: points[Math.floor((points.length - 1) / 2)] };
   }).filter(Boolean);
   S.layout.mentions = (S.mentions || []).map(([from, to]) => {
     const a = S.byId.get(from), b = S.byId.get(to); if (!a || !b || a === b) return null;
@@ -270,8 +328,8 @@ function draw(animate = false) {
     const g = enter.append('g').attr('class', 'region');
     g.append('rect').attr('rx', 18);
     const label = g.append('g').attr('class', 'label');
-    label.append('g').attr('class', 'glyph').attr('transform', 'translate(0,-12.5)');
-    label.append('text').attr('x', 23).attr('class', 'name');
+    label.append('g').attr('class', 'glyph').attr('transform', 'translate(0,-13)scale(.6667)');
+    label.append('text').attr('x', 24).attr('class', 'name');
     g.append('g').attr('class', 'levels');
     const far = g.append('g').attr('class', 'far');
     far.append('text').attr('class', 'name');
@@ -289,12 +347,17 @@ function draw(animate = false) {
   move(region.select('.far')).attr('transform', d => `translate(${d.x + d.w / 2},${d.y + d.h / 2 + 14})`);
   region.select('.far .name').text(d => d.domain.title);
 
-  d3.select('#links').selectAll('g.link').data(links, d => d.key).join(enter => { const g = enter.append('g').attr('class', 'link'); g.append('path'); g.append('path').attr('class', 'tip'); return g; })
-    .each(function (d) {
-      const g = d3.select(this), width = Math.min(9, 2.5 + d.count * 1.5);
-      g.select('path').attr('d', d.path).attr('stroke-width', Math.min(5, width)).attr('opacity', .22);
-      g.select('.tip').attr('d', 'M0,0L-16,-9L-16,9Z').attr('transform', `translate(${d.q})rotate(${d.angle})`).attr('fill', 'var(--rm-line-strong)').attr('stroke', 'none').attr('opacity', .4);
-    });
+  d3.select('#links').selectAll('g.link').data(links, d => d.key).join(enter => {
+    const g = enter.append('g').attr('class', 'link');
+    g.append('path').attr('class', 'line'); g.append('path').attr('class', 'tip').attr('d', 'M0,0L-10,-5L-10,5Z'); g.append('path').attr('class', 'hit');
+    g.on('pointerenter', (event, d) => linkHover(d, event)).on('pointermove', (event, d) => linkHover(d, event)).on('pointerleave', () => linkHover(null));
+    return g;
+  }).attr('data-key', d => d.key).style('--tint', d => d.tint).each(function (d) {
+    const g = d3.select(this);
+    g.select('.line').attr('d', d.path).attr('stroke-width', Math.min(3.4, 1.4 + d.count * 0.5));
+    g.select('.hit').attr('d', d.path);
+    g.select('.tip').attr('transform', `translate(${d.q})rotate(${d.angle})`);
+  });
   d3.select('#mentions').selectAll('path.mention').data(mentions, d => d.key).join('path').attr('class', 'mention').attr('d', d => d.path);
 
   const edge = d3.select('#edges').selectAll('g.edge').data(S.edges, d => d.id).join(enter => {
@@ -312,8 +375,8 @@ function draw(animate = false) {
     const g = enter.append('g').attr('class', 'node');
     g.append('rect').attr('class', 'halo').attr('x', -4).attr('y', -4).attr('rx', 13.5);
     g.append('rect').attr('class', 'card').attr('rx', 10).attr('height', NODE_H);
-    g.append('rect').attr('class', 'mark').attr('x', 11).attr('y', NODE_H / 2 - 8).attr('width', 3).attr('height', 16).attr('rx', 1.5);
-    g.append('text').attr('class', 'title').attr('x', 24).attr('y', NODE_H / 2 + 0.5);
+    g.append('g').attr('class', 'icon').attr('transform', `translate(11,${NODE_H / 2 - 7.5})scale(.625)`);
+    g.append('text').attr('class', 'title').attr('x', 33).attr('y', NODE_H / 2 + 0.5);
     g.append('text').attr('class', 'summary');
     g.on('click', (event, d) => { event.stopPropagation(); if (!d.moved) focus(d.id); })
       .on('dblclick', (event, d) => { event.stopPropagation(); if (S.editing) editNode(d); else openPage(d.d.pages?.[0], false); })
@@ -325,6 +388,7 @@ function draw(animate = false) {
   const near = S.zoom === 'near';
   node.select('.halo').attr('width', d => d.w + 8).attr('height', d => (near ? d.hNear : NODE_H) + 8);
   node.select('.card').attr('width', d => d.w).attr('height', d => near ? d.hNear : NODE_H);
+  node.select('.icon').html(d => ICONS[d.d.draft ? 'circle-dashed' : 'file-text']);
   node.select('.title').text(d => d.d.title);
   node.select('.summary').each(function (d) { d3.select(this).selectAll('tspan').data(d.lines).join('tspan').attr('x', 12).attr('y', (_, i) => NODE_H + 7 + i * 12.5).text(line => line); });
   drawHandles(); drawMinimap(); drawHead(); applyState();
@@ -394,14 +458,14 @@ function backdrop() {
 function viewport() { const rect = $('canvas').getBoundingClientRect(); return { w: rect.width || innerWidth, h: rect.height || innerHeight }; }
 function fitTransform() {
   const { w, h } = viewport(), b = S.layout.bounds, open = app.classList.contains('panel-open') && !app.classList.contains('touch');
-  const left = 28, right = 28 + (open ? PANEL : 0), top = 72, bottom = 36;
+  const left = 28, right = 28 + (open ? panelSpace() : 0), top = 72, bottom = 36;
   const k = Math.max(0.18, Math.min(1.15, (w - left - right) / b.w, (h - top - bottom) / b.h));
   return d3.zoomIdentity.translate(left + (w - left - right - b.w * k) / 2 - b.x * k, top + (h - top - bottom - b.h * k) / 2 - b.y * k).scale(k);
 }
 function go(transform, ms = 300) { const target = svg.interrupt(); (dur(ms) ? target.transition().duration(dur(ms)).ease(d3.easeCubicOut) : target).call(zoom.transform, transform); }
 function flyTo(node, scale) {
   const { w, h } = viewport(), open = app.classList.contains('panel-open') && !app.classList.contains('touch');
-  const left = 40, right = 40 + (open ? PANEL : 0), top = 96, bottom = 56;
+  const left = 40, right = 40 + (open ? panelSpace() : 0), top = open ? 140 : 96, bottom = 56;
   const group = scale ? [node] : S.nodes.filter(n => n === node || S.highlighted.has(n.id));
   const x0 = Math.min(...group.map(n => n.x)), y0 = Math.min(...group.map(n => n.y)), x1 = Math.max(...group.map(n => n.x + n.w)), y1 = Math.max(...group.map(n => n.y + NODE_H));
   const k = scale || Math.max(0.6, Math.min(1.1, (w - left - right) / (x1 - x0), (h - top - bottom) / (y1 - y0)));
@@ -475,6 +539,16 @@ function hover(node) {
     show();
   }, 240);
 }
+function linkHover(link, event) {
+  const tip = $('edge-tip');
+  d3.selectAll('#links g.link').classed('hover', d => d === link);
+  d3.selectAll('#edges g.edge').classed('hover', d => !!link && link.edges.includes(d));
+  if (!link || popoverOpen()) { tip.hidden = true; return; }
+  tip.className = 'float';
+  tip.innerHTML = `<b><em>${esc(link.from.domain.title)}</em> → <em>${esc(link.to.domain.title)}</em></b><ul>${link.edges.map(e => `<li>${esc(e.a.d.title)} → ${esc(e.b.d.title)}</li>`).join('')}</ul>`;
+  const [x, y] = event ? d3.pointer(event, app) : [S.t.applyX(link.mid[0]), S.t.applyY(link.mid[1])];
+  place(tip, x + 4, y + 14);
+}
 function edgeHover(edge, event) {
   const tip = $('edge-tip');
   d3.selectAll('#edges g.edge').classed('hover', d => d === edge);
@@ -506,22 +580,24 @@ function renderPanel() {
   const related = [...S.ins.get(node.id), ...S.outs.get(node.id)].filter(e => e.d.kind === 'related');
   const path = learningPath(node.id);
   const pages = (node.d.pages || []).map(key => ({ key, info: S.pages.get(key) }));
-  const pageIcon = '<svg viewBox="0 0 16 16"><path d="M4 1.8h5.2L12.6 5v8.2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2.8a1 1 0 0 1 1-1ZM9 2v3.2h3.4M5.4 8h5.2M5.4 10.6h3.6"/></svg>', goIcon = '<svg class="go" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></svg>';
-  let html = `<div class="scroll"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${esc(domain?.title || '')}</span><span class="sep">·</span><span>${esc(T(LEVELS[Math.min(3, Math.max(0, node.d.level ?? 0))]))}</span><button class="close" data-close aria-label="Close"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button></div>`;
-  html += `<h2>${esc(node.d.title)}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h2><p class="lead">${esc(node.d.summary || '')}</p>`;
-  if (figures.length) html += `<button class="figure" data-figure="0"><img alt="${esc(T('原理图'))}" src="${esc(themed(figures[0]))}">${figures.length > 1 ? `<span>1 / ${figures.length}</span>` : ''}</button>`;
-  if ((node.d.keyPoints || []).length) html += `<h3>${esc(T('要点'))}</h3><ol>${node.d.keyPoints.map((k, i) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}<small>§ ${esc(k.heading)}</small></span></button></li>`).join('')}</ol>`;
-  html += `<h3>${esc(T('页面'))}</h3>`;
-  html += pages.length ? `<ul>${pages.map(({ key, info }) => `<li><button class="page${info && info.exists === false ? ' missing' : ''}" data-page="${esc(key)}">${pageIcon}<span>${esc(info?.title || key.split('/').pop())}</span>${info && info.exists === false ? `<span class="tag">${esc(T('页面不存在'))}</span>` : goIcon}</button></li>`).join('')}</ul>`
+  const pageIcon = ic('file-text'), goIcon = ic('chevron-right', 'go');
+  const h3 = (name, text) => `<h3>${ic(name)}<span>${esc(T(text))}</span></h3>`;
+  const top = `<div class="top"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${esc(domain?.title || '')}</span><span class="sep">·</span><span>${esc(T(LEVELS[Math.min(3, Math.max(0, node.d.level ?? 0))]))}</span><button class="close" data-close aria-label="Close">${ic('x')}</button></div>`
+    + `<h2>${esc(node.d.title)}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h2><p class="lead">${esc(node.d.summary || '')}</p></div>`;
+  let main = '', side = '';
+  if (figures.length) main += `<button class="figure" data-figure="0"><img alt="${esc(T('原理图'))}" src="${esc(themed(figures[0]))}">${figures.length > 1 ? `<span>1 / ${figures.length}</span>` : ''}</button>`;
+  if ((node.d.keyPoints || []).length) main += `${h3('list-checks', '要点')}<ol>${node.d.keyPoints.map((k, i) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}<small>§ ${esc(k.heading)}</small></span></button></li>`).join('')}</ol>`;
+  side += h3('file-text', '页面');
+  side += pages.length ? `<ul>${pages.map(({ key, info }) => `<li><button class="page${info && info.exists === false ? ' missing' : ''}" data-page="${esc(key)}">${pageIcon}<span>${esc(info?.title || key.split('/').pop())}</span>${info && info.exists === false ? `<span class="tag">${esc(T('页面不存在'))}</span>` : goIcon}</button></li>`).join('')}</ul>`
     : `<p class="hint">${esc(node.d.note || T('这个节点还没有页面，摘要是通用常识。'))}</p>${S.editing ? `<button class="page" data-new-page>${pageIcon}<span>${esc(T('新建页面'))}</span></button>` : ''}`;
-  if (before.length) html += `<h3>${esc(T('先学'))}</h3><ul>${before.map(e => relation(e, e.a, e.d.kind === 'applies' ? T('用到的概念') : '')).join('')}</ul>`;
-  if (after.length) html += `<h3>${esc(T('学完可以继续'))}</h3><ul>${after.map(e => relation(e, e.b, e.d.kind === 'applies' ? T('在这里用到') : '')).join('')}</ul>`;
-  if (related.length) html += `<h3>${esc(T('相关'))}</h3><ul>${related.map(e => relation(e, e.a.id === node.id ? e.b : e.a, '')).join('')}</ul>`;
-  html += `<h3>${esc(T('学习路径'))}</h3>`;
-  if (path.length) html += `<ol class="path">${path.map(step => { const other = S.byId.get(step.id); return `<li><button class="chip${other.d.draft ? ' draft' : ''}" data-focus="${esc(other.id)}">${esc(other.d.title)}</button><p>${esc(step.why)}</p></li>`; }).join('')}<li class="goal"><button class="chip" data-focus="${esc(node.id)}">${esc(node.d.title)}</button></li></ol>`;
-  else html += `<p class="hint">${esc(T('没有前置，可以从这里开始。'))}</p>`;
-  if (S.editing) html += `<h3>${esc(T('编辑'))}</h3><ul><li><button class="page" data-edit-node>${esc(T('节点标题'))}…</button></li><li><button class="page" data-remove-node>${esc(T('移除节点'))}</button></li></ul>`;
-  html += `</div>`;
+  if (before.length) side += `${h3('log-in', '先学')}<ul>${before.map(e => relation(e, e.a, e.d.kind === 'applies' ? T('用到的概念') : '')).join('')}</ul>`;
+  if (after.length) side += `${h3('log-out', '学完可以继续')}<ul>${after.map(e => relation(e, e.b, e.d.kind === 'applies' ? T('在这里用到') : '')).join('')}</ul>`;
+  if (related.length) side += `${h3('link-2', '相关')}<ul>${related.map(e => relation(e, e.a.id === node.id ? e.b : e.a, '')).join('')}</ul>`;
+  side += h3('route', '学习路径');
+  if (path.length) side += `<ol class="path">${path.map(step => { const other = S.byId.get(step.id); return `<li><button class="chip${other.d.draft ? ' draft' : ''}" data-focus="${esc(other.id)}">${esc(other.d.title)}</button><p>${esc(step.why)}</p></li>`; }).join('')}<li class="goal"><button class="chip" data-focus="${esc(node.id)}">${esc(node.d.title)}</button></li></ol>`;
+  else side += `<p class="hint">${esc(T('没有前置，可以从这里开始。'))}</p>`;
+  if (S.editing) side += `${h3('pencil', '编辑')}<ul><li><button class="page" data-edit-node>${esc(T('节点标题'))}…</button></li><li><button class="page" data-remove-node>${esc(T('移除节点'))}</button></li></ul>`;
+  const html = `<div class="scroll">${top}<div class="cols${main ? '' : ' solo'}">${main ? `<div class="main">${main}</div>` : ''}<div class="side">${side}</div></div></div>`;
   const panel = $('panel'), keep = panel.dataset.node === node.id ? panel.querySelector('.scroll')?.scrollTop : 0;
   panel.dataset.node = node.id; panel.innerHTML = html;
   if (keep) panel.querySelector('.scroll').scrollTop = keep;
@@ -559,13 +635,12 @@ function flush() {
 
 // ---------- chrome ----------
 function drawChrome() {
-  const icon = { fit: '<svg viewBox="0 0 16 16"><path d="M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10"/></svg>', plus: '<svg viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></svg>', minus: '<svg viewBox="0 0 16 16"><path d="M3.5 8h9"/></svg>', links: '<svg viewBox="0 0 16 16"><path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.2-2.2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.3 9a2.6 2.6 0 0 0 3.7 3.7l.7-.7"/></svg>', edit: '<svg viewBox="0 0 16 16"><path d="M10.6 2.9 13.1 5.4 5.6 12.9l-3 .5.5-3ZM9.3 4.2l2.5 2.5"/></svg>' };
   const canEdit = S.editable && S.platform !== 'ios';
-  $('tools').innerHTML = `${canEdit ? `<div class="group"><button data-tool="edit" aria-pressed="${S.editing}" title="${esc(T(S.editing ? '完成' : '编辑'))}">${icon.edit}<span>${esc(T(S.editing ? '完成' : '编辑'))}</span></button></div>` : ''}<div class="group"><button data-tool="mentions" aria-pressed="${S.showMentions}" title="${esc(T('页面互链'))}">${icon.links}</button></div><div class="group"><button data-tool="out" title="${esc(T('缩小'))}">${icon.minus}</button><button data-tool="fit" title="${esc(T('适合窗口'))}"><span id="zoom-level">${Math.round(S.t.k * 100)}%</span></button><button data-tool="in" title="${esc(T('放大'))}">${icon.plus}</button></div>`;
+  $('tools').innerHTML = `${canEdit ? `<div class="group"><button data-tool="edit" aria-pressed="${S.editing}" title="${esc(T(S.editing ? '完成' : '编辑'))}">${ic('pencil')}<span>${esc(T(S.editing ? '完成' : '编辑'))}</span></button></div>` : ''}<div class="group"><button data-tool="mentions" aria-pressed="${S.showMentions}" title="${esc(T('页面互链'))}">${ic('link-2')}</button></div><div class="group"><button data-tool="out" title="${esc(T('缩小'))}">${ic('minus')}</button><button data-tool="fit" title="${esc(T('适合窗口'))}"><span id="zoom-level">${Math.round(S.t.k * 100)}%</span></button><button data-tool="in" title="${esc(T('放大'))}">${ic('plus')}</button></div>`;
   $('search-input').placeholder = T('搜索节点');
   if (!$('search-kbd') && S.platform !== 'ios') $('search-count').insertAdjacentHTML('afterend', '<kbd id="search-kbd">⌘F</kbd>');
   const line = (kind, arrow) => `<svg viewBox="0 0 34 14"><g class="edge" data-kind="${kind}" style="opacity:1"><path class="line" d="M1,7H${arrow ? 26 : 33}" style="stroke:var(--rm-line-strong)"/>${arrow ? '<path class="head" d="M33,7L25.5,3.4L25.5,10.6Z" style="fill:var(--rm-line-strong)"/>' : ''}</g></svg>`;
-  const card = draft => `<svg viewBox="0 0 34 14"><g class="node${draft ? ' draft' : ''}" style="--tint:var(--rm-muted)"><rect class="card" x=".75" y=".75" width="32.5" height="12.5" rx="4"/><rect class="mark" x="5" y="4" width="1.6" height="6" rx=".8"/><path d="M10,7H27" stroke="var(--rm-muted)" stroke-width="1.6" stroke-linecap="round" opacity=".5"/></g></svg>`;
+  const card = draft => `<svg viewBox="0 0 34 14"><g class="node${draft ? ' draft' : ''}" style="--tint:var(--rm-muted)"><rect class="card" x=".75" y=".75" width="32.5" height="12.5" rx="4"/><path d="M7,7H27" stroke="var(--rm-muted)" stroke-width="1.6" stroke-linecap="round" opacity=".5"/></g></svg>`;
   $('legend').className = 'float' + (S.legendClosed ? ' closed' : '');
   $('legend').innerHTML = `<button class="toggle"><span>${esc(T('图例'))}</span><svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5"/></svg></button><div class="body">
     <div class="row">${line('requires', true)}<span>${esc(T('先学 A 再学 B'))}</span></div><div class="row">${line('applies', true)}<span>${esc(T('B 是 A 的实际应用'))}</span></div><div class="row">${line('related', false)}<span>${esc(T('相关，聚焦时显示'))}</span></div><hr>

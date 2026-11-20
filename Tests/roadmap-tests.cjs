@@ -59,6 +59,9 @@ const roadmap = {
   check(!(await page.$('#panel .segment')) && !(await page.$('g.node .dot')), 'No learning status is shown on nodes or in the panel');
   check((await page.$eval('#head-count', e => e.textContent)).includes('10 个节点'), 'The header counts nodes instead of progress');
 
+  check(await page.evaluate(() => Math.abs(document.getElementById('panel').getBoundingClientRect().width / document.getElementById('app').getBoundingClientRect().width - 0.5) < 0.02), 'The detail panel takes half of the view');
+  check(await page.$$eval('#links g.link', links => links.length > 0 && links.every(l => l.querySelector('.line').getAttribute('d'))), 'Domains are joined by routed links');
+  check(await page.$$eval('g.edge.cross:not(.lit):not(.flow):not(.hover)', edges => edges.every(e => getComputedStyle(e).opacity === '0')), 'Edges between domains stay hidden until they are lit');
   await page.keyboard.press('Escape');
   check((await state()).focus === null, 'Esc leaves focus');
   await page.waitForTimeout(400);
