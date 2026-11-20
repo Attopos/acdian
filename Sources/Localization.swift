@@ -73,6 +73,8 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "在侧栏中隐藏这个文件夹": ("Hide this folder in the sidebar", "Ocultar esta carpeta en la barra lateral"),
         "添加": ("Add", "Añadir"),
         "卡片索引": ("Card Index", "Índice de tarjetas"),
+        "知识路线图": ("Knowledge Roadmap", "Mapa de conocimiento"),
+        "把文件夹里的页面连成一张知识地图：先学什么、学完能做什么、学到哪了。": ("Links the pages in a folder into a map of what to learn first, what it unlocks, and how far you are.", "Une las páginas de una carpeta en un mapa: qué aprender antes, qué desbloquea y hasta dónde has llegado."),
         "把文件夹里的每个页面显示成卡片，带字母栏和搜索，适合单词表和术语表。": ("Every page in a folder as a card, with a letter rail and search. Good for word lists and glossaries.", "Cada página de una carpeta como tarjeta, con índice de letras y búsqueda. Útil para listas de palabras y glosarios."),
         "移动到": ("Move to", "Mover a"),
         "移到这里": ("Move here", "Mover aquí"),

@@ -132,7 +132,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
 @MainActor final class AppModel: ObservableObject {
     let services: PlatformServices = makePlatformServices()
     @Published var index: VaultIndex? { didSet { indexGeneration &+= 1; followSplitEntry(); findLeftComments() } }
-    private var indexGeneration = 0
+    private(set) var indexGeneration = 0
     @Published var loading = false {
         didSet { if oldValue && !loading { scheduleAutosave() } }
     }
@@ -704,6 +704,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             do {
                 let newPath = try PageOrganizer(root:root).rename(path,to:name)
                 if entry.isDirectory { self.moveFolderStates(from:path,to:newPath); self.moduleFolderMoved(from:path,to:newPath); self.componentSourcesMoved(from:path,to:newPath) }
+                self.roadmapPagesMoved(from:path,to:newPath)
                 self.remapTabs(from:path,to:newPath)
                 // The renamed paths are updated in memory; a rescan off the
                 // main thread then catches anything else that changed.
@@ -765,6 +766,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
                         if self.loadID == request { self.loading = false }
                         guard newPath != relativePath else { self.index = newIndex; return }
                         if entry.isDirectory { self.moveFolderStates(from:relativePath,to:newPath); self.moduleFolderMoved(from:relativePath,to:newPath); self.componentSourcesMoved(from:relativePath,to:newPath) }
+                        self.roadmapPagesMoved(from:relativePath,to:newPath)
                         self.remapTabs(from:relativePath,to:newPath); self.searchMoved(from:relativePath,to:newPath)
                         self.index = newIndex; self.rebuildSearch()
                         if affectsSelection, let openPath, newPath != relativePath {
@@ -1670,7 +1672,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             error = localized("请输入有效的名称，不包含 / 或 :。"); return false
         }
         do {
-            let data = try ComponentStore.encode(ComponentInstance(component:kind,source:source,hideSource:hideSource))
+            let data = kind == .roadmap ? try RoadmapDocument.empty(source:source,title:name).encoded() : try ComponentStore.encode(ComponentInstance(component:kind,source:source,hideSource:hideSource))
             let directory = folder.isEmpty ? root : root.appendingPathComponent(folder,isDirectory:true)
             var number = 1, path = ""
             while true {
@@ -1689,7 +1691,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
     /// Saves a component's settings back to its file.
     func updateComponent(_ file: VaultEntry, _ instance: ComponentInstance) {
-        guard let root = index?.root, let data = try? ComponentStore.encode(instance) else { return }
+        guard instance.component != .roadmap, let root = index?.root, let data = try? ComponentStore.encode(instance) else { return }
         do {
             if CloudFiles.isSynced(root) {
                 var merged = instance
@@ -1713,10 +1715,89 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
             updated.source = new + instance.source.dropFirst(old.count)
             // The component file itself may have moved with the folder.
             let path = file.relativePath == old || file.relativePath.hasPrefix(old + "/") ? new + file.relativePath.dropFirst(old.count) : file.relativePath
-            guard let root = index?.root, let data = try? ComponentStore.encode(updated) else { continue }
+            guard let root = index?.root else { continue }
+            if instance.component == .roadmap {
+                let url = root.appendingPathComponent(path)
+                try? FileCoordination.writing(url,options:.forReplacing) {
+                    guard var document = RoadmapDocument.read(url) else { return }
+                    document.source = updated.source
+                    try document.encoded().write(to:url,options:.atomic)
+                }
+                continue
+            }
+            guard let data = try? ComponentStore.encode(updated) else { continue }
             try? FileCoordination.write(data,to:root.appendingPathComponent(path))
         }
         componentMemo = (-1,[])
+    }
+
+    // MARK: Roadmaps
+    @Published private(set) var roadmapRevision = 0
+    /// Applies changed nodes and edges and deletions to a roadmap file, joined
+    /// item by item with what is on disk so another device's edits survive.
+    @discardableResult func saveRoadmap(_ file: VaultEntry, nodes: [RoadmapNode] = [], edges: [RoadmapEdge] = [], removed: [String: Double] = [:]) -> RoadmapDocument? {
+        guard let root = index?.root, !isReadOnly(file.relativePath) else { return nil }
+        do {
+            let saved: RoadmapDocument? = try FileCoordination.writing(file.url,options:.forReplacing) {
+                guard let disk = RoadmapDocument.read(file.url) else { return nil }
+                var change = disk
+                change.nodes = nodes; change.edges = edges; change.removed = removed
+                let merged = MetadataMerge.roadmap(local:change,disk:disk,now:Date().timeIntervalSince1970)
+                guard merged != disk else { return disk }
+                try VaultFileIO.checkedWrite(try merged.encoded(),to:file.url,allowedRoot:root)
+                return merged
+            }
+            roadmapRevision &+= 1
+            return saved
+        } catch { self.error = localizedError(error); return nil }
+    }
+    /// Creates an empty page in a roadmap's folder for a node that has none, and attaches it.
+    @discardableResult func newRoadmapPage(_ file: VaultEntry, node id: String, title: String) -> VaultEntry? {
+        guard let root = index?.root, let document = RoadmapDocument.read(file.url), var node = document.nodes.first(where: { $0.id == id }), !isReadOnly(document.source), !isReadOnly(file.relativePath) else { return nil }
+        let base = Self.draftFilenameBase(title.isEmpty ? node.title : title)
+        do {
+            let directory = document.source.isEmpty ? root : root.appendingPathComponent(document.source,isDirectory:true)
+            var number = 1, filename = ""
+            while true {
+                filename = PageOrganizer.numberedName(base + ".md",isDirectory:false,number:number)
+                do { try FileCoordination.write(Data(),to:directory.appendingPathComponent(filename),options:.withoutOverwriting); break }
+                catch let error as CocoaError where error.code == .fileWriteFileExists { number += 1 }
+            }
+            let path = document.source.isEmpty ? filename : document.source + "/" + filename
+            let url = root.appendingPathComponent(path), stamp = FileStamp(of:url)
+            let page = VaultEntry(relativePath:path,url:url,name:filename,isDirectory:false,children:nil,modified:stamp?.modified,size:stamp?.size ?? 0)
+            index = index?.addingFile(page)
+            node.pages.append((filename as NSString).deletingPathExtension); node.draft = nil; node.updated = Date().timeIntervalSince1970
+            saveRoadmap(file,nodes:[node])
+            open(page)
+            return page
+        } catch { self.error = localizedError(error); return nil }
+    }
+    /// Roadmap nodes keep pointing at a page or folder after it is renamed or moved.
+    private func roadmapPagesMoved(from old: String, to new: String) {
+        guard old != new, let root = index?.root else { return }
+        if modules.contains(where: { $0.home == old }) {
+            for i in modules.indices where modules[i].home == old { modules[i].home = new }
+            saveModules()
+        }
+        func key(_ path: String, in source: String) -> String? {
+            let prefix = source.isEmpty ? "" : source + "/"
+            guard path.hasPrefix(prefix) else { return nil }
+            let inside = String(path.dropFirst(prefix.count))
+            return inside.hasSuffix(".md") ? String(inside.dropLast(3)) : inside
+        }
+        for (file,instance) in componentInstances where instance.component == .roadmap {
+            guard let before = key(old,in:instance.source), let after = key(new,in:instance.source) else { continue }
+            let path = file.relativePath == old || file.relativePath.hasPrefix(old + "/") ? new + file.relativePath.dropFirst(old.count) : file.relativePath
+            let url = root.appendingPathComponent(path)
+            try? FileCoordination.writing(url,options:.forReplacing) {
+                guard var document = RoadmapDocument.read(url) else { return }
+                let original = document
+                document.movePages(from:before,to:after,at:Date().timeIntervalSince1970)
+                if document != original { try document.encoded().write(to:url,options:.atomic) }
+            }
+        }
+        roadmapRevision &+= 1
     }
 
     // MARK: Importing files
@@ -1954,6 +2035,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let newPath: String
         do { newPath = try PageOrganizer(root:root).rename(entry.relativePath,to:name) }
         catch { if reporting { self.error = localizedError(error) }; return nil }
+        roadmapPagesMoved(from:entry.relativePath,to:newPath)
         remapTabs(from:entry.relativePath,to:newPath)
         guard let newIndex = index?.renaming(entry.relativePath,to:newPath) else { return nil }
         index = newIndex; rebuildSearch()

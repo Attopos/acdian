@@ -19,11 +19,13 @@ struct PageModule: Codable, Identifiable, Equatable {
     var kind: Kind = .pages
     var hidden = false
     var readOnly = false
+    /// A component file shown as this module's home in place of the page list, as a vault path.
+    var home: String?
 
-    init(name: String, folder: String, icon: String, color: String, kind: Kind = .pages, hidden: Bool = false, readOnly: Bool = false) {
-        self.name = name; self.folder = folder; self.icon = icon; self.color = color; self.kind = kind; self.hidden = hidden; self.readOnly = readOnly
+    init(name: String, folder: String, icon: String, color: String, kind: Kind = .pages, hidden: Bool = false, readOnly: Bool = false, home: String? = nil) {
+        self.name = name; self.folder = folder; self.icon = icon; self.color = color; self.kind = kind; self.hidden = hidden; self.readOnly = readOnly; self.home = home
     }
-    private enum CodingKeys: String, CodingKey { case name, folder, icon, color, kind, hidden, readOnly }
+    private enum CodingKeys: String, CodingKey { case name, folder, icon, color, kind, hidden, readOnly, home }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy:CodingKeys.self)
         folder = try values.decode(String.self,forKey:.folder)
@@ -33,12 +35,14 @@ struct PageModule: Codable, Identifiable, Equatable {
         kind = (try? values.decodeIfPresent(Kind.self,forKey:.kind)) ?? .pages
         hidden = try values.decodeIfPresent(Bool.self,forKey:.hidden) ?? false
         readOnly = try values.decodeIfPresent(Bool.self,forKey:.readOnly) ?? false
+        home = (try? values.decodeIfPresent(String.self,forKey:.home)).flatMap { $0 }.flatMap { $0.isEmpty ? nil : $0 }
     }
     func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy:CodingKeys.self)
         try values.encode(name,forKey:.name); try values.encode(folder,forKey:.folder); try values.encode(icon,forKey:.icon)
         try values.encode(color,forKey:.color); try values.encode(kind,forKey:.kind); try values.encode(hidden,forKey:.hidden)
         if readOnly { try values.encode(readOnly,forKey:.readOnly) }
+        try values.encodeIfPresent(home,forKey:.home)
     }
     /// Whether a vault path lies inside this module's folder.
     func contains(_ path: String) -> Bool { path.hasPrefix(folder + "/") }

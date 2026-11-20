@@ -50,6 +50,7 @@ struct ComponentPage: View {
             case .cardIndex: CardIndexView(title:title,folder:instance.source,initialColumns:instance.columns,initialSaved:instance.saved) { columns,saved in
                 var updated = instance; updated.columns = columns; updated.saved = saved; model.updateComponent(file,updated)
             }
+            case .roadmap: RoadmapView(model:model,file:file)
             }
         } else {
             VStack(spacing:12) {

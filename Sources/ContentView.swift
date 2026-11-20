@@ -493,7 +493,9 @@ struct HomeArea: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
         if let module = model.activeModule {
-            if module.kind == .attachments { AttachmentsView(module:module) } else { ModuleHomeView(module:module) }
+            if module.kind == .attachments { AttachmentsView(module:module) }
+            else if let home = module.home, home.hasSuffix("." + ComponentStore.fileExtension), let file = model.index?.files.first(where: { $0.relativePath == home }) { ComponentPage(file:file).id(file.id) }
+            else { ModuleHomeView(module:module) }
         } else { LauncherView() }
     }
 }

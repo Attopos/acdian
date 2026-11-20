@@ -5,21 +5,23 @@ import Foundation
 /// shows. Opening it draws the component natively, never as page text.
 enum ComponentKind: String, CaseIterable, Identifiable, Codable {
     case cardIndex = "card-index"
+    case roadmap
     var id: String { rawValue }
     /// Chinese source strings, translated through AppLanguage like the rest of the UI.
     var title: String {
-        switch self { case .cardIndex: return "卡片索引" }
+        switch self { case .cardIndex: return "卡片索引"; case .roadmap: return "知识路线图" }
     }
     var summary: String {
         switch self {
         case .cardIndex: return "把文件夹里的每个页面显示成卡片，带字母栏和搜索，适合单词表和术语表。"
+        case .roadmap: return "把文件夹里的页面连成一张知识地图：先学什么、学完能做什么、学到哪了。"
         }
     }
     var icon: String {
-        switch self { case .cardIndex: return "rectangle.grid.2x2" }
+        switch self { case .cardIndex: return "rectangle.grid.2x2"; case .roadmap: return "point.3.connected.trianglepath.dotted" }
     }
     var color: String {
-        switch self { case .cardIndex: return "pink" }
+        switch self { case .cardIndex: return "pink"; case .roadmap: return "plum" }
     }
     /// Whether hiding the source folder from the sidebar is offered, and its default.
     var hidesSourceByDefault: Bool { self == .cardIndex }
@@ -69,7 +71,7 @@ struct ComponentInstance: Codable, Equatable {
 enum ComponentStore {
     static let fileExtension = "acdian"
     static func read(_ url: URL) -> ComponentInstance? {
-        guard let data = try? Data(contentsOf:url), data.count < 100_000 else { return nil }
+        guard let data = try? Data(contentsOf:url), data.count < RoadmapDocument.maxBytes else { return nil }
         return try? JSONDecoder().decode(ComponentInstance.self,from:data)
     }
     static func encode(_ instance: ComponentInstance) throws -> Data {

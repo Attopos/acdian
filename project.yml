@@ -27,6 +27,7 @@ targets:
       - path: Sources/PageTrash.swift
       - path: Sources/Modules.swift
       - path: Sources/Components.swift
+      - path: Sources/Roadmap.swift
       - path: Sources/Localization.swift
       - path: Sources/PagesStorage.swift
       - path: Sources/AppModel.swift
@@ -38,8 +39,12 @@ targets:
         excludes:
           - "vendor/**"
           - "interactive/**"
+          - "roadmap/**"
           - "AppIcon*"
       - path: Resources/vendor
+        type: folder
+        buildPhase: resources
+      - path: Resources/roadmap
         type: folder
         buildPhase: resources
       - path: Resources/interactive
