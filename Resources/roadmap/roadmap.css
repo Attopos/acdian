@@ -290,6 +290,9 @@ svg text { font-family: var(--acd-font); }
 #drawer .none { padding: 6px 8px; color: var(--rm-muted); font-size: 12.5px; }
 
 /* touch and narrow */
+.touch .node .card, .touch .edge.flow path.line { filter: none; }
+.touch .float { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--rm-float); }
+.touch #head-title { display: none; }
 .touch #minimap { display: none; }
 .compact #search { left: auto; right: 16px; margin: 0; width: min(200px, calc(100% - 32px)); top: 58px; }
 .compact #panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; height: min(68%, 600px); transform: translateY(calc(100% + 16px)); }

@@ -453,8 +453,16 @@ function applyState(flow = false) {
 // ---------- viewport ----------
 const zoom = d3.zoom().scaleExtent([0.18, 2.6]).filter(event => event.type !== 'wheel' && event.type !== 'dblclick' && !event.button && !(S.editing && event.target.closest?.('.node, .handle')))
   .on('start', event => { if (event.sourceEvent?.type === 'mousedown') svg.classed('grabbing', true); hover(null); })
-  .on('zoom', event => { S.t = event.transform; world.attr('transform', S.t); backdrop(); setZoomMode(S.t.k < FAR ? 'far' : S.t.k >= NEAR ? 'near' : 'mid'); drawViewport(); viewChanged(); })
+  .on('zoom', event => { S.t = event.transform; if (!frame) frame = requestAnimationFrame(paint); })
   .on('end', () => svg.classed('grabbing', false));
+let frame = 0;
+function paint() {
+  frame = 0;
+  world.attr('transform', S.t); backdrop();
+  setZoomMode(S.t.k >= NEAR ? 'near' : S.t.k < FAR && !compact() ? 'far' : 'mid');
+  drawViewport(); viewChanged();
+}
+function zoomLimits() { zoom.scaleExtent([compact() && S.layout ? Math.max(0.18, fitTransform().k * 0.45) : 0.18, 2.6]); }
 function backdrop() {
   const step = 28 * S.t.k * (S.t.k < 0.6 ? 2 : 1), canvas = $('canvas');
   canvas.style.backgroundSize = `${step}px ${step}px`; canvas.style.backgroundPosition = `${S.t.x}px ${S.t.y}px`;
@@ -686,7 +694,7 @@ document.addEventListener('keydown', event => {
 let wasCompact = compact();
 addEventListener('resize', () => {
   app.classList.toggle('compact', compact());
-  if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); draw(); svg.call(zoom.transform, fitTransform()); }
+  if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); zoomLimits(); draw(); svg.call(zoom.transform, fitTransform()); }
   drawViewport();
 });
 
@@ -885,7 +893,7 @@ function load(message, update) {
   S.doc = message.roadmap || { nodes: [], edges: [], domains: [] }; S.doc.nodes ||= []; S.doc.edges ||= []; S.doc.domains ||= [];
   S.pages = new Map((message.pages || []).map(page => [page.key, page])); S.mentions = message.mentions || [];
   if (!S.editable) S.editing = false;
-  index(); layout(); drawChrome(); draw(update && !first); drawDrawer();
+  index(); layout(); zoomLimits(); drawChrome(); draw(update && !first); drawDrawer();
   if (S.focus && !S.byId.has(S.focus)) focus(null); else if (S.focus) { renderPanel(); applyState(); }
   if (first) {
     const view = message.view || S.doc.view, saved = view && Number.isFinite(view.k) && !(view.x === 0 && view.y === 0 && view.k === 1);
@@ -905,7 +913,7 @@ window.acdianRoadmap = {
     else if (message.type === 'attach') attach(nodeAtClient(message.x, message.y)?.id, message.key);
     else if (message.type === 'flush') flush();
   },
-  state: () => ({ focus: S.focus, zoom: S.zoom, k: S.t.k, highlighted: [...S.highlighted].sort(), chain: [...S.chain].sort(), path: S.focus ? learningPath(S.focus).map(step => step.id) : [], matches: [...S.matches], editing: S.editing, nodes: S.nodes.map(n => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: NODE_H, draft: !!n.d.draft })), bounds: S.layout?.bounds }),
+  state: () => (frame && (cancelAnimationFrame(frame), paint()), { focus: S.focus, zoom: S.zoom, k: S.t.k, highlighted: [...S.highlighted].sort(), chain: [...S.chain].sort(), path: S.focus ? learningPath(S.focus).map(step => step.id) : [], matches: [...S.matches], editing: S.editing, nodes: S.nodes.map(n => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: NODE_H, draft: !!n.d.draft })), bounds: S.layout?.bounds }),
   focus, fit: () => svg.call(zoom.transform, fitTransform()), setZoom: k => { const { w, h } = viewport(); svg.call(zoom.scaleTo, k, [w / 2, h / 2]); }, search: text => { input.value = text; S.query = text; applyState(); }, flush, undo, setEditing, connect: (a, b, kind) => !!connect(S.byId.get(a), S.byId.get(b), kind), attach,
 };
 svg.attr('data-zoom', 'mid');
