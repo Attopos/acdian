@@ -10,7 +10,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const fold = s => String(s ?? '').normalize('NFKC').toLowerCase();
 const now = () => Math.floor(Date.now() / 1000);
 
-const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 50, PAD_BOTTOM = 24, REGION_GAP = 64, ARC_ROOM = 44;
+const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 68, PAD_BOTTOM = 24, REGION_GAP = 64, ARC_ROOM = 44;
 const FAR = 0.5, NEAR = 1.3, PANEL = 352;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
 const STATUSES = ['new', 'learning', 'learned'];
@@ -120,7 +120,7 @@ function wrap(text, width, font) {
 function layout() {
   const titleFont = `550 14px ${FONT}`;
   const widest = Math.max(96, ...S.nodes.map(n => textWidth(n.d.title || '', titleFont)));
-  const W = Math.round(Math.min(208, Math.max(148, widest + 62)));
+  const W = Math.round(Math.min(208, Math.max(148, widest + 52)));
   const groups = S.domains.map(domain => ({ domain, nodes: S.nodes.filter(n => n.d.domain === domain.id) })).filter(g => g.nodes.length || S.editing);
   const capstones = groups.filter(g => g.nodes.length && g.nodes.every(n => (n.d.level ?? 0) >= 3));
   const lanes = groups.filter(g => !capstones.includes(g));
@@ -276,6 +276,7 @@ function draw(animate = false) {
     const label = g.append('g').attr('class', 'label');
     label.append('g').attr('class', 'glyph').attr('transform', 'translate(0,-12.5)');
     label.append('text').attr('x', 23).attr('class', 'name');
+    g.append('g').attr('class', 'levels');
     const far = g.append('g').attr('class', 'far');
     far.append('text').attr('class', 'name');
     far.append('text').attr('class', 'progress').attr('y', 44);
@@ -288,6 +289,10 @@ function draw(animate = false) {
   move(region.select('.label')).attr('transform', d => `translate(${d.x + PAD_X},${d.y + 30})`);
   region.select('.label .glyph').html(d => glyph(d.domain.glyph));
   region.select('.label .name').each(function (d) { const p = progress(d.nodes); d3.select(this).html(`${esc(d.domain.title)}<tspan class="count" dx="9">${p.done} / ${p.total}</tspan>`); });
+  region.select('.levels').each(function (d) {
+    const used = d.capstone ? [3] : [0, 1, 2].filter(level => d.nodes.some(n => Math.min(2, Math.max(0, n.d.level ?? 0)) === level));
+    d3.select(this).selectAll('text').data(used).join('text').attr('x', level => d.x + PAD_X + (d.capstone ? 0 : level * (S.layout.W + COL_GAP)) + 1).attr('y', d.y + PAD_TOP - 13).text(level => T(LEVELS[level]));
+  });
   move(region.select('.far')).attr('transform', d => `translate(${d.x + d.w / 2},${d.y + d.h / 2 - 22})`);
   region.select('.far .name').text(d => d.domain.title);
   region.select('.far .progress').text(d => { const p = progress(d.nodes); return T('已掌握 %1 / %2', p.done, p.total); });
@@ -317,10 +322,10 @@ function draw(animate = false) {
     const g = enter.append('g').attr('class', 'node');
     g.append('rect').attr('class', 'halo').attr('x', -4).attr('y', -4).attr('rx', 13.5);
     g.append('rect').attr('class', 'card').attr('rx', 10).attr('height', NODE_H);
-    g.append('g').attr('class', 'glyph').attr('transform', 'translate(12,14)');
-    g.append('text').attr('class', 'title').attr('x', 36).attr('y', NODE_H / 2 + 0.5);
-    g.append('circle').attr('class', 'dot').attr('r', 4.3).attr('cy', NODE_H / 2);
-    g.append('path').attr('class', 'dot-half');
+    g.append('circle').attr('class', 'dot').attr('r', 5.2).attr('cx', 19).attr('cy', NODE_H / 2);
+    g.append('path').attr('class', 'dot-half').attr('d', `M19,${NODE_H / 2 - 3.1}a3.1,3.1 0 0 1 0,6.2Z`);
+    g.append('path').attr('class', 'check').attr('d', `M16.4,${NODE_H / 2 + 0.2}l1.9,1.9l3.4,-3.9`);
+    g.append('text').attr('class', 'title').attr('x', 34).attr('y', NODE_H / 2 + 0.5);
     g.append('text').attr('class', 'summary');
     g.on('click', (event, d) => { event.stopPropagation(); if (!d.moved) focus(d.id); })
       .on('dblclick', (event, d) => { event.stopPropagation(); if (S.editing) editNode(d); else openPage(d.d.pages?.[0], false); })
@@ -332,10 +337,7 @@ function draw(animate = false) {
   const near = S.zoom === 'near';
   node.select('.halo').attr('width', d => d.w + 8).attr('height', d => (near ? d.hNear : NODE_H) + 8);
   node.select('.card').attr('width', d => d.w).attr('height', d => near ? d.hNear : NODE_H);
-  node.select('.glyph').html(d => glyph(S.domains.find(x => x.id === d.d.domain)?.glyph));
   node.select('.title').text(d => d.d.title);
-  node.select('.dot').attr('cx', d => d.w - 16);
-  node.select('.dot-half').attr('d', d => `M${d.w - 16},${NODE_H / 2 - 4.3}a4.3,4.3 0 0 0 0,8.6Z`);
   node.select('.summary').each(function (d) { d3.select(this).selectAll('tspan').data(d.lines).join('tspan').attr('x', 12).attr('y', (_, i) => NODE_H + 7 + i * 12.5).text(line => line); });
   drawHandles(); drawMinimap(); drawHead(); applyState();
   $('empty').hidden = S.nodes.length > 0;
@@ -395,8 +397,13 @@ function applyState(flow = false) {
 // ---------- viewport ----------
 const zoom = d3.zoom().scaleExtent([0.18, 2.6]).filter(event => event.type !== 'wheel' && event.type !== 'dblclick' && !event.button && !(S.editing && event.target.closest?.('.node, .handle')))
   .on('start', event => { if (event.sourceEvent?.type === 'mousedown') svg.classed('grabbing', true); hover(null); })
-  .on('zoom', event => { S.t = event.transform; world.attr('transform', S.t); setZoomMode(S.t.k < FAR ? 'far' : S.t.k >= NEAR ? 'near' : 'mid'); drawViewport(); viewChanged(); })
+  .on('zoom', event => { S.t = event.transform; world.attr('transform', S.t); backdrop(); setZoomMode(S.t.k < FAR ? 'far' : S.t.k >= NEAR ? 'near' : 'mid'); drawViewport(); viewChanged(); })
   .on('end', () => svg.classed('grabbing', false));
+function backdrop() {
+  const step = 28 * S.t.k * (S.t.k < 0.6 ? 2 : 1), canvas = $('canvas');
+  canvas.style.backgroundSize = `${step}px ${step}px`; canvas.style.backgroundPosition = `${S.t.x}px ${S.t.y}px`;
+  const level = $('zoom-level'); if (level) level.textContent = Math.round(S.t.k * 100) + '%';
+}
 function viewport() { const rect = $('canvas').getBoundingClientRect(); return { w: rect.width || innerWidth, h: rect.height || innerHeight }; }
 function fitTransform() {
   const { w, h } = viewport(), b = S.layout.bounds, open = app.classList.contains('panel-open') && !app.classList.contains('touch');
@@ -574,10 +581,11 @@ function setStatus(status) {
 function drawChrome() {
   const icon = { fit: '<svg viewBox="0 0 16 16"><path d="M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10"/></svg>', plus: '<svg viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></svg>', minus: '<svg viewBox="0 0 16 16"><path d="M3.5 8h9"/></svg>', links: '<svg viewBox="0 0 16 16"><path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.2-2.2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.3 9a2.6 2.6 0 0 0 3.7 3.7l.7-.7"/></svg>', edit: '<svg viewBox="0 0 16 16"><path d="M10.6 2.9 13.1 5.4 5.6 12.9l-3 .5.5-3ZM9.3 4.2l2.5 2.5"/></svg>' };
   const canEdit = S.editable && S.platform !== 'ios';
-  $('tools').innerHTML = `${canEdit ? `<div class="group"><button data-tool="edit" aria-pressed="${S.editing}" title="${esc(T(S.editing ? '完成' : '编辑'))}">${icon.edit}<span>${esc(T(S.editing ? '完成' : '编辑'))}</span></button></div>` : ''}<div class="group"><button data-tool="mentions" aria-pressed="${S.showMentions}" title="${esc(T('页面互链'))}">${icon.links}</button></div><div class="group"><button data-tool="out" title="${esc(T('缩小'))}">${icon.minus}</button><button data-tool="fit" title="${esc(T('适合窗口'))}">${icon.fit}</button><button data-tool="in" title="${esc(T('放大'))}">${icon.plus}</button></div>`;
-  $('search-input').placeholder = T('搜索节点') + (S.platform === 'ios' ? '' : '  ⌘F');
+  $('tools').innerHTML = `${canEdit ? `<div class="group"><button data-tool="edit" aria-pressed="${S.editing}" title="${esc(T(S.editing ? '完成' : '编辑'))}">${icon.edit}<span>${esc(T(S.editing ? '完成' : '编辑'))}</span></button></div>` : ''}<div class="group"><button data-tool="mentions" aria-pressed="${S.showMentions}" title="${esc(T('页面互链'))}">${icon.links}</button></div><div class="group"><button data-tool="out" title="${esc(T('缩小'))}">${icon.minus}</button><button data-tool="fit" title="${esc(T('适合窗口'))}"><span id="zoom-level">${Math.round(S.t.k * 100)}%</span></button><button data-tool="in" title="${esc(T('放大'))}">${icon.plus}</button></div>`;
+  $('search-input').placeholder = T('搜索节点');
+  if (!$('search-kbd') && S.platform !== 'ios') $('search-count').insertAdjacentHTML('afterend', '<kbd id="search-kbd">⌘F</kbd>');
   const line = (kind, arrow) => `<svg viewBox="0 0 34 14"><g class="edge" data-kind="${kind}" style="opacity:1"><path class="line" d="M1,7H${arrow ? 26 : 33}" style="stroke:var(--rm-line-strong)"/>${arrow ? '<path class="head" d="M33,7L25.5,3.4L25.5,10.6Z" style="fill:var(--rm-line-strong)"/>' : ''}</g></svg>`;
-  const card = (status, draft) => `<svg viewBox="0 0 34 14"><g class="node${draft ? ' draft' : ''}" data-status="${status}"><rect class="card" x=".75" y=".75" width="32.5" height="12.5" rx="4"/><circle class="dot" cx="26" cy="7" r="2.6"/>${status === 'learning' ? '<path d="M26,4.4a2.6,2.6 0 0 0 0,5.2Z" fill="var(--rm-muted)"/>' : ''}</g></svg>`;
+  const card = (status, draft) => `<svg viewBox="0 0 34 14"><g class="node${draft ? ' draft' : ''}" data-status="${status}"><rect class="card" x=".75" y=".75" width="32.5" height="12.5" rx="4"/><circle class="dot" cx="8" cy="7" r="3"/>${status === 'learning' ? '<path class="dot-half" d="M8,5.2a1.8,1.8 0 0 1 0,3.6Z"/>' : ''}<path d="M13,7H27" stroke="var(--rm-muted)" stroke-width="1.6" stroke-linecap="round" opacity=".5"/></g></svg>`;
   $('legend').className = 'float' + (S.legendClosed ? ' closed' : '');
   $('legend').innerHTML = `<button class="toggle"><span>${esc(T('图例'))}</span><svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5"/></svg></button><div class="body">
     <div class="row">${line('requires', true)}<span>${esc(T('先学 A 再学 B'))}</span></div><div class="row">${line('applies', true)}<span>${esc(T('B 是 A 的实际应用'))}</span></div><div class="row">${line('related', false)}<span>${esc(T('相关，聚焦时显示'))}</span></div><hr>
