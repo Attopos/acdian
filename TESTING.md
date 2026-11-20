@@ -4,7 +4,11 @@
 
 - 网页交互检查 `Tests/roadmap-tests.cjs` 73 项通过（Playwright，Chromium）：布局确定且节点间距不小于 24、聚焦高亮集合、学习路径顺序、搜索结果、状态保存只发改动的节点、成环拒绝、撤销发出删除。
 - 用 CS 模块的真实数据（30 个节点、38 条关系）在亮色、暗色下各截远景、中景、近景、聚焦、悬停关系线、详情面板共 12 张图自查；适合窗口时（1440×900）标题约 11pt。
-- Swift 检查 `Tests/RoadmapTests.swift`：缺字段和未知字段的解码、科普页与 Prysm 页的摘要提取、按条目合并与墓碑、环检查、页面改名跟随、模块 `home`。
+- Swift 检查 `Tests/RoadmapTests.swift`：缺字段和未知字段的解码、科普页与 Prysm 页的摘要提取、按条目合并与墓碑、环检查、页面改名跟随、模块 `home`，在 Mac 上编译运行 32 项通过，无需改代码。
+- 其它测试带上 `Roadmap.swift` 后：模块 97、新页面 50、自动保存 39、页面存储 35、垃圾桶模型 51、页面排序 45、iCloud 同步 76、附件插入 17、垃圾桶存储 82、评论不丢失 22 项通过，核心、语言通过。`EditorSnapshotTests` 在“New notes should open directly in the unified editor”处失败、`TabTests` 在已知处失败，main 上同样失败。
+- `./install.sh` 构建安装成功；包内 `Contents/Resources/roadmap/` 和它引用的 `../interactive/theme.css`、`../vendor/d3.min.js` 都在。iOS 目标 `xcodebuild` 不签名编译（generic/platform=iOS）通过，包里有 `roadmap/`。
+- 用 `Roadmap.swift` 读真实资料库：`CS/CS 路线图.acdian` 解码出 30 个节点、7 个领域、38 条关系，无环，节点挂的页面都存在；`.acdian-modules.json` 的 CS 模块读出 `home`。
+- App 内未验证：这次没拿到操控 ACdian 窗口的权限，首页显示、单击详情、双击打开页面、要点跳小节、按 3 标记已掌握都没在 App 里试过。网页端 Playwright 测试本机没装 playwright，未重跑。
 - 要点抽查 10 条，逐条对回原页面的小节，全部能在原文找到依据。
 - 页面里指向旧标题的坏链接共 18 处，只列不改：反向代理（第 42、48 行）、链式代理（52 行 2 处）、CC Switch（159 行 2 处）、Grafana（186 行 2 处）、Tailscale（154 行 1 处、195 行 4 处）、Sub2API（32、175 行各 1 处，273 行 3 处）。目标都是改名前的标题，如「网络封锁与翻墙的原理」「Tailscale 原理与使用技巧」。
 - iOS 未做，路线图文件在 iOS 上仍按卡片索引打开。
