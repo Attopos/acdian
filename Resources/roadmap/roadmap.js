@@ -134,7 +134,7 @@ function wrap(text, width, font) {
 }
 function layout() {
   const titleFont = `550 14px ${FONT}`;
-  const widest = Math.max(96, ...S.nodes.map(n => textWidth(n.d.title || '', titleFont)));
+  const widest = Math.max(96, ...S.nodes.map(n => Math.max(textWidth(n.d.title || '', titleFont), textWidth(n.d.subtitle || '', `400 11.5px ${FONT}`))));
   const W = Math.round(Math.min(320, Math.max(148, widest + 56)));
   const groups = S.domains.map(domain => ({ domain, nodes: S.nodes.filter(n => n.d.domain === domain.id) })).filter(g => g.nodes.length || S.editing);
   const capstones = groups.filter(g => g.nodes.length && g.nodes.every(n => (n.d.level ?? 0) >= 3));
@@ -379,6 +379,7 @@ function draw(animate = false) {
     g.append('rect').attr('class', 'halo').attr('x', -4).attr('y', -4).attr('rx', 13.5);
     g.append('rect').attr('class', 'card').attr('rx', 10).attr('height', NODE_H);
     g.append('g').attr('class', 'icon').attr('transform', `translate(11,${NODE_H / 2 - 7.5})scale(.625)`);
+    g.append('text').attr('class', 'sub').attr('x', 33).attr('y', NODE_H / 2 + 9);
     g.append('text').attr('class', 'title').attr('x', 33).attr('y', NODE_H / 2 + 0.5);
     g.append('text').attr('class', 'summary');
     g.on('click', (event, d) => { event.stopPropagation(); if (!d.moved) focus(d.id); })
@@ -393,7 +394,8 @@ function draw(animate = false) {
   node.select('.card').attr('width', d => d.w).attr('height', d => near ? d.hNear : NODE_H);
   node.select('.icon').html(d => ICONS[d.d.draft ? 'circle-dashed' : 'file-text']);
   const fit = (text, room) => { const font = `600 14px ${FONT}`; if (textWidth(text, font) <= room) return text; let s = text; while (s.length > 1 && textWidth(s + '…', font) > room) s = s.slice(0, -1); return s.trimEnd() + '…'; };
-  node.select('.title').text(d => fit(d.d.title, d.w - 45)).each(function (d) { d3.select(this).selectAll('title').data([d.d.subtitle ? `${d.d.title} · ${d.d.subtitle}` : d.d.title]).join('title').text(t => t); });
+  node.select('.sub').text(d => d.d.subtitle || '');
+  node.select('.title').attr('y', d => d.d.subtitle ? NODE_H / 2 - 6.5 : NODE_H / 2 + 0.5).text(d => fit(d.d.title, d.w - 45)).each(function (d) { d3.select(this).selectAll('title').data([d.d.subtitle ? `${d.d.title} · ${d.d.subtitle}` : d.d.title]).join('title').text(t => t); });
   node.select('.summary').each(function (d) { d3.select(this).selectAll('tspan').data(d.lines).join('tspan').attr('x', 12).attr('y', (_, i) => NODE_H + 7 + i * 12.5).text(line => line); });
   drawHandles(); drawMinimap(); drawHead(); applyState();
   $('empty').hidden = S.nodes.length > 0;

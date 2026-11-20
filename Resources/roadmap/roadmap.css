@@ -84,6 +84,8 @@ svg text { font-family: var(--acd-font); }
 /* nodes */
 .node .card { fill: var(--rm-card); stroke: var(--rm-stroke); stroke-width: 1; filter: var(--rm-card-shadow); transition: stroke .18s ease-out, fill .18s ease-out, height .22s ease-out; }
 .node:hover .card { fill: var(--rm-card-hover); stroke: var(--rm-stroke-strong); }
+.node .sub { fill: var(--rm-muted); font-size: 11.5px; font-weight: 400; dominant-baseline: central; }
+[data-zoom="near"] .node .sub { opacity: 1; }
 .node .title { fill: var(--rm-ink); font-size: 14px; font-weight: 600; letter-spacing: .005em; dominant-baseline: central; }
 .node.draft .card { fill: transparent; stroke: var(--rm-stroke); stroke-dasharray: 3 3; filter: none; }
 .node.draft:hover .card { fill: var(--rm-faint); }
@@ -202,7 +204,7 @@ svg text { font-family: var(--acd-font); }
 #panel .close svg { width: 15px; height: 15px; }
 #panel h2 { margin: 16px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; color: var(--rm-ink); font-size: 28px; font-weight: 720; line-height: 1.24; letter-spacing: .004em; text-wrap: balance; }
 #panel .sub { margin: 4px 0 0; color: var(--rm-muted); font-size: 15px; font-weight: 500; }
-#hover h4 small { margin-left: 8px; color: var(--rm-muted); font-size: 12px; font-weight: 500; }
+#hover h4 small { display: block; margin: 2px 0 0; color: var(--rm-muted); font-size: 12px; font-weight: 500; }
 #panel .lead { margin: 12px 0 0; max-width: 46em; color: var(--rm-text); font-size: 15.5px; line-height: 1.75; text-wrap: pretty; hanging-punctuation: allow-end; }
 #panel .cols { margin-top: 22px; }
 #panel .cols > div > h3:first-child, #panel .cols > div > .figure:first-child { margin-top: 0; }
