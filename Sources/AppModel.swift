@@ -1732,7 +1732,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     }
 
     // MARK: Roadmaps
-    @Published private(set) var roadmapRevision = 0
+    @Published var roadmapRevision = 0
     /// Applies changed nodes and edges and deletions to a roadmap file, joined
     /// item by item with what is on disk so another device's edits survive.
     @discardableResult func saveRoadmap(_ file: VaultEntry, nodes: [RoadmapNode] = [], edges: [RoadmapEdge] = [], removed: [String: Double] = [:]) -> RoadmapDocument? {

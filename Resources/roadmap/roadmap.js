@@ -11,8 +11,9 @@ const fold = s => String(s ?? '').normalize('NFKC').toLowerCase();
 const now = () => Math.floor(Date.now() / 1000);
 
 const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 56, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
-const PER_ROW = 4, IN_GAP = 40, BAND_GAP = 76, FLOW_HEAD = 76, COLUMN_GAP = 220, GUTTER = 40;
+const IN_GAP = 40, BAND_GAP = 76, FLOW_HEAD = 76, COLUMN_GAP = 220, GUTTER = 40;
 const FAR = 0.5, NEAR = 1.3;
+const compact = () => (innerWidth || 1024) < 700;
 const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
 const KIND_NAMES = { requires: '先学', applies: '应用', related: '相关' };
@@ -144,8 +145,9 @@ function layout() {
   const groups = S.domains.map(domain => ({ domain, nodes: S.nodes.filter(n => n.d.domain === domain.id) })).filter(g => g.nodes.length || S.editing);
   const flows = S.doc.flows || [];
   const lines = [...flows.map(flow => ({ flow, groups: groups.filter(g => g.domain.flow === flow.id) })), { flow: null, groups: groups.filter(g => !flows.some(f => f.id === g.domain.flow)) }].filter(line => line.groups.length);
-  const columns = lines.length > 1 ? [lines.slice(0, 1), lines.slice(1)] : [lines];
-  const bandW = PER_ROW * W + (PER_ROW - 1) * COL_GAP + 2 * PAD_X, regions = [], heads = [], spine = [];
+  const narrow = compact(), PER_ROW = narrow ? 1 : 4;
+  const columns = lines.length > 1 && !narrow ? [lines.slice(0, 1), lines.slice(1)] : [lines];
+  const bandW = PER_ROW * W + (PER_ROW - 1) * COL_GAP + 2 * PAD_X + (narrow ? ARC_ROOM : 0), regions = [], heads = [], spine = [];
   columns.forEach((stack, col) => {
     const x = col * (bandW + COLUMN_GAP); let y = 0;
     stack.forEach((line, li) => {
@@ -460,15 +462,17 @@ function backdrop() {
 }
 function viewport() { const rect = $('canvas').getBoundingClientRect(); return { w: rect.width || innerWidth, h: rect.height || innerHeight }; }
 function fitTransform() {
-  const { w, h } = viewport(), b = S.layout.bounds, open = app.classList.contains('panel-open') && !app.classList.contains('touch');
+  const { w, h } = viewport(), b = S.layout.bounds, open = app.classList.contains('panel-open') && !compact();
   const left = 28, right = 28 + (open ? panelSpace() : 0), top = 72, bottom = 36;
+  if (compact()) { const side = 56, k = Math.min(1, (w - 2 * side) / b.w); return d3.zoomIdentity.translate(side + (w - 2 * side - b.w * k) / 2 - b.x * k, 116 - b.y * k).scale(k); }
   const k = Math.max(0.18, Math.min(1.15, (w - left - right) / b.w, (h - top - bottom) / b.h));
   return d3.zoomIdentity.translate(left + (w - left - right - b.w * k) / 2 - b.x * k, top + (h - top - bottom - b.h * k) / 2 - b.y * k).scale(k);
 }
 function go(transform, ms = 300) { const target = svg.interrupt(); (dur(ms) ? target.transition().duration(dur(ms)).ease(d3.easeCubicOut) : target).call(zoom.transform, transform); }
 function flyTo(node, scale) {
-  const { w, h } = viewport(), open = app.classList.contains('panel-open') && !app.classList.contains('touch');
-  const left = 40, right = 40 + (open ? panelSpace() : 0), top = open ? 172 : 96, bottom = 56;
+  const { w, h } = viewport(), open = app.classList.contains('panel-open') && !compact();
+  const sheet = compact() && app.classList.contains('panel-open') ? $('panel').getBoundingClientRect().height + 16 : 0;
+  const left = 40, right = 40 + (open ? panelSpace() : 0), top = open ? 172 : compact() ? 120 : 96, bottom = 56 + sheet;
   const group = scale ? [node] : S.nodes.filter(n => n === node || S.highlighted.has(n.id));
   const x0 = Math.min(...group.map(n => n.x)), y0 = Math.min(...group.map(n => n.y)), x1 = Math.max(...group.map(n => n.x + n.w)), y1 = Math.max(...group.map(n => n.y + NODE_H));
   const k = scale || Math.max(0.6, Math.min(1.1, (w - left - right) / (x1 - x0), (h - top - bottom) / (y1 - y0)));
@@ -679,7 +683,12 @@ document.addEventListener('keydown', event => {
   else if (event.key === 'Escape') { if (!$('lightbox').hidden) $('lightbox').hidden = true; else if (popoverOpen()) closePopover(); else if (S.focus) focus(null); }
   else if (S.editing && S.focus && (event.key === 'Backspace' || event.key === 'Delete')) removeNode(S.byId.get(S.focus));
 });
-addEventListener('resize', () => { drawViewport(); });
+let wasCompact = compact();
+addEventListener('resize', () => {
+  app.classList.toggle('compact', compact());
+  if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); draw(); svg.call(zoom.transform, fitTransform()); }
+  drawViewport();
+});
 
 // ---------- editing ----------
 const popoverOpen = () => !$('popover').hidden;
@@ -872,7 +881,7 @@ function load(message, update) {
   const first = !S.loaded;
   if (message.theme) setTheme(message.theme);
   S.language = message.language || S.language; S.editable = !!message.editable; S.platform = message.platform || S.platform; S.title = message.title || S.title;
-  document.documentElement.lang = S.language; app.classList.toggle('touch', S.platform === 'ios');
+  document.documentElement.lang = S.language; app.classList.toggle('touch', S.platform === 'ios'); app.classList.toggle('compact', compact());
   S.doc = message.roadmap || { nodes: [], edges: [], domains: [] }; S.doc.nodes ||= []; S.doc.edges ||= []; S.doc.domains ||= [];
   S.pages = new Map((message.pages || []).map(page => [page.key, page])); S.mentions = message.mentions || [];
   if (!S.editable) S.editing = false;
@@ -883,7 +892,7 @@ function load(message, update) {
     svg.call(zoom.transform, saved ? d3.zoomIdentity.translate(view.x, view.y).scale(view.k) : fitTransform());
     S.loaded = true; app.classList.add('ready'); app.setAttribute('aria-busy', 'false');
     if (message.focus) focus(message.focus, { scale: 1 });
-  }
+  } else if (message.focus && S.byId.has(message.focus)) focus(message.focus, { scale: 1 });
 }
 window.acdianRoadmap = {
   receive(message) {

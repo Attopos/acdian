@@ -320,13 +320,54 @@ enum RoadmapPages {
 
 extension AppModel {
     func roadmapPage(_ key: String, in file: VaultEntry) -> VaultEntry? {
+        guard let index else { return nil }
+        return RoadmapPayload.page(key,in:file,index:index)
+    }
+    func roadmapPayload(_ file: VaultEntry, appearance: String, platform: String) -> [String: Any]? {
+        guard let index else { return nil }
+        var payload = RoadmapPayload.make(file,index:index,language:language.rawValue,editable:!isReadOnly(file.relativePath),appearance:appearance,platform:platform)
+        if let node = RoadmapFocus.pending.removeValue(forKey:file.relativePath) { payload?["focus"] = node }
+        return payload
+    }
+    /// Opens the roadmap a page belongs to, with that page's node in focus.
+    func showInRoadmap(_ page: VaultEntry) {
+        guard let index, let place = RoadmapPayload.place(of:page,index:index) else { return }
+        RoadmapFocus.pending[place.roadmap.relativePath] = place.node
+        roadmapRevision &+= 1
+        open(place.roadmap)
+    }
+}
+
+@MainActor enum RoadmapFocus { static var pending: [String: String] = [:] }
+
+/// What the roadmap canvas needs, built the same way by the Mac, the iPad editor and the iPhone reader.
+enum RoadmapPayload {
+    static func page(_ key: String, in file: VaultEntry, index: VaultIndex) -> VaultEntry? {
         guard let source = RoadmapDocument.read(file.url)?.source else { return nil }
         let path = (source.isEmpty ? "" : source + "/") + key + ".md"
-        return index?.files.first { $0.relativePath == path }
+        return index.files.first { $0.relativePath == path }
+    }
+    private static var documents: [String: (modified: Date?, size: Int, document: RoadmapDocument?)] = [:]
+    private static func cached(_ file: VaultEntry) -> RoadmapDocument? {
+        if let kept = documents[file.relativePath], kept.modified == file.modified, kept.size == file.size { return kept.document }
+        let document = CloudFiles.isNotDownloaded(file.url) ? nil : RoadmapDocument.read(file.url)
+        documents[file.relativePath] = (file.modified,file.size,document)
+        return document
+    }
+    /// The roadmap node a page is attached to, for the way back from the page to the map.
+    static func place(of page: VaultEntry, index: VaultIndex) -> (roadmap: VaultEntry, node: String)? {
+        for file in index.files where file.ext == ComponentStore.fileExtension && file.size < RoadmapDocument.maxBytes {
+            guard let document = cached(file) else { continue }
+            let prefix = document.source.isEmpty ? "" : document.source + "/"
+            guard page.relativePath.hasPrefix(prefix), page.relativePath.hasSuffix(".md") else { continue }
+            let key = String(page.relativePath.dropFirst(prefix.count).dropLast(3))
+            if let node = document.nodes.first(where: { $0.pages.contains(key) }) { return (file,node.id) }
+        }
+        return nil
     }
     /// Everything the roadmap canvas draws, as the `load` message without its type.
-    func roadmapPayload(_ file: VaultEntry, appearance: String, platform: String) -> [String: Any]? {
-        guard let index, let document = RoadmapDocument.read(file.url), let data = try? document.encoded(),
+    static func make(_ file: VaultEntry, index: VaultIndex, language: String, editable: Bool, appearance: String, platform: String) -> [String: Any]? {
+        guard let document = RoadmapDocument.read(file.url), let data = try? document.encoded(),
               let roadmap = try? JSONSerialization.jsonObject(with:data) else { return nil }
         let prefix = document.source.isEmpty ? "" : document.source + "/"
         let files = index.files.filter { $0.ext == "md" && $0.relativePath.hasPrefix(prefix) }
@@ -354,8 +395,11 @@ extension AppModel {
             }
         }
         return ["roadmap":roadmap,"title":document.title ?? (file.name as NSString).deletingPathExtension,"pages":pages,"mentions":mentions,"theme":appearance,
-                "language":language.rawValue,"editable":!isReadOnly(file.relativePath),"platform":platform]
+                "language":language,"editable":editable,"platform":platform]
     }
+}
+
+extension AppModel {
     /// Handles what the canvas posts, the same on Mac and iOS. Returns whether the roadmap file was written.
     @discardableResult func roadmapMessage(_ value: [String: Any], file: VaultEntry) -> Bool {
         guard let type = value["type"] as? String else { return false }

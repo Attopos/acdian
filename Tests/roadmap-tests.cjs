@@ -41,6 +41,12 @@ const roadmap = {
   await again.evaluate(m => window.acdianRoadmap.receive(m), { type: 'load', roadmap, pages: [], mentions: [], theme: 'light', language: 'en', editable: false, platform: 'mac' });
   same((await again.evaluate(() => window.acdianRoadmap.state())).nodes, s.nodes, 'The layout is the same every time');
   await again.close();
+  const phone = await browser.newPage({ viewport: { width: 393, height: 852 } });
+  await phone.goto('file://' + path.resolve(__dirname, '../Resources/roadmap/roadmap.html'));
+  await phone.evaluate(m => window.acdianRoadmap.receive(m), { type: 'load', roadmap, pages: [], mentions: [], theme: 'dark', language: 'zh-Hans', editable: false, platform: 'ios' });
+  const small = await phone.evaluate(() => ({ nodes: window.acdianRoadmap.state().nodes, compact: document.getElementById('app').classList.contains('compact'), k: window.acdianRoadmap.state().k }));
+  check(small.compact && new Set(small.nodes.map(n => Math.round(n.x))).size === 1 && small.k > 0.6, 'On a phone every stage is one readable column, wide enough to read without zooming');
+  await phone.close();
 
   await page.evaluate(() => window.acdianRoadmap.focus('gateway'));
   s = await state();

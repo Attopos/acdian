@@ -253,6 +253,9 @@ struct DetailPane: View {
                     ToolbarItemGroup(placement:.topBarTrailing) {
                         Button { showingOutline.toggle() } label: { Image(systemName:"list.bullet.indent") }.accessibilityIdentifier("outline")
                             .popover(isPresented:$showingOutline) { OutlineList(model:model) { showingOutline = false } }
+                        if let page = model.selected, let index = model.index, RoadmapPayload.place(of:page,index:index) != nil {
+                            Button { model.showInRoadmap(page) } label: { Image(systemName:"point.3.connected.trianglepath.dotted") }.accessibilityLabel(model.localized("在路线图中的位置"))
+                        }
                         Menu { Button { showingPhotos = true } label: { Label(model.localized("图片"),systemImage:"photo") }; Button { showingFiles = true } label: { Label(model.localized("文件"),systemImage:"folder") } } label: { Image(systemName:"paperclip") }.accessibilityIdentifier("attach")
                     }
                 }
@@ -282,9 +285,11 @@ struct DetailPane: View {
                 }.ignoresSafeArea(edges:.bottom)
             }
         }
+        else if let file = model.selected, file.ext == ComponentStore.fileExtension, ComponentStore.read(file.url)?.component == .roadmap { EditableRoadmap(model:model,file:file).id(file.id) }
         else if let file = model.selected, file.ext == ComponentStore.fileExtension { EditableCardIndex(model:model,file:file) }
         else if let file = model.selected { AttachmentPreview(file:file,model:model) }
         else if let module = model.activeModule, module.kind == .attachments { AttachmentsGrid(model:model,module:module) }
+        else if let module = model.activeModule, let home = module.home, let file = model.index?.files.first(where: { $0.relativePath == home }), ComponentStore.read(file.url)?.component == .roadmap { EditableRoadmap(model:model,file:file).id(file.id) }
         else { ReaderEmptyState(icon:"doc.text",message:model.localized("页面")) }
     }
 }

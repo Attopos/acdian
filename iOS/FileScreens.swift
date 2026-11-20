@@ -80,7 +80,8 @@ struct FileScreen: View {
         if file.ext == "md" || file.ext == "markdown", let data {
             MarkdownScreen(file:file,text:VaultDecode.text(data),fragment:fragment)
         } else if file.ext == ComponentStore.fileExtension {
-            if let data, let instance = try? JSONDecoder().decode(ComponentInstance.self,from:data) { CardIndexScreen(file:file,instance:instance) }
+            if let data, (try? JSONDecoder().decode(ComponentInstance.self,from:data))?.component == .roadmap { RoadmapScreen(file:file,focus:fragment.hasPrefix("node:") ? String(fragment.dropFirst(5)) : nil) }
+            else if let data, let instance = try? JSONDecoder().decode(ComponentInstance.self,from:data) { CardIndexScreen(file:file,instance:instance) }
             else { ReaderEmptyState(icon:"puzzlepiece.extension",message:store.localized("无法读取这个组件。")) }
         } else if file.ext == "pdf", let data {
             PDFScreen(data:data,fragment:fragment).ignoresSafeArea(edges:.bottom)

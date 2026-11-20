@@ -64,7 +64,7 @@ struct LauncherScreen: View {
                 }
                 LazyVGrid(columns:columns,spacing:22) {
                     ForEach(present.filter { !$0.hidden || showHidden }) { module in
-                        NavigationLink(value:Route.folder(module.folder)) {
+                        NavigationLink(value:module.home.flatMap { home in store.file(home).map { _ in Route.file(home,fragment:"") } } ?? Route.folder(module.folder)) {
                             VStack(spacing:8) {
                                 ModuleTileIcon(icon:module.icon,color:module.color)
                                 Text(module.name).font(.footnote.weight(.medium)).lineLimit(1).truncationMode(.middle).foregroundStyle(Color.ink)

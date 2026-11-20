@@ -20,7 +20,15 @@ struct MarkdownScreen: View {
         }
         .ignoresSafeArea(edges:.bottom).background(Color.canvas)
         // The page shows its own title, so the bar stays clear.
-        .toolbar { ToolbarItem(placement:.principal) { Text("") } }
+        .toolbar {
+            ToolbarItem(placement:.principal) { Text("") }
+            if let index = store.index, let place = RoadmapPayload.place(of:file,index:index) {
+                ToolbarItem(placement:.topBarTrailing) {
+                    Button { router.push(place.roadmap.relativePath,fragment:"node:" + place.node) } label: { Image(systemName:"point.3.connected.trianglepath.dotted") }
+                        .accessibilityLabel(store.localized("在路线图中的位置"))
+                }
+            }
+        }
         .alert(store.localized("没有找到匹配的文件"),isPresented:Binding(get:{ missingLink != nil },set:{ if !$0 { missingLink = nil } })) {
             Button(store.localized("好"),role:.cancel) {}
         } message: { Text(missingLink ?? "") }
