@@ -6,20 +6,19 @@
 
 Mac 版 1.4.x，iOS 版纯计数构建号（1.5.0 起）。
 
-- 新增「知识路线图」组件（`roadmap`）：一个 `.acdian` 文件存领域、节点和关系，页面不加任何字段。画布是 `Resources/roadmap/` 里的网页（内置 d3，不联网），只发改动；写文件全在 `AppModel.saveRoadmap`，按条目的 `updated` 合并。
-- 能看、能学、能编：固定网格布局（领域成片，领域内按前置关系从左到右排，不再分入门／基础／进阶列），三种关系线，远中近三档语义缩放，聚焦点亮前置链，占一半宽度的两栏详情面板（摘要、原理图、要点跳到小节、学习路径），搜索，小地图；不显示学习进度，名称英文为主、中文作副标题（节点和领域的 `subtitle` 字段），图标用 Lucide，待写节点画成虚线空卡；跨领域的线平时收成领域之间走空隙的连线，聚焦或悬停才显示节点级的线，领域内有入门到实战的列标题，画布有点阵底和缩放百分比；编辑模式可拖动、连线（成环拒绝）、新建节点、挂页面、撤销。
-- 模块可设 `home`（`.acdian-modules.json`），用组件代替模块首页；CS 模块的首页是 `CS/CS 路线图.acdian`。页面改名、移动后节点里的页面路径跟着改。
-- 已在 Mac 上编译、测试并安装；iOS 目标不签名编译通过。App 内的路线图交互还没人工试过。
+- 「知识路线图」组件（`roadmap`）：一个 `.acdian` 文件存流程、阶段、节点和关系，页面不加字段。画布是 `Resources/roadmap/` 里的网页（内置 d3），写文件全在 `AppModel.saveRoadmap`，按条目的 `updated` 合并。
+- 布局是流程图：`flows` 里每条流程一列，阶段（`domains`，带 `flow` 和顺序）自上而下排、标序号、相邻阶段画流程箭头；第一条流程占左列，其余流程叠在右列。阶段内节点按前置关系排在前面，每行四个。节点的 `topic` 记原来的知识领域，面板里作标签。
+- CS 路线图分三条：一次 API 调用（客户端与网络 → 入口 → 鉴权 → 限流预扣 → 路由到上游 → 流式返回 → 结算 → 账本账单 → 日志指标压测）、构建与发布、工程方法。
+- 能看、能学、能编：语义缩放、聚焦前置链、半宽详情面板、搜索、小地图；不显示学习进度；英文名为主、中文名在下对照；阶段之间的连线走侧边走廊合并成地铁线。
+- CS 模块的首页是 `CS/CS 路线图.acdian`（`.acdian-modules.json` 的 `home`）。
 
 ## 下一步
 
-- iOS：`.acdian` 路线图文件目前仍按卡片索引打开，要加 `iOS/RoadmapScreen.swift`；页面面包屑里加「在路线图中的位置」反向入口（`focus` 消息网页端已支持）。
-- 路线图里 13 个「待写」节点等对应页面写出来后挂上；页面里 18 处指向旧标题的坏链接待用户决定怎么改（清单在 2026-11-20 的 TESTING 记录）。
-- 在 App 里试：CS 首页路线图（单击详情、双击开页面、要点跳小节）、评论跟随改名；飞书对标剩余项（DECISIONS 2026-11-15）。
+- iOS：加 `iOS/RoadmapScreen.swift`；页面面包屑加「在路线图中的位置」反向入口。
+- 待写节点等页面写出来后挂上；页面里 18 处坏链接待用户决定怎么改。
 
 ## 注意
 
-- 所有 Swift 测试的编译命令都要带上 `Sources/Roadmap.swift`（`AppModel.swift` 用到它）。
-- 旧版本 App 改模块设置时会把 `home` 字段写掉；iOS 更新前不要在 iOS 上改模块。
-- `TabTests` 在“Saving over the outside change…”、`EditorSnapshotTests` 在“New notes should open…”处失败，main 上也一样。
-- 离屏测试窗口没有键盘焦点、不跑 requestAnimationFrame；WebKit 测试要模拟焦点、手动摆浮层。
+- Swift 测试编译要带上 `Sources/Roadmap.swift`。网页测试 `node Tests/roadmap-tests.cjs` 只在有 Playwright 的环境跑。
+- 旧版本 App 改模块设置会写掉 `home`；旧版本保存路线图会写掉 `flows`、`topic`。
+- `TabTests`、`EditorSnapshotTests` 各有一处在 main 上本来就失败。

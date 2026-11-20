@@ -7,6 +7,13 @@ struct RoadmapDomain: Codable, Equatable {
     var glyph: String?
     var order: Int
     var subtitle: String? = nil
+    var flow: String? = nil
+}
+struct RoadmapFlow: Codable, Equatable {
+    var id: String
+    var title: String
+    var subtitle: String?
+    var arrows: Bool?
 }
 struct RoadmapPoint: Codable, Equatable {
     var text: String
@@ -29,6 +36,7 @@ struct RoadmapNode: Codable, Equatable {
     /// Where a node without a page got its summary from.
     var note: String?
     var subtitle: String? = nil
+    var topic: String? = nil
 }
 struct RoadmapEdge: Codable, Equatable {
     var id: String
@@ -50,6 +58,7 @@ struct RoadmapDocument: Codable, Equatable {
     var source = ""
     var version = 1
     var title: String?
+    var flows: [RoadmapFlow] = []
     var domains: [RoadmapDomain] = []
     var nodes: [RoadmapNode] = []
     var edges: [RoadmapEdge] = []
@@ -114,6 +123,7 @@ extension RoadmapDomain {
         glyph = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("glyph"))) ?? nil
         order = Int(values.number("order") ?? 0)
         subtitle = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("subtitle"))) ?? nil
+        flow = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("flow"))) ?? nil
     }
 }
 extension RoadmapPoint {
@@ -139,6 +149,7 @@ extension RoadmapNode {
         draft = (try? values.decodeIfPresent(Bool.self,forKey:RoadmapKey("draft"))) ?? nil
         note = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("note"))) ?? nil
         subtitle = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("subtitle"))) ?? nil
+        topic = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("topic"))) ?? nil
     }
 }
 extension RoadmapEdge {
@@ -157,6 +168,7 @@ extension RoadmapDocument {
         component = try values.decode(String.self,forKey:RoadmapKey("component"))
         source = values.string("source"); version = Int(values.number("version") ?? 1)
         title = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("title"))) ?? nil
+        flows = values.list("flows",of:RoadmapFlow.self)
         domains = values.list("domains",of:RoadmapDomain.self); nodes = values.list("nodes",of:RoadmapNode.self); edges = values.list("edges",of:RoadmapEdge.self)
         removed = (try? values.decodeIfPresent([String:Double].self,forKey:RoadmapKey("removed"))) ?? [:]
         view = (try? values.decodeIfPresent(RoadmapViewport.self,forKey:RoadmapKey("view"))) ?? nil
@@ -204,6 +216,7 @@ extension MetadataMerge {
         }
         result.nodes = nodes; result.edges = edges
         if local.domains.isEmpty { result.domains = disk.domains }
+        if local.flows.isEmpty && !disk.flows.isEmpty { result.flows = disk.flows; result.domains = disk.domains }
         if local.title == nil { result.title = disk.title }
         if local.source.isEmpty { result.source = disk.source }
         if local.exclude.isEmpty { result.exclude = disk.exclude }

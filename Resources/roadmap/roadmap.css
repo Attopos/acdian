@@ -61,6 +61,15 @@ svg text { font-family: var(--acd-font); }
 .ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .glyph { fill: none; stroke: var(--rm-muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .region .label .glyph { stroke: var(--tint); }
+.region .label .badge { fill: var(--tint); }
+.region .label .step { fill: var(--rm-bg); font-size: 12px; font-weight: 750; text-anchor: middle; dominant-baseline: central; }
+.flow .title { fill: var(--rm-ink); font-size: 22px; font-weight: 720; letter-spacing: .005em; }
+.flow .sub { fill: var(--rm-muted); font-size: 13.5px; font-weight: 500; }
+.spine .shaft { stroke: var(--tint); stroke-width: 3; stroke-linecap: round; opacity: .75; }
+.spine .tip { fill: var(--tint); opacity: .75; }
+[data-zoom="far"] .flow .sub { opacity: 0; }
+[data-zoom="far"] .flow .title { font-size: 56px; }
+.panel-open .spine { opacity: .35; }
 .region .far text { text-anchor: middle; }
 .region .far .name { fill: var(--rm-ink); font-size: 42px; font-weight: 680; letter-spacing: .01em; paint-order: stroke; stroke: var(--rm-bg); stroke-width: 12px; stroke-opacity: .8; stroke-linejoin: round; }
 .region .far, .region .label, .region .levels, .node, .node > *, .edge, .link, .mention { transition: opacity .2s ease-out; }
@@ -290,3 +299,5 @@ svg text { font-family: var(--acd-font); }
 @media (prefers-reduced-motion: reduce) { #panel, #tools, #minimap { transition: none; } #hover, #edge-tip, #toast, #popover { animation-name: fade; } }
 
 #edge-tip ul { margin: 6px 0 0; padding: 0; list-style: none; color: var(--rm-text); font-size: 12.5px; line-height: 1.6; }
+
+#panel .crumb .topic { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--rm-ink) 7%, transparent); color: var(--rm-muted); font-size: 11.5px; font-weight: 500; }

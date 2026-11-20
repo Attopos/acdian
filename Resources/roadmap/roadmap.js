@@ -11,6 +11,7 @@ const fold = s => String(s ?? '').normalize('NFKC').toLowerCase();
 const now = () => Math.floor(Date.now() / 1000);
 
 const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 56, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
+const PER_ROW = 4, IN_GAP = 40, BAND_GAP = 76, FLOW_HEAD = 76, COLUMN_GAP = 220, GUTTER = 40;
 const FAR = 0.5, NEAR = 1.3;
 const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
@@ -47,6 +48,10 @@ const ICONS = {
   'gauge': '<path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" />',
   'layers': '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />',
   'link-2': '<path d="M9 17H7A5 5 0 0 1 7 7h2" /><path d="M15 7h2a5 5 0 1 1 0 10h-2" /><line x1="8" x2="16" y1="12" y2="12" />',
+  laptop: '<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16" />',
+  receipt: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" /><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" /><path d="M12 17.5v-11" />',
+  package: '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /><path d="M12 22V12" /><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7" /><path d="m7.5 4.27 9 5.15" />',
+  'chart-line': '<path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="m19 9-5 5-4-4-3 3" />',
   'list-checks': '<path d="m3 17 2 2 4-4" /><path d="m3 7 2 2 4-4" /><path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" />',
   'log-in': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" x2="3" y1="12" y2="12" />',
   'log-out': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" />',
@@ -63,7 +68,7 @@ const ICONS = {
   'workflow': '<rect width="8" height="8" x="3" y="3" rx="2" /><path d="M7 11v4a2 2 0 0 0 2 2h4" /><rect width="8" height="8" x="13" y="13" rx="2" />',
   'x': '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
 };
-const GLYPH_ICONS = { network: 'network', spark: 'sparkles', pulse: 'activity', cloud: 'cloud', window: 'app-window', database: 'database', prism: 'pyramid', nodes: 'workflow', chip: 'cpu', gauge: 'gauge', braces: 'braces', shield: 'shield-check', layers: 'layers', dot: 'circle' };
+const GLYPH_ICONS = { network: 'network', spark: 'sparkles', pulse: 'activity', cloud: 'cloud', window: 'app-window', database: 'database', prism: 'pyramid', nodes: 'workflow', chip: 'cpu', gauge: 'gauge', braces: 'braces', shield: 'shield-check', layers: 'layers', dot: 'circle', chart: 'chart-line', checks: 'list-checks' };
 const glyph = name => ICONS[GLYPH_ICONS[name] || name] || ICONS.circle;
 const ic = (name, cls = '') => `<svg viewBox="0 0 24 24" class="ic${cls ? ' ' + cls : ''}" aria-hidden="true">${ICONS[name] || ICONS.circle}</svg>`;
 const glyphSVG = name => `<svg viewBox="0 0 24 24" class="ic glyph" aria-hidden="true">${glyph(name)}</svg>`;
@@ -111,7 +116,7 @@ function distances(id, within) {
 function learningPath(id) {
   const chain = ancestors(id), dist = distances(id, chain);
   return [...chain].map(other => S.byId.get(other))
-    .sort((a, b) => dist.get(b.id) - dist.get(a.id) || (a.col ?? 0) - (b.col ?? 0) || a.i - b.i)
+    .sort((a, b) => dist.get(b.id) - dist.get(a.id) || a.i - b.i)
     .map(node => {
       const via = (S.outs.get(node.id) || []).filter(edge => directed(edge.d.kind) && (edge.b.id === id || chain.has(edge.b.id))).sort((a, b) => dist.get(a.b.id) - dist.get(b.b.id))[0];
       return { id: node.id, why: via?.d.why || '', toward: via?.b.id };
@@ -137,54 +142,39 @@ function layout() {
   const widest = Math.max(96, ...S.nodes.map(n => Math.max(textWidth(n.d.title || '', titleFont), textWidth(n.d.subtitle || '', `400 11.5px ${FONT}`))));
   const W = Math.round(Math.min(320, Math.max(148, widest + 56)));
   const groups = S.domains.map(domain => ({ domain, nodes: S.nodes.filter(n => n.d.domain === domain.id) })).filter(g => g.nodes.length || S.editing);
-  const capstones = groups.filter(g => g.nodes.length && g.nodes.every(n => (n.d.level ?? 0) >= 3));
-  const lanes = groups.filter(g => !capstones.includes(g));
-  const regionW = 3 * W + 2 * COL_GAP + 2 * PAD_X, pitch = NODE_H + ROW_GAP;
-  for (const group of lanes) {
-    const inside = n => [...(S.ins.get(n.id) || [])].filter(e => directed(e.d.kind) && e.a.d.domain === n.d.domain).map(e => e.a);
-    const linked = n => inside(n).length || (S.outs.get(n.id) || []).some(e => directed(e.d.kind) && e.b.d.domain === n.d.domain);
-    const rank = new Map(), depth = n => { if (rank.has(n.id)) return rank.get(n.id); rank.set(n.id, 0); const r = Math.min(2, Math.max(0, ...inside(n).map(p => depth(p) + 1))); rank.set(n.id, r); return r; };
-    group.columns = [[], [], []];
-    group.nodes.filter(linked).forEach(n => group.columns[depth(n)].push(n));
-    group.nodes.filter(n => !linked(n)).forEach(n => { const shortest = [2, 1, 0].reduce((best, i) => group.columns[i].length < group.columns[best].length ? i : best, 2); group.columns[shortest].push(n); });
-    group.nodes.forEach(n => { n.col = group.columns.findIndex(stack => stack.includes(n)); });
-    group.rows = Math.max(1, ...group.columns.map(c => c.length));
-    const level = n => n.col, at = new Map();
-    const settle = () => group.columns.forEach(stack => stack.forEach((n, i) => at.set(n.id, (group.rows - stack.length) / 2 + i)));
-    const pull = (n, side) => {
-      const near = [...(S.ins.get(n.id) || []).map(e => e.a), ...(S.outs.get(n.id) || []).map(e => e.b)].filter(o => o.d.domain === n.d.domain && Math.sign(level(o) - level(n)) === side);
-      return near.length ? near.reduce((sum, o) => sum + at.get(o.id), 0) / near.length : at.get(n.id);
-    };
-    for (let sweep = 0; sweep < 6; sweep++) for (const column of sweep % 2 ? [1, 0] : [1, 2]) {
-      settle();
-      const side = sweep % 2 ? 1 : -1, weight = new Map(group.columns[column].map(n => [n.id, pull(n, side)]));
-      group.columns[column].sort((a, b) => weight.get(a.id) - weight.get(b.id) || a.i - b.i);
-    }
-  }
-  const regions = []; let y = 0;
-  const across = lanes.length > 6 ? 3 : 2;
-  for (let i = 0; i < lanes.length; i += across) {
-    const pair = lanes.slice(i, i + across), rows = Math.max(...pair.map(g => g.rows)), height = PAD_TOP + rows * NODE_H + (rows - 1) * ROW_GAP + PAD_BOTTOM;
-    pair.forEach((group, column) => {
-      const x = column * (regionW + REGION_GAP);
-      regions.push({ id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y, w: regionW, h: height, row: i / across, col: column });
-      group.columns.forEach((stack, level) => stack.forEach((node, row) => {
-        node.w = W; node.gx = x + PAD_X + level * (W + COL_GAP);
-        node.gy = y + PAD_TOP + (rows - stack.length) * pitch / 2 + row * pitch;
-      }));
+  const flows = S.doc.flows || [];
+  const lines = [...flows.map(flow => ({ flow, groups: groups.filter(g => g.domain.flow === flow.id) })), { flow: null, groups: groups.filter(g => !flows.some(f => f.id === g.domain.flow)) }].filter(line => line.groups.length);
+  const columns = lines.length > 1 ? [lines.slice(0, 1), lines.slice(1)] : [lines];
+  const bandW = PER_ROW * W + (PER_ROW - 1) * COL_GAP + 2 * PAD_X, regions = [], heads = [], spine = [];
+  columns.forEach((stack, col) => {
+    const x = col * (bandW + COLUMN_GAP); let y = 0;
+    stack.forEach((line, li) => {
+      if (li) y += BAND_GAP;
+      if (line.flow) { heads.push({ id: line.flow.id, flow: line.flow, x, y }); y += FLOW_HEAD; }
+      const arrows = line.flow?.arrows !== false && !!line.flow;
+      line.groups.forEach((group, step) => {
+        const pending = new Set(group.nodes), ordered = [];
+        while (pending.size) {
+          const ready = [...pending].find(n => ![...(S.ins.get(n.id) || [])].some(e => directed(e.d.kind) && pending.has(e.a))) || [...pending][0];
+          ordered.push(ready); pending.delete(ready);
+        }
+        group.nodes = ordered;
+        const count = group.nodes.length, rows = Math.max(1, Math.ceil(count / PER_ROW));
+        const h = PAD_TOP + rows * NODE_H + (rows - 1) * IN_GAP + PAD_BOTTOM;
+        const region = { id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y, w: bandW, h, col, flow: line.flow?.id || '', step: arrows ? step + 1 : 0 };
+        if (step && arrows) spine.push({ key: regions[regions.length - 1].id + '>' + region.id, from: regions[regions.length - 1], to: region });
+        regions.push(region);
+        group.nodes.forEach((node, i) => {
+          const row = Math.floor(i / PER_ROW), k = i % PER_ROW;
+          node.w = W; node.col = k;
+          node.gx = x + PAD_X + k * (W + COL_GAP);
+          node.gy = y + PAD_TOP + row * (NODE_H + IN_GAP);
+        });
+        y += h + BAND_GAP;
+      });
+      y -= BAND_GAP;
     });
-    y += height + REGION_GAP;
-  }
-  const lanesH = Math.max(0, y - REGION_GAP), lanesW = lanes.length ? Math.min(lanes.length, across) * (regionW + REGION_GAP) - REGION_GAP : 0;
-  let x = lanesW ? lanesW + REGION_GAP : 0;
-  for (const group of capstones) {
-    const count = group.nodes.length, natural = PAD_TOP + count * NODE_H + (count - 1) * ROW_GAP + PAD_BOTTOM, height = Math.max(lanesH, lanes.length ? 0 : natural, PAD_TOP + count * (NODE_H + 28) + PAD_BOTTOM);
-    const step = count > 1 ? Math.min(pitch + 24, (height - PAD_TOP - PAD_BOTTOM - NODE_H) / (count - 1)) : 0;
-    const top = PAD_TOP + (height - PAD_TOP - PAD_BOTTOM - (NODE_H + step * (count - 1))) / 2;
-    regions.push({ id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y: 0, w: W + 2 * PAD_X + ARC_ROOM, h: height, capstone: true });
-    group.nodes.forEach((node, row) => { node.w = W; node.gx = x + PAD_X; node.gy = top + row * step; });
-    x += W + 2 * PAD_X + ARC_ROOM + REGION_GAP;
-  }
+  });
   const summaryFont = `400 9px ${FONT}`;
   for (const node of S.nodes) {
     node.w ||= W; node.gx ??= 0; node.gy ??= 0;
@@ -199,9 +189,9 @@ function layout() {
     }
     region.tint = tint(region.domain.color);
   }
-  const x0 = Math.min(0, ...regions.map(r => r.x)), y0 = Math.min(0, ...regions.map(r => r.y));
+  const x0 = Math.min(0, ...regions.map(r => r.x)), y0 = Math.min(0, ...regions.map(r => r.y), ...heads.map(h => h.y));
   const bounds = { x: x0, y: y0, w: Math.max(1, ...regions.map(r => r.x + r.w)) - x0, h: Math.max(1, ...regions.map(r => r.y + r.h)) - y0 };
-  S.layout = { regions, bounds, W };
+  S.layout = { regions, bounds, W, heads, spine };
   routeAll();
 }
 
@@ -280,35 +270,20 @@ function routeAll() {
     if (!directed(edge.d.kind) || edge.a.d.domain === edge.b.d.domain) continue;
     const key = edge.a.d.domain + '>' + edge.b.d.domain; if (!pairs.has(key)) pairs.set(key, []); pairs.get(key).push(edge);
   }
-  const regions = S.layout.regions, grid = regions.filter(r => !r.capstone), half = REGION_GAP / 2;
-  const rowsN = Math.max(0, ...grid.map(r => r.row + 1)), colsN = Math.max(0, ...grid.map(r => r.col + 1));
-  const inRow = r => grid.filter(x => x.row === r), inCol = col => grid.filter(x => x.col === col);
-  const hY = r => r <= 0 ? Math.min(...inRow(0).map(x => x.y)) - half : r >= rowsN ? Math.max(...inRow(rowsN - 1).map(x => x.y + x.h)) + half : (Math.max(...inRow(r - 1).map(x => x.y + x.h)) + Math.min(...inRow(r).map(x => x.y))) / 2;
-  const vX = col => col <= 0 ? Math.min(...inCol(0).map(x => x.x)) - half : col >= colsN ? Math.max(...inCol(colsN - 1).map(x => x.x + x.w)) + half : (Math.max(...inCol(col - 1).map(x => x.x + x.w)) + Math.min(...inCol(col).map(x => x.x))) / 2;
-  const tracks = new Map();
-  const lane = (key, from) => track(key + '|' + from.id);
-  const track = key => { const n = tracks.get(key) || 0; tracks.set(key, n + 1); return (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 11; };
-  const dock = () => 0;
+  const regions = S.layout.regions, tracks = new Map();
+  const track = (key, outward = 0) => { const n = tracks.get(key) || 0; tracks.set(key, n + 1); return outward ? outward * n * 10 : (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 10; };
   const cx = r => r.x + r.w / 2, cy = r => r.y + r.h / 2;
   const through = (from, to) => {
-    if (from.capstone && !to.capstone) return through(to, from).reverse();
-    if (to.capstone) {
-      if (from.capstone || from.col === colsN - 1) { const y = cy(from) + dock(from.id + 'r'); return [[from.x + from.w, y], [to.x, y]]; }
-      const up = from.row === rowsN - 1 && rowsN > 1, gutter = up ? from.row : from.row + 1;
-      const x = cx(from) + dock(from.id + (up ? 't' : 'b')), y = hY(gutter) + lane('h' + gutter, from);
-      return [[x, up ? from.y : from.y + from.h], [x, y], [to.x, y]];
+    if (from.col !== to.col) {
+      const right = to.col > from.col, x = (right ? from.x + from.w : from.x) + (right ? 1 : -1) * COLUMN_GAP / 2 + track('mid', 0);
+      return [[right ? from.x + from.w : from.x, cy(from)], [x, cy(from)], [x, cy(to)], [right ? to.x : to.x + to.w, cy(to)]];
     }
-    const dr = to.row - from.row, dc = to.col - from.col;
-    if (!dr && Math.abs(dc) === 1) { const y = cy(from) + dock(from.id + (dc > 0 ? 'r' : 'l'), to.id + (dc > 0 ? 'l' : 'r')); return [[dc > 0 ? from.x + from.w : from.x, y], [dc > 0 ? to.x : to.x + to.w, y]]; }
-    if (!dc && Math.abs(dr) === 1) { const x = cx(from) + dock(from.id + (dr > 0 ? 'b' : 't'), to.id + (dr > 0 ? 't' : 'b')); return [[x, dr > 0 ? from.y + from.h : from.y], [x, dr > 0 ? to.y : to.y + to.h]]; }
-    if (!dr) { const y = hY(from.row + 1) + lane('h' + (from.row + 1), from), x0 = cx(from) + dock(from.id + 'b'), x1 = cx(to) + dock(to.id + 'b'); return [[x0, from.y + from.h], [x0, y], [x1, y], [x1, to.y + to.h]]; }
-    if (!dc) { const x = vX(from.col) + lane('v' + from.col, from), y0 = cy(from) + dock(from.id + 'l'), y1 = cy(to) + dock(to.id + 'l'); return [[from.x, y0], [x, y0], [x, y1], [to.x, y1]]; }
-    const down = dr > 0, gutter = down ? from.row + 1 : from.row, y = hY(gutter) + lane('h' + gutter, from), x0 = cx(from) + dock(from.id + (down ? 'b' : 't')), start = [x0, down ? from.y + from.h : from.y];
-    if (Math.abs(dr) === 1) { const x1 = cx(to) + dock(to.id + (down ? 't' : 'b')); return [start, [x0, y], [x1, y], [x1, down ? to.y : to.y + to.h]]; }
-    const column = dc > 0 ? to.col : to.col + 1, x = vX(column) + lane('v' + column, from), y1 = cy(to) + dock(to.id + (dc > 0 ? 'l' : 'r'));
-    return [start, [x0, y], [x, y], [x, y1], [dc > 0 ? to.x : to.x + to.w, y1]];
+    const down = to.y > from.y, between = regions.some(r => r !== from && r !== to && r.col === from.col && r.y > Math.min(from.y, to.y) && r.y < Math.max(from.y, to.y));
+    if (!between) { const x = cx(from) + (down ? -14 : 14); return [[x, down ? from.y + from.h : from.y], [x, down ? to.y : to.y + to.h]]; }
+    const side = down ? -1 : 1, edge = side < 0 ? from.x : from.x + from.w, x = edge + side * GUTTER + track('side' + from.col + side, side);
+    return [[edge, cy(from) + side * -6], [x, cy(from) + side * -6], [x, cy(to) + side * 6], [edge, cy(to) + side * 6]];
   };
-  const span = key => { const [from, to] = key.split('>').map(id => regions.find(r => r.id === id)); return from && to ? Math.abs((to.row ?? 0) - (from.row ?? 0)) + Math.abs((to.col ?? colsN) - (from.col ?? colsN)) : 0; };
+  const span = key => { const [from, to] = key.split('>').map(id => regions.find(r => r.id === id)); return from && to ? Math.abs(cy(to) - cy(from)) + (from.col !== to.col) * 1e5 : 0; };
   S.layout.links = [...pairs].sort((a, b) => span(a[0]) - span(b[0])).map(([key, edges]) => {
     const [from, to] = key.split('>').map(id => regions.find(r => r.id === id)); if (!from || !to || from === to) return null;
     const points = through(from, to), last = points[points.length - 1], before = points[points.length - 2];
@@ -335,8 +310,10 @@ function draw(animate = false) {
     const g = enter.append('g').attr('class', 'region');
     g.append('rect').attr('rx', 18);
     const label = g.append('g').attr('class', 'label');
-    label.append('g').attr('class', 'glyph').attr('transform', 'translate(0,-13)scale(.6667)');
-    label.append('text').attr('x', 24).attr('class', 'name');
+    label.append('circle').attr('class', 'badge').attr('cx', 11).attr('cy', -5).attr('r', 11);
+    label.append('text').attr('class', 'step').attr('x', 11).attr('y', -5);
+    label.append('g').attr('class', 'glyph');
+    label.append('text').attr('class', 'name');
     const far = g.append('g').attr('class', 'far');
     far.append('text').attr('class', 'name');
     return g;
@@ -344,11 +321,31 @@ function draw(animate = false) {
   region.style('--tint', d => d.tint);
   move(region.select('rect')).attr('x', d => d.x).attr('y', d => d.y).attr('width', d => d.w).attr('height', d => d.h);
   move(region.select('.label')).attr('transform', d => `translate(${d.x + PAD_X},${d.y + 30})`);
-  region.select('.label .glyph').html(d => glyph(d.domain.glyph));
+  region.select('.label .glyph').html(d => glyph(d.domain.glyph)).attr('transform', d => `translate(${d.step ? 32 : 0},-13)scale(.6667)`);
+  region.select('.label .badge').attr('display', d => d.step ? null : 'none');
+  region.select('.label .step').text(d => d.step || '');
+  region.select('.label .name').attr('x', d => d.step ? 56 : 24);
   region.select('.label .name').each(function (d) { d3.select(this).html(`${esc(d.domain.title)}${d.domain.subtitle ? `<tspan class="sub" dx="8">${esc(d.domain.subtitle)}</tspan>` : ''}`); });
 
   move(region.select('.far')).attr('transform', d => `translate(${d.x + d.w / 2},${d.y + d.h / 2 + 14})`);
-  region.select('.far .name').text(d => d.domain.title);
+  region.select('.far .name').text(d => (d.step ? d.step + '  ' : '') + d.domain.title);
+
+  const flowHead = d3.select('#regions').selectAll('g.flow').data(S.layout.heads || [], d => d.id).join(enter => {
+    const g = enter.append('g').attr('class', 'flow');
+    g.append('text').attr('class', 'title'); g.append('text').attr('class', 'sub');
+    return g;
+  });
+  move(flowHead).attr('transform', d => `translate(${d.x + 4},${d.y + 34})`);
+  flowHead.select('.title').text(d => d.flow.title);
+  flowHead.select('.sub').attr('y', 24).text(d => d.flow.subtitle || '');
+  const spine = d3.select('#regions').selectAll('g.spine').data(S.layout.spine || [], d => d.key).join(enter => {
+    const g = enter.append('g').attr('class', 'spine');
+    g.append('path').attr('class', 'shaft'); g.append('path').attr('class', 'tip');
+    return g;
+  });
+  spine.style('--tint', d => d.to.tint);
+  spine.select('.shaft').attr('d', d => `M${d.from.x + PAD_X + 11},${d.from.y + d.from.h + 8}V${d.to.y - 16}`);
+  spine.select('.tip').attr('d', d => { const x = d.from.x + PAD_X + 11, y = d.to.y - 6; return `M${x},${y}L${x - 7},${y - 11}L${x + 7},${y - 11}Z`; });
 
   d3.select('#links').selectAll('g.link').data(links, d => d.key).join(enter => {
     const g = enter.append('g').attr('class', 'link');
@@ -588,7 +585,8 @@ function renderPanel() {
   const pages = (node.d.pages || []).map(key => ({ key, info: S.pages.get(key) }));
   const pageIcon = ic('file-text'), goIcon = ic('chevron-right', 'go');
   const h3 = (name, text) => `<h3>${ic(name)}<span>${esc(T(text))}</span></h3>`;
-  const top = `<div class="top"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${esc(domain?.title || '')}</span><button class="close" data-close aria-label="Close">${ic('x')}</button></div>`
+  const step = S.layout.regions.find(r => r.id === domain?.id)?.step;
+  const top = `<div class="top"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${step ? `${step} · ` : ''}${esc(domain?.title || '')}</span>${node.d.topic ? `<span class="topic">${esc(node.d.topic)}</span>` : ''}<button class="close" data-close aria-label="Close">${ic('x')}</button></div>`
     + `<h2>${esc(node.d.title)}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h2>${node.d.subtitle ? `<p class="sub">${esc(node.d.subtitle)}</p>` : ''}<p class="lead">${esc(node.d.summary || '')}</p></div>`;
   let main = '', side = '';
   if (figures.length) main += `<button class="figure" data-figure="0"><img alt="${esc(T('原理图'))}" src="${esc(themed(figures[0]))}">${figures.length > 1 ? `<span>1 / ${figures.length}</span>` : ''}</button>`;

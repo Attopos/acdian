@@ -6,7 +6,8 @@ const node = (id, domain, level, status = 'new', extra = {}) => ({ id, title: ex
 const edge = (from, to, kind = 'requires', why = `${from} before ${to}`) => ({ id: from + (kind === 'related' ? '~' : '>') + to, from, to, kind, why, updated: 1 });
 const roadmap = {
   component: 'roadmap', source: 'CS', version: 1, title: 'Test',
-  domains: [{ id: 'net', title: '网络', color: 'sky', order: 0 }, { id: 'ai', title: 'AI', color: 'plum', order: 1 }, { id: 'work', title: '实战', color: 'black', order: 2 }],
+  flows: [{ id: 'call', title: 'Call', arrows: true }, { id: 'ship', title: 'Ship', arrows: true }],
+  domains: [{ id: 'net', title: '网络', color: 'sky', order: 0, flow: 'call' }, { id: 'ai', title: 'AI', color: 'plum', order: 1, flow: 'call' }, { id: 'work', title: '实战', color: 'black', order: 2, flow: 'ship' }],
   nodes: [node('http', 'net', 0, 'learned', { title: 'HTTP 请求' }), node('nat', 'net', 0), node('proxy', 'net', 1, 'new', { title: '反向代理', summary: '站在网站那一边的代理' }), node('chain', 'net', 1), node('gfw', 'net', 2),
     node('key', 'ai', 0), node('switch', 'ai', 1), node('gateway', 'ai', 2, 'new', { summary: '带账号池的反向代理' }), node('alb', 'work', 3), node('lonely', 'ai', 1)],
   edges: [edge('http', 'proxy'), edge('proxy', 'gfw'), edge('chain', 'gfw'), edge('proxy', 'gateway'), edge('key', 'switch'), edge('key', 'gateway'), edge('switch', 'gateway'), edge('gateway', 'alb', 'applies'), edge('proxy', 'chain', 'related'), edge('nat', 'chain')],
@@ -29,8 +30,11 @@ const roadmap = {
   check((await posted('ready')).length === 1, 'The page announces it is ready');
   let s = await state();
   const boxes = Object.fromEntries(s.nodes.map(n => [n.id, n]));
-  check(boxes.http.x < boxes.proxy.x && boxes.proxy.x < boxes.gfw.x && boxes.gfw.x < boxes.alb.x, 'Levels run left to right, practice furthest right');
-  check(boxes.key.x > boxes.gfw.x && boxes.key.x < boxes.alb.x, 'Domains sit side by side');
+  const before = (a, b) => a.y < b.y - 1 || (Math.abs(a.y - b.y) < 1 && a.x < b.x);
+  check(before(boxes.http, boxes.proxy) && before(boxes.proxy, boxes.gfw) && before(boxes.key, boxes.switch) && before(boxes.switch, boxes.gateway), 'Inside a stage, prerequisites come first in reading order');
+  check(Math.min(boxes.key.y, boxes.switch.y) > Math.max(boxes.http.y, boxes.gfw.y), 'Stages of one flow stack top to bottom in order');
+  check(boxes.alb.x > Math.max(...s.nodes.filter(n => n.id !== 'alb').map(n => n.x + n.w)), 'A second flow gets its own column');
+  check(await page.evaluate(() => document.querySelectorAll('g.spine').length) === 1 && await page.evaluate(() => document.querySelectorAll('g.flow').length) === 2, 'Consecutive stages get one flow arrow and each flow a heading');
   for (const a of s.nodes) for (const b of s.nodes) if (a.id < b.id) check(a.x + a.w + 24 <= b.x || b.x + b.w + 24 <= a.x || a.y + a.h + 24 <= b.y || b.y + b.h + 24 <= a.y, `${a.id} and ${b.id} keep 24pt apart`);
   const again = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await again.goto('file://' + path.resolve(__dirname, '../Resources/roadmap/roadmap.html'));
