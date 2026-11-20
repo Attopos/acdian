@@ -121,7 +121,7 @@ svg text { font-family: var(--acd-font); }
 
 /* floating chrome */
 #app::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 96px; background: linear-gradient(var(--rm-bg) 62%, transparent); pointer-events: none; z-index: 1; transition: height .2s ease-out; }
-.panel-open:not(.touch)::before { height: 136px; }
+#app.panel-open:not(.touch)::before { height: 150px; background: linear-gradient(var(--rm-bg) 74%, transparent); }
 #head, #search, #tools, #legend, #minimap { z-index: 2; }
 #head { position: absolute; left: 20px; top: 16px; pointer-events: none; }
 #head-title { color: var(--rm-ink); font-size: 18px; font-weight: 700; line-height: 1.25; letter-spacing: .01em; }

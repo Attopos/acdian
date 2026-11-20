@@ -465,7 +465,7 @@ function fitTransform() {
 function go(transform, ms = 300) { const target = svg.interrupt(); (dur(ms) ? target.transition().duration(dur(ms)).ease(d3.easeCubicOut) : target).call(zoom.transform, transform); }
 function flyTo(node, scale) {
   const { w, h } = viewport(), open = app.classList.contains('panel-open') && !app.classList.contains('touch');
-  const left = 40, right = 40 + (open ? panelSpace() : 0), top = open ? 140 : 96, bottom = 56;
+  const left = 40, right = 40 + (open ? panelSpace() : 0), top = open ? 172 : 96, bottom = 56;
   const group = scale ? [node] : S.nodes.filter(n => n === node || S.highlighted.has(n.id));
   const x0 = Math.min(...group.map(n => n.x)), y0 = Math.min(...group.map(n => n.y)), x1 = Math.max(...group.map(n => n.x + n.w)), y1 = Math.max(...group.map(n => n.y + NODE_H));
   const k = scale || Math.max(0.6, Math.min(1.1, (w - left - right) / (x1 - x0), (h - top - bottom) / (y1 - y0)));
