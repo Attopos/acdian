@@ -451,11 +451,31 @@ function applyState(flow = false) {
 }
 
 // ---------- viewport ----------
-const zoom = d3.zoom().scaleExtent([0.18, 2.6]).filter(event => event.type !== 'wheel' && event.type !== 'dblclick' && !event.button && !(S.editing && event.target.closest?.('.node, .handle')))
+const zoom = d3.zoom().scaleExtent([0.18, 2.6]).filter(event => event.type !== 'wheel' && event.type !== 'dblclick' && !event.button && !(S.editing && event.target.closest?.('.node, .handle')) && (!compact() || settling || (event.touches?.length ?? 0) >= 2))
   .on('start', event => { if (event.sourceEvent?.type === 'mousedown') svg.classed('grabbing', true); hover(null); })
   .on('zoom', event => { S.t = event.transform; if (!frame) frame = requestAnimationFrame(paint); })
-  .on('end', () => svg.classed('grabbing', false));
-let frame = 0;
+  .on('end', () => { svg.classed('grabbing', false); if (compact() && !settling) settle(); });
+let frame = 0, settling = false;
+function canonical(k) {
+  const { w } = viewport(), b = S.layout.bounds, side = 56, width = Math.max(w, b.w * k + 2 * side);
+  return { width, height: b.h * k + 116 + 96, t: d3.zoomIdentity.translate((width - b.w * k) / 2 - b.x * k, 116 - b.y * k).scale(k) };
+}
+function settle(k = S.t.k, keep = true) {
+  const scroller = $('scroller'), next = canonical(k);
+  const ox = S.t.x - scroller.scrollLeft, oy = S.t.y - scroller.scrollTop;
+  settling = true;
+  svg.attr('width', next.width).attr('height', next.height).style('width', next.width + 'px').style('height', next.height + 'px');
+  svg.call(zoom.transform, next.t);
+  if (frame) { cancelAnimationFrame(frame); paint(); }
+  settling = false;
+  if (keep) { scroller.scrollLeft = next.t.x - ox; scroller.scrollTop = next.t.y - oy; } else { scroller.scrollLeft = (next.width - viewport().w) / 2; scroller.scrollTop = 0; }
+}
+function zoomBy(factor) {
+  const { w, h } = viewport(), scroller = $('scroller');
+  const target = svg.transition().duration(dur(180));
+  if (compact()) target.call(zoom.scaleBy, factor, [scroller.scrollLeft + w / 2, scroller.scrollTop + h / 2]); else target.call(zoom.scaleBy, factor);
+}
+function unsettle() { svg.attr('width', null).attr('height', null).style('width', null).style('height', null); $('scroller').scrollTop = 0; $('scroller').scrollLeft = 0; }
 function paint() {
   frame = 0;
   world.attr('transform', S.t); backdrop();
@@ -468,7 +488,7 @@ function backdrop() {
   canvas.style.backgroundSize = `${step}px ${step}px`; canvas.style.backgroundPosition = `${S.t.x}px ${S.t.y}px`;
   const level = $('zoom-level'); if (level) level.textContent = Math.round(S.t.k * 100) + '%';
 }
-function viewport() { const rect = $('canvas').getBoundingClientRect(); return { w: rect.width || innerWidth, h: rect.height || innerHeight }; }
+function viewport() { const rect = $('scroller').getBoundingClientRect(); return { w: rect.width || innerWidth, h: rect.height || innerHeight }; }
 function fitTransform() {
   const { w, h } = viewport(), b = S.layout.bounds, open = app.classList.contains('panel-open') && !compact();
   const left = 28, right = 28 + (open ? panelSpace() : 0), top = 72, bottom = 36;
@@ -479,6 +499,12 @@ function fitTransform() {
 function go(transform, ms = 300) { const target = svg.interrupt(); (dur(ms) ? target.transition().duration(dur(ms)).ease(d3.easeCubicOut) : target).call(zoom.transform, transform); }
 function flyTo(node, scale) {
   const { w, h } = viewport(), open = app.classList.contains('panel-open') && !compact();
+  if (compact()) {
+    const scroller = $('scroller'), top = 120, bottom = 56 + (app.classList.contains('panel-open') ? $('panel').getBoundingClientRect().height + 16 : 0);
+    const cx = S.t.applyX(node.x + node.w / 2), cy = S.t.applyY(node.y + NODE_H / 2);
+    scroller.scrollTo({ left: cx - w / 2, top: cy - (top + (h - top - bottom) / 2), behavior: dur(300) ? 'smooth' : 'auto' });
+    return;
+  }
   const sheet = compact() && app.classList.contains('panel-open') ? $('panel').getBoundingClientRect().height + 16 : 0;
   const left = 40, right = 40 + (open ? panelSpace() : 0), top = open ? 172 : compact() ? 120 : 96, bottom = 56 + sheet;
   const group = scale ? [node] : S.nodes.filter(n => n === node || S.highlighted.has(n.id));
@@ -493,6 +519,7 @@ let viewTimer;
 function viewChanged() { clearTimeout(viewTimer); viewTimer = setTimeout(() => post({ type: 'viewChanged', x: S.t.x, y: S.t.y, k: S.t.k }), 400); }
 svg.call(zoom).on('dblclick.zoom', null);
 $('canvas').addEventListener('wheel', event => {
+  if (compact() && !(event.ctrlKey || event.metaKey)) return;
   event.preventDefault();
   const [x, y] = d3.pointer(event, $('canvas'));
   if (event.ctrlKey || event.metaKey) svg.call(zoom.scaleBy, Math.exp(-event.deltaY * (event.ctrlKey && !event.metaKey ? 0.012 : 0.004)), [x, y]);
@@ -667,8 +694,8 @@ $('legend').addEventListener('click', event => { if (event.target.closest('.togg
 $('tools').addEventListener('click', event => {
   const tool = event.target.closest('button')?.dataset.tool;
   if (tool === 'fit') go(fitTransform());
-  else if (tool === 'in') svg.transition().duration(dur(180)).call(zoom.scaleBy, 1.3);
-  else if (tool === 'out') svg.transition().duration(dur(180)).call(zoom.scaleBy, 1 / 1.3);
+  else if (tool === 'in') zoomBy(1.3);
+  else if (tool === 'out') zoomBy(1 / 1.3);
   else if (tool === 'mentions') { S.showMentions = !S.showMentions; drawChrome(); applyState(); }
   else if (tool === 'edit') setEditing(!S.editing);
 });
@@ -684,8 +711,8 @@ document.addEventListener('keydown', event => {
   if (event.target.closest?.('input, textarea')) return;
   const command = event.metaKey || event.ctrlKey;
   if (command && event.key.toLowerCase() === 'f') { event.preventDefault(); input.focus(); input.select(); }
-  else if (command && (event.key === '=' || event.key === '+')) { event.preventDefault(); svg.transition().duration(dur(180)).call(zoom.scaleBy, 1.3); }
-  else if (command && event.key === '-') { event.preventDefault(); svg.transition().duration(dur(180)).call(zoom.scaleBy, 1 / 1.3); }
+  else if (command && (event.key === '=' || event.key === '+')) { event.preventDefault(); zoomBy(1.3); }
+  else if (command && event.key === '-') { event.preventDefault(); zoomBy(1 / 1.3); }
   else if (command && event.key === '0') { event.preventDefault(); go(fitTransform()); }
   else if (command && event.key.toLowerCase() === 'z' && S.editing) { event.preventDefault(); undo(); }
   else if (event.key === 'Escape') { if (!$('lightbox').hidden) $('lightbox').hidden = true; else if (popoverOpen()) closePopover(); else if (S.focus) focus(null); }
@@ -694,7 +721,7 @@ document.addEventListener('keydown', event => {
 let wasCompact = compact();
 addEventListener('resize', () => {
   app.classList.toggle('compact', compact());
-  if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); zoomLimits(); draw(); svg.call(zoom.transform, fitTransform()); }
+  if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); zoomLimits(); draw(); if (compact()) settle(fitTransform().k, false); else { unsettle(); svg.call(zoom.transform, fitTransform()); } }
   drawViewport();
 });
 
@@ -897,7 +924,7 @@ function load(message, update) {
   if (S.focus && !S.byId.has(S.focus)) focus(null); else if (S.focus) { renderPanel(); applyState(); }
   if (first) {
     const view = message.view || S.doc.view, saved = view && Number.isFinite(view.k) && !(view.x === 0 && view.y === 0 && view.k === 1);
-    svg.call(zoom.transform, saved ? d3.zoomIdentity.translate(view.x, view.y).scale(view.k) : fitTransform());
+    if (compact()) settle(fitTransform().k, false); else svg.call(zoom.transform, saved ? d3.zoomIdentity.translate(view.x, view.y).scale(view.k) : fitTransform());
     S.loaded = true; app.classList.add('ready'); app.setAttribute('aria-busy', 'false');
     if (message.focus) focus(message.focus, { scale: 1 });
   } else if (message.focus && S.byId.has(message.focus)) focus(message.focus, { scale: 1 });
@@ -914,7 +941,7 @@ window.acdianRoadmap = {
     else if (message.type === 'flush') flush();
   },
   state: () => (frame && (cancelAnimationFrame(frame), paint()), { focus: S.focus, zoom: S.zoom, k: S.t.k, highlighted: [...S.highlighted].sort(), chain: [...S.chain].sort(), path: S.focus ? learningPath(S.focus).map(step => step.id) : [], matches: [...S.matches], editing: S.editing, nodes: S.nodes.map(n => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: NODE_H, draft: !!n.d.draft })), bounds: S.layout?.bounds }),
-  focus, fit: () => svg.call(zoom.transform, fitTransform()), setZoom: k => { const { w, h } = viewport(); svg.call(zoom.scaleTo, k, [w / 2, h / 2]); }, search: text => { input.value = text; S.query = text; applyState(); }, flush, undo, setEditing, connect: (a, b, kind) => !!connect(S.byId.get(a), S.byId.get(b), kind), attach,
+  focus, fit: () => compact() ? settle(fitTransform().k, false) : svg.call(zoom.transform, fitTransform()), setZoom: k => { const { w, h } = viewport(); svg.call(zoom.scaleTo, k, [w / 2, h / 2]); }, search: text => { input.value = text; S.query = text; applyState(); }, flush, undo, setEditing, connect: (a, b, kind) => !!connect(S.byId.get(a), S.byId.get(b), kind), attach,
 };
 svg.attr('data-zoom', 'mid');
 post({ type: 'ready' });

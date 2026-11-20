@@ -51,6 +51,10 @@ body { padding: 0; color: var(--rm-text); font: 13px/1.5 var(--acd-font); -webki
 #app button { all: unset; box-sizing: border-box; cursor: default; }
 #canvas { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; touch-action: none; outline: none; background-image: radial-gradient(circle, var(--rm-dot) 1px, transparent 1.4px); }
 #canvas.grabbing { cursor: grabbing; }
+#scroller { position: absolute; inset: 0; overflow: hidden; }
+.compact #scroller { overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.compact #canvas { position: static; display: block; touch-action: pan-x pan-y; }
+.compact #minimap { display: none; }
 svg text { font-family: var(--acd-font); }
 
 /* regions */
