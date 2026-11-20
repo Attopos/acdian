@@ -71,13 +71,14 @@ svg text { font-family: var(--acd-font); }
 [data-zoom="far"] .node > :not(.card) { opacity: 0 !important; }
 [data-zoom="far"] .node .card { fill: var(--rm-muted); fill-opacity: .16; stroke: none; filter: none; }
 [data-zoom="far"] .node.draft .card { fill-opacity: .06; stroke: none; }
-.link .line { fill: none; stroke: var(--tint); stroke-opacity: .5; stroke-linecap: round; stroke-linejoin: round; transition: stroke-opacity .18s ease-out; }
-.link .tip { fill: var(--tint); fill-opacity: .7; stroke: none; }
+.link .line { fill: none; stroke: color-mix(in srgb, var(--tint) 55%, var(--rm-bg)); stroke-opacity: 1; stroke-linecap: round; stroke-linejoin: round; transition: stroke-opacity .18s ease-out; }
+.link .tip { fill: color-mix(in srgb, var(--tint) 70%, var(--rm-bg)); fill-opacity: 1; stroke: none; }
 .link .hit { fill: none; stroke: transparent; stroke-width: 18; pointer-events: stroke; }
-.link.hover .line { stroke-opacity: 1; }
+.link.hover .line { stroke: var(--tint); }
+.link.hover { isolation: isolate; }
 .link.hover .tip { fill-opacity: 1; }
 .panel-open .link { opacity: .16; }
-[data-zoom="far"] .link .line { stroke-opacity: .75; }
+
 
 /* nodes */
 .node .card { fill: var(--rm-card); stroke: var(--rm-stroke); stroke-width: 1; filter: var(--rm-card-shadow); transition: stroke .18s ease-out, fill .18s ease-out, height .22s ease-out; }

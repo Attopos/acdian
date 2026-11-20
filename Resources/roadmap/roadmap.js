@@ -279,26 +279,27 @@ function routeAll() {
   const inRow = r => grid.filter(x => x.row === r), inCol = col => grid.filter(x => x.col === col);
   const hY = r => r <= 0 ? Math.min(...inRow(0).map(x => x.y)) - half : r >= rowsN ? Math.max(...inRow(rowsN - 1).map(x => x.y + x.h)) + half : (Math.max(...inRow(r - 1).map(x => x.y + x.h)) + Math.min(...inRow(r).map(x => x.y))) / 2;
   const vX = col => col <= 0 ? Math.min(...inCol(0).map(x => x.x)) - half : col >= colsN ? Math.max(...inCol(colsN - 1).map(x => x.x + x.w)) + half : (Math.max(...inCol(col - 1).map(x => x.x + x.w)) + Math.min(...inCol(col).map(x => x.x))) / 2;
-  const tracks = new Map(), docks = new Map();
+  const tracks = new Map();
+  const lane = (key, from) => track(key + '|' + from.id);
   const track = key => { const n = tracks.get(key) || 0; tracks.set(key, n + 1); return (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 11; };
-  const dock = (...sides) => { const n = Math.max(...sides.map(s => docks.get(s) || 0)); sides.forEach(s => docks.set(s, n + 1)); return (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 22; };
+  const dock = () => 0;
   const cx = r => r.x + r.w / 2, cy = r => r.y + r.h / 2;
   const through = (from, to) => {
     if (from.capstone && !to.capstone) return through(to, from).reverse();
     if (to.capstone) {
       if (from.capstone || from.col === colsN - 1) { const y = cy(from) + dock(from.id + 'r'); return [[from.x + from.w, y], [to.x, y]]; }
       const up = from.row === rowsN - 1 && rowsN > 1, gutter = up ? from.row : from.row + 1;
-      const x = cx(from) + dock(from.id + (up ? 't' : 'b')), y = hY(gutter) + track('h' + gutter);
+      const x = cx(from) + dock(from.id + (up ? 't' : 'b')), y = hY(gutter) + lane('h' + gutter, from);
       return [[x, up ? from.y : from.y + from.h], [x, y], [to.x, y]];
     }
     const dr = to.row - from.row, dc = to.col - from.col;
     if (!dr && Math.abs(dc) === 1) { const y = cy(from) + dock(from.id + (dc > 0 ? 'r' : 'l'), to.id + (dc > 0 ? 'l' : 'r')); return [[dc > 0 ? from.x + from.w : from.x, y], [dc > 0 ? to.x : to.x + to.w, y]]; }
     if (!dc && Math.abs(dr) === 1) { const x = cx(from) + dock(from.id + (dr > 0 ? 'b' : 't'), to.id + (dr > 0 ? 't' : 'b')); return [[x, dr > 0 ? from.y + from.h : from.y], [x, dr > 0 ? to.y : to.y + to.h]]; }
-    if (!dr) { const y = hY(from.row + 1) + track('h' + (from.row + 1)), x0 = cx(from) + dock(from.id + 'b'), x1 = cx(to) + dock(to.id + 'b'); return [[x0, from.y + from.h], [x0, y], [x1, y], [x1, to.y + to.h]]; }
-    if (!dc) { const x = vX(from.col) + track('v' + from.col), y0 = cy(from) + dock(from.id + 'l'), y1 = cy(to) + dock(to.id + 'l'); return [[from.x, y0], [x, y0], [x, y1], [to.x, y1]]; }
-    const down = dr > 0, gutter = down ? from.row + 1 : from.row, y = hY(gutter) + track('h' + gutter), x0 = cx(from) + dock(from.id + (down ? 'b' : 't')), start = [x0, down ? from.y + from.h : from.y];
+    if (!dr) { const y = hY(from.row + 1) + lane('h' + (from.row + 1), from), x0 = cx(from) + dock(from.id + 'b'), x1 = cx(to) + dock(to.id + 'b'); return [[x0, from.y + from.h], [x0, y], [x1, y], [x1, to.y + to.h]]; }
+    if (!dc) { const x = vX(from.col) + lane('v' + from.col, from), y0 = cy(from) + dock(from.id + 'l'), y1 = cy(to) + dock(to.id + 'l'); return [[from.x, y0], [x, y0], [x, y1], [to.x, y1]]; }
+    const down = dr > 0, gutter = down ? from.row + 1 : from.row, y = hY(gutter) + lane('h' + gutter, from), x0 = cx(from) + dock(from.id + (down ? 'b' : 't')), start = [x0, down ? from.y + from.h : from.y];
     if (Math.abs(dr) === 1) { const x1 = cx(to) + dock(to.id + (down ? 't' : 'b')); return [start, [x0, y], [x1, y], [x1, down ? to.y : to.y + to.h]]; }
-    const column = dc > 0 ? to.col : to.col + 1, x = vX(column) + track('v' + column), y1 = cy(to) + dock(to.id + (dc > 0 ? 'l' : 'r'));
+    const column = dc > 0 ? to.col : to.col + 1, x = vX(column) + lane('v' + column, from), y1 = cy(to) + dock(to.id + (dc > 0 ? 'l' : 'r'));
     return [start, [x0, y], [x, y], [x, y1], [dc > 0 ? to.x : to.x + to.w, y1]];
   };
   const span = key => { const [from, to] = key.split('>').map(id => regions.find(r => r.id === id)); return from && to ? Math.abs((to.row ?? 0) - (from.row ?? 0)) + Math.abs((to.col ?? colsN) - (from.col ?? colsN)) : 0; };
@@ -354,7 +355,7 @@ function draw(animate = false) {
     return g;
   }).attr('data-key', d => d.key).style('--tint', d => d.tint).each(function (d) {
     const g = d3.select(this);
-    g.select('.line').attr('d', d.path).attr('stroke-width', Math.min(3.4, 1.4 + d.count * 0.5));
+    g.select('.line').attr('d', d.path).attr('stroke-width', 1.8);
     g.select('.hit').attr('d', d.path);
     g.select('.tip').attr('transform', `translate(${d.q})rotate(${d.angle})`);
   });
@@ -541,7 +542,7 @@ function hover(node) {
 }
 function linkHover(link, event) {
   const tip = $('edge-tip');
-  d3.selectAll('#links g.link').classed('hover', d => d === link);
+  d3.selectAll('#links g.link').classed('hover', d => d === link).filter(d => d === link).raise();
   d3.selectAll('#edges g.edge').classed('hover', d => !!link && link.edges.includes(d));
   if (!link || popoverOpen()) { tip.hidden = true; return; }
   tip.className = 'float';
