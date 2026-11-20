@@ -72,7 +72,7 @@ struct RoadmapTests {
         try check(RoadmapSummary.extract("") == "" && RoadmapSummary.extract("## 只有标题") == "","A page without prose has no summary")
 
         func node(_ id: String, _ updated: Double, status: String = "new") -> RoadmapNode {
-            RoadmapNode(id:id,title:id,domain:"d",level:0,pages:[],summary:"",keyPoints:[],x:nil,y:nil,status:status,updated:updated,draft:nil)
+            RoadmapNode(id:id,title:id,domain:"d",level:0,pages:[],summary:"",keyPoints:[],x:nil,y:nil,status:status,updated:updated,draft:nil,note:nil)
         }
         func edge(_ from: String, _ to: String, _ updated: Double, kind: String = "requires") -> RoadmapEdge {
             RoadmapEdge(id:from + (kind == "related" ? "~" : ">") + to,from:from,to:to,kind:kind,why:"",updated:updated)
@@ -105,7 +105,7 @@ struct RoadmapTests {
         merged = MetadataMerge.roadmap(local:looped,disk:disk,now:now)
         try check(merged.edges.map(\.id) == ["a>b","b>c"] && merged.removed["edge:c>a"] == now,"A merge never leaves a loop")
 
-        var moving = RoadmapDocument(source:"CS",nodes:[RoadmapNode(id:"n",title:"n",domain:"d",level:0,pages:["CS/旧","Articles/x"],summary:"",keyPoints:[RoadmapPoint(text:"t",page:"CS/旧",heading:"h")],x:nil,y:nil,status:"new",updated:1,draft:nil)],exclude:["CS/旧"])
+        var moving = RoadmapDocument(source:"CS",nodes:[RoadmapNode(id:"n",title:"n",domain:"d",level:0,pages:["CS/旧","Articles/x"],summary:"",keyPoints:[RoadmapPoint(text:"t",page:"CS/旧",heading:"h")],x:nil,y:nil,status:"new",updated:1,draft:nil,note:nil)],exclude:["CS/旧"])
         moving.movePages(from:"CS/旧",to:"CS/新",at:9)
         try check(moving.nodes[0].pages == ["CS/新","Articles/x"] && moving.nodes[0].keyPoints[0].page == "CS/新" && moving.nodes[0].updated == 9 && moving.exclude == ["CS/新"],"A renamed page is followed")
         moving.movePages(from:"CS",to:"Notes",at:12)

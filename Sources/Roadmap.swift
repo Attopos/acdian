@@ -25,6 +25,8 @@ struct RoadmapNode: Codable, Equatable {
     var status: String
     var updated: Double
     var draft: Bool?
+    /// Where a node without a page got its summary from.
+    var note: String?
 }
 struct RoadmapEdge: Codable, Equatable {
     var id: String
@@ -132,6 +134,7 @@ extension RoadmapNode {
         status = RoadmapDocument.statuses.contains(named) ? named : "new"
         updated = values.number("updated") ?? 0
         draft = (try? values.decodeIfPresent(Bool.self,forKey:RoadmapKey("draft"))) ?? nil
+        note = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("note"))) ?? nil
     }
 }
 extension RoadmapEdge {

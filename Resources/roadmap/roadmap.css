@@ -97,7 +97,7 @@ svg text { font-family: var(--acd-font); }
 .edge[data-kind="related"] path.line { stroke-width: .9; }
 .edge[data-kind="related"] { opacity: 0; pointer-events: none; }
 .edge[data-kind="related"].lit, .edge[data-kind="related"].shown { opacity: 1; pointer-events: auto; }
-.edge.cross path.line, .edge.cross .head { opacity: .6; }
+.edge.cross path.line, .edge.cross .head { opacity: .32; }
 .edge.cross.flow path.line, .edge.cross.flow .head, .edge.cross.lit path.line, .edge.cross.lit .head, .edge.cross.hover path.line, .edge.cross.hover .head { opacity: 1; }
 .edge.dim { opacity: .12; }
 #minimap.whole { opacity: 0; pointer-events: none; }

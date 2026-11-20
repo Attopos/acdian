@@ -40,6 +40,12 @@ const GLYPHS = {
   window: '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2.2"/><path d="M1.8 6.2h12.4M4.2 4.5h.01M6.1 4.5h.01"/>',
   database: '<ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.24 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.24 2 5 2s5-.9 5-2"/>',
   prism: '<path d="M7 2.6 12.6 13H1.4ZM.8 9.2 4 8.4M9.6 7.4l5.6-1.6M10.4 9l4.8.2M11.2 10.6l4 1.8"/>',
+  nodes: '<circle cx="3.4" cy="8" r="1.8"/><circle cx="12.4" cy="3.6" r="1.8"/><circle cx="12.4" cy="12.4" r="1.8"/><path d="M5 7.2 10.8 4.4M5 8.8l5.8 2.8"/>',
+  chip: '<rect x="4" y="4" width="8" height="8" rx="1.6"/><path d="M6.5 1.8V4M9.5 1.8V4M6.5 12v2.2M9.5 12v2.2M1.8 6.5H4M1.8 9.5H4M12 6.5h2.2M12 9.5h2.2"/>',
+  gauge: '<path d="M2.4 11.6a6 6 0 1 1 11.2 0M8 9.4l2.8-3.6"/><circle cx="8" cy="9.6" r=".9"/>',
+  braces: '<path d="M5.6 2.4c-1.5 0-2 .7-2 1.9v1.6c0 1-.5 1.6-1.4 2.1.9.5 1.4 1.100 1.4 2.1v1.600c0 1.2.5 1.900 2 1.900M10.4 2.4c1.5 0 2 .7 2 1.9v1.6c0 1 .5 1.600 1.400 2.100-.9.5-1.400 1.100-1.400 2.100v1.600c0 1.200-.5 1.900-2 1.900"/>',
+  shield: '<path d="M8 1.800 13 3.600v4.200c0 3-2 5.200-5 6.400-3-1.200-5-3.400-5-6.400V3.600ZM5.800 8l1.600 1.600 2.900-3.200"/>',
+  layers: '<path d="M8 2 14 5.200 8 8.400 2 5.200ZM2.600 8.200 8 11l5.400-2.800M2.600 11 8 13.800l5.400-2.800"/>',
   dot: '<circle cx="8" cy="8" r="4.5"/>',
 };
 const glyph = name => GLYPHS[name] || GLYPHS.dot;
@@ -124,8 +130,9 @@ function layout() {
     group.rows = Math.max(1, ...group.columns.map(c => c.length));
   }
   const regions = []; let y = 0;
-  for (let i = 0; i < lanes.length; i += 2) {
-    const pair = lanes.slice(i, i + 2), rows = Math.max(...pair.map(g => g.rows)), height = PAD_TOP + rows * NODE_H + (rows - 1) * ROW_GAP + PAD_BOTTOM;
+  const across = lanes.length > 6 ? 3 : 2;
+  for (let i = 0; i < lanes.length; i += across) {
+    const pair = lanes.slice(i, i + across), rows = Math.max(...pair.map(g => g.rows)), height = PAD_TOP + rows * NODE_H + (rows - 1) * ROW_GAP + PAD_BOTTOM;
     pair.forEach((group, column) => {
       const x = column * (regionW + REGION_GAP);
       regions.push({ id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y, w: regionW, h: height });
@@ -136,7 +143,7 @@ function layout() {
     });
     y += height + REGION_GAP;
   }
-  const lanesH = Math.max(0, y - REGION_GAP), lanesW = lanes.length ? (lanes.length > 1 ? 2 * regionW + REGION_GAP : regionW) : 0;
+  const lanesH = Math.max(0, y - REGION_GAP), lanesW = lanes.length ? Math.min(lanes.length, across) * (regionW + REGION_GAP) - REGION_GAP : 0;
   let x = lanesW ? lanesW + REGION_GAP : 0;
   for (const group of capstones) {
     const count = group.nodes.length, natural = PAD_TOP + count * NODE_H + (count - 1) * ROW_GAP + PAD_BOTTOM, height = Math.max(lanesH, lanes.length ? 0 : natural, PAD_TOP + count * (NODE_H + 28) + PAD_BOTTOM);
@@ -290,8 +297,8 @@ function draw(animate = false) {
   d3.select('#links').selectAll('g.link').data(links, d => d.key).join(enter => { const g = enter.append('g').attr('class', 'link'); g.append('path'); g.append('path').attr('class', 'tip'); return g; })
     .each(function (d) {
       const g = d3.select(this), width = Math.min(9, 2.5 + d.count * 1.5);
-      g.select('path').attr('d', d.path).attr('stroke-width', width).attr('opacity', .45);
-      g.select('.tip').attr('d', 'M0,0L-16,-9L-16,9Z').attr('transform', `translate(${d.q})rotate(${d.angle})`).attr('fill', 'var(--rm-line-strong)').attr('stroke', 'none').attr('opacity', .7);
+      g.select('path').attr('d', d.path).attr('stroke-width', Math.min(5, width)).attr('opacity', .22);
+      g.select('.tip').attr('d', 'M0,0L-16,-9L-16,9Z').attr('transform', `translate(${d.q})rotate(${d.angle})`).attr('fill', 'var(--rm-line-strong)').attr('stroke', 'none').attr('opacity', .4);
     });
   d3.select('#mentions').selectAll('path.mention').data(mentions, d => d.key).join('path').attr('class', 'mention').attr('d', d => d.path);
 
@@ -512,7 +519,7 @@ function renderPanel() {
   if ((node.d.keyPoints || []).length) html += `<h3>${esc(T('要点'))}</h3><ol>${node.d.keyPoints.map((k, i) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}<small>§ ${esc(k.heading)}</small></span></button></li>`).join('')}</ol>`;
   html += `<h3>${esc(T('页面'))}</h3>`;
   html += pages.length ? `<ul>${pages.map(({ key, info }) => `<li><button class="page${info && info.exists === false ? ' missing' : ''}" data-page="${esc(key)}">${pageIcon}<span>${esc(info?.title || key.split('/').pop())}</span>${info && info.exists === false ? `<span class="tag">${esc(T('页面不存在'))}</span>` : goIcon}</button></li>`).join('')}</ul>`
-    : `<p class="hint">${esc(T('这个节点还没有页面，摘要是通用常识。'))}</p>${S.editing ? `<button class="page" data-new-page>${pageIcon}<span>${esc(T('新建页面'))}</span></button>` : ''}`;
+    : `<p class="hint">${esc(node.d.note || T('这个节点还没有页面，摘要是通用常识。'))}</p>${S.editing ? `<button class="page" data-new-page>${pageIcon}<span>${esc(T('新建页面'))}</span></button>` : ''}`;
   if (before.length) html += `<h3>${esc(T('先学'))}</h3><ul>${before.map(e => relation(e, e.a, e.d.kind === 'applies' ? T('用到的概念') : '')).join('')}</ul>`;
   if (after.length) html += `<h3>${esc(T('学完可以继续'))}</h3><ul>${after.map(e => relation(e, e.b, e.d.kind === 'applies' ? T('在这里用到') : '')).join('')}</ul>`;
   if (related.length) html += `<h3>${esc(T('相关'))}</h3><ul>${related.map(e => relation(e, e.a.id === node.id ? e.b : e.a, '')).join('')}</ul>`;
