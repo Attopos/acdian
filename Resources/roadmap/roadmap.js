@@ -13,6 +13,8 @@ const now = () => Math.floor(Date.now() / 1000);
 const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 56, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
 const IN_GAP = 40, BAND_GAP = 76, FLOW_HEAD = 76, COLUMN_GAP = 220, GUTTER = 40;
 const FAR = 0.5, NEAR = 1.3;
+const MARGIN = 360, margin = () => compact() ? 0 : MARGIN;
+const toZoom = t => d3.zoomIdentity.translate(t.x + margin(), t.y + margin()).scale(t.k);
 const compact = () => (innerWidth || 1024) < 700;
 const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
@@ -453,8 +455,8 @@ function applyState(flow = false) {
 // ---------- viewport ----------
 const zoom = d3.zoom().scaleExtent([0.18, 2.6]).filter(event => event.type !== 'wheel' && event.type !== 'dblclick' && !event.button && !(S.editing && event.target.closest?.('.node, .handle')) && (!compact() || settling || (event.touches?.length ?? 0) >= 2))
   .on('start', event => { if (event.sourceEvent?.type === 'mousedown') svg.classed('grabbing', true); hover(null); })
-  .on('zoom', event => { S.t = event.transform; if (!frame) frame = requestAnimationFrame(paint); })
-  .on('end', () => { svg.classed('grabbing', false); if (compact() && !settling) settle(); });
+  .on('zoom', event => { const m = margin(); S.z = event.transform; S.t = d3.zoomIdentity.translate(S.z.x - m, S.z.y - m).scale(S.z.k); if (!frame) frame = requestAnimationFrame(paint); })
+  .on('end', () => { svg.classed('grabbing', false); if (frame) { cancelAnimationFrame(frame); paint(); } if (drawn && S.z && (S.z.x !== drawn.x || S.z.y !== drawn.y)) { drawn = null; paint(); } if (compact() && !settling) settle(); });
 let frame = 0, settling = false;
 function canonical(k) {
   const { w } = viewport(), b = S.layout.bounds, side = 56, width = Math.max(w, b.w * k + 2 * side);
@@ -476,16 +478,22 @@ function zoomBy(factor) {
   if (compact()) target.call(zoom.scaleBy, factor, [scroller.scrollLeft + w / 2, scroller.scrollTop + h / 2]); else target.call(zoom.scaleBy, factor);
 }
 function unsettle() { svg.attr('width', null).attr('height', null).style('width', null).style('height', null); $('scroller').scrollTop = 0; $('scroller').scrollLeft = 0; }
+let drawn = null;
 function paint() {
   frame = 0;
-  world.attr('transform', S.t); backdrop();
+  const z = S.z || toZoom(S.t), dx = drawn ? z.x - drawn.x : 0, dy = drawn ? z.y - drawn.y : 0;
+  if (drawn && !compact() && z.k === drawn.k && Math.abs(dx) < MARGIN * 0.7 && Math.abs(dy) < MARGIN * 0.7) {
+    svg.style('transform', `translate3d(${dx}px,${dy}px,0)`);
+  } else {
+    drawn = z; world.attr('transform', z); svg.style('transform', null); backdrop();
+  }
   setZoomMode(S.t.k >= NEAR ? 'near' : S.t.k < FAR && !compact() ? 'far' : 'mid');
   drawViewport(); viewChanged();
 }
 function zoomLimits() { zoom.scaleExtent([compact() && S.layout ? Math.max(0.18, fitTransform().k * 0.45) : 0.18, 2.6]); }
 function backdrop() {
   const step = 28 * S.t.k * (S.t.k < 0.6 ? 2 : 1), canvas = $('canvas');
-  canvas.style.backgroundSize = `${step}px ${step}px`; canvas.style.backgroundPosition = `${S.t.x}px ${S.t.y}px`;
+  canvas.style.backgroundSize = `${step}px ${step}px`; canvas.style.backgroundPosition = `${S.t.x + margin()}px ${S.t.y + margin()}px`;
   const level = $('zoom-level'); if (level) level.textContent = Math.round(S.t.k * 100) + '%';
 }
 function viewport() { const rect = $('scroller').getBoundingClientRect(); return { w: rect.width || innerWidth, h: rect.height || innerHeight }; }
@@ -496,7 +504,7 @@ function fitTransform() {
   const k = Math.max(0.18, Math.min(1.15, (w - left - right) / b.w, (h - top - bottom) / b.h));
   return d3.zoomIdentity.translate(left + (w - left - right - b.w * k) / 2 - b.x * k, top + (h - top - bottom - b.h * k) / 2 - b.y * k).scale(k);
 }
-function go(transform, ms = 300) { const target = svg.interrupt(); (dur(ms) ? target.transition().duration(dur(ms)).ease(d3.easeCubicOut) : target).call(zoom.transform, transform); }
+function go(transform, ms = 300) { const target = svg.interrupt(); (dur(ms) ? target.transition().duration(dur(ms)).ease(d3.easeCubicOut) : target).call(zoom.transform, toZoom(transform)); }
 function flyTo(node, scale) {
   const { w, h } = viewport(), open = app.classList.contains('panel-open') && !compact();
   if (compact()) {
@@ -527,7 +535,7 @@ $('canvas').addEventListener('wheel', event => {
 }, { passive: false });
 let gestureScale = 1;
 $('canvas').addEventListener('gesturestart', event => { if (S.platform === 'ios') return; event.preventDefault(); gestureScale = S.t.k; });
-$('canvas').addEventListener('gesturechange', event => { if (S.platform === 'ios') return; event.preventDefault(); svg.call(zoom.scaleTo, gestureScale * event.scale, [event.clientX, event.clientY]); });
+$('canvas').addEventListener('gesturechange', event => { if (S.platform === 'ios') return; event.preventDefault(); svg.call(zoom.scaleTo, gestureScale * event.scale, [event.clientX + margin(), event.clientY + margin()]); });
 svg.on('click', () => { if (popoverOpen()) { closePopover(); return; } if (S.focus) focus(null); });
 svg.on('dblclick', event => { if (S.editing && !event.target.closest('.node, .edge')) newNodeAt(event); });
 
@@ -549,7 +557,7 @@ function drawViewport() {
 function minimapDrag(event) {
   const el = $('minimap-svg'), point = el.createSVGPoint(); point.x = event.clientX; point.y = event.clientY;
   const at = point.matrixTransform(el.getScreenCTM().inverse()), { w, h } = viewport();
-  svg.call(zoom.transform, d3.zoomIdentity.translate(w / 2 - at.x * S.t.k, h / 2 - at.y * S.t.k).scale(S.t.k));
+  svg.call(zoom.transform, toZoom(d3.zoomIdentity.translate(w / 2 - at.x * S.t.k, h / 2 - at.y * S.t.k).scale(S.t.k)));
 }
 $('minimap').addEventListener('pointerdown', event => { event.preventDefault(); $('minimap').setPointerCapture(event.pointerId); minimapDrag(event); const moveTo = e => minimapDrag(e), stop = () => { $('minimap').removeEventListener('pointermove', moveTo); $('minimap').removeEventListener('pointerup', stop); }; $('minimap').addEventListener('pointermove', moveTo); $('minimap').addEventListener('pointerup', stop); });
 
@@ -721,7 +729,7 @@ document.addEventListener('keydown', event => {
 let wasCompact = compact();
 addEventListener('resize', () => {
   app.classList.toggle('compact', compact());
-  if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); zoomLimits(); draw(); if (compact()) settle(fitTransform().k, false); else { unsettle(); svg.call(zoom.transform, fitTransform()); } }
+  if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); zoomLimits(); draw(); if (compact()) settle(fitTransform().k, false); else { unsettle(); svg.call(zoom.transform, toZoom(fitTransform())); } }
   drawViewport();
 });
 
@@ -889,7 +897,7 @@ function drawDrawer() {
   el.innerHTML = `<h5>${esc(T('未挂靠的页面'))}</h5>${pages.length ? pages.map(page => `<span class="item" draggable="true" data-key="${esc(page.key)}">${esc(page.title)}</span>`).join('') + `<div class="none">${esc(T('把页面拖到节点上挂靠'))}</div>` : `<div class="none">${esc(T('所有页面都已挂上'))}</div>`}`;
 }
 $('drawer').addEventListener('dragstart', event => { const key = event.target.dataset?.key; if (key) { event.dataTransfer.setData('text/plain', 'acdian-roadmap-page:' + key); event.dataTransfer.effectAllowed = 'link'; } });
-function nodeAtClient(x, y) { const [wx, wy] = S.t.invert([x - $('canvas').getBoundingClientRect().left, y - $('canvas').getBoundingClientRect().top]); return S.nodes.find(n => wx > n.x && wx < n.x + n.w && wy > n.y && wy < n.y + NODE_H) || null; }
+function nodeAtClient(x, y) { const [wx, wy] = S.t.invert([x - $('scroller').getBoundingClientRect().left, y - $('scroller').getBoundingClientRect().top]); return S.nodes.find(n => wx > n.x && wx < n.x + n.w && wy > n.y && wy < n.y + NODE_H) || null; }
 $('canvas').addEventListener('dragover', event => { if (!S.editing) return; event.preventDefault(); const over = nodeAtClient(event.clientX, event.clientY); d3.selectAll('#nodes g.node').classed('drop', d => d === over); });
 $('canvas').addEventListener('dragleave', () => d3.selectAll('#nodes g.node').classed('drop', false));
 $('canvas').addEventListener('drop', event => {
@@ -924,7 +932,7 @@ function load(message, update) {
   if (S.focus && !S.byId.has(S.focus)) focus(null); else if (S.focus) { renderPanel(); applyState(); }
   if (first) {
     const view = message.view || S.doc.view, saved = view && Number.isFinite(view.k) && !(view.x === 0 && view.y === 0 && view.k === 1);
-    if (compact()) settle(fitTransform().k, false); else svg.call(zoom.transform, saved ? d3.zoomIdentity.translate(view.x, view.y).scale(view.k) : fitTransform());
+    if (compact()) settle(fitTransform().k, false); else svg.call(zoom.transform, toZoom(saved ? d3.zoomIdentity.translate(view.x, view.y).scale(view.k) : fitTransform()));
     S.loaded = true; app.classList.add('ready'); app.setAttribute('aria-busy', 'false');
     if (message.focus) focus(message.focus, { scale: 1 });
   } else if (message.focus && S.byId.has(message.focus)) focus(message.focus, { scale: 1 });
@@ -941,7 +949,7 @@ window.acdianRoadmap = {
     else if (message.type === 'flush') flush();
   },
   state: () => (frame && (cancelAnimationFrame(frame), paint()), { focus: S.focus, zoom: S.zoom, k: S.t.k, highlighted: [...S.highlighted].sort(), chain: [...S.chain].sort(), path: S.focus ? learningPath(S.focus).map(step => step.id) : [], matches: [...S.matches], editing: S.editing, nodes: S.nodes.map(n => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: NODE_H, draft: !!n.d.draft })), bounds: S.layout?.bounds }),
-  focus, fit: () => compact() ? settle(fitTransform().k, false) : svg.call(zoom.transform, fitTransform()), setZoom: k => { const { w, h } = viewport(); svg.call(zoom.scaleTo, k, [w / 2, h / 2]); }, search: text => { input.value = text; S.query = text; applyState(); }, flush, undo, setEditing, connect: (a, b, kind) => !!connect(S.byId.get(a), S.byId.get(b), kind), attach,
+  focus, fit: () => compact() ? settle(fitTransform().k, false) : svg.call(zoom.transform, toZoom(fitTransform())), setZoom: k => { const { w, h } = viewport(); svg.call(zoom.scaleTo, k, [w / 2 + margin(), h / 2 + margin()]); }, search: text => { input.value = text; S.query = text; applyState(); }, flush, undo, setEditing, connect: (a, b, kind) => !!connect(S.byId.get(a), S.byId.get(b), kind), attach,
 };
 svg.attr('data-zoom', 'mid');
 post({ type: 'ready' });
