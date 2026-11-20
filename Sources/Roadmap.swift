@@ -6,6 +6,7 @@ struct RoadmapDomain: Codable, Equatable {
     var color: String
     var glyph: String?
     var order: Int
+    var subtitle: String? = nil
 }
 struct RoadmapPoint: Codable, Equatable {
     var text: String
@@ -27,6 +28,7 @@ struct RoadmapNode: Codable, Equatable {
     var draft: Bool?
     /// Where a node without a page got its summary from.
     var note: String?
+    var subtitle: String? = nil
 }
 struct RoadmapEdge: Codable, Equatable {
     var id: String
@@ -111,6 +113,7 @@ extension RoadmapDomain {
         color = ModuleStore.colors.contains(named) ? named : "graphite"
         glyph = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("glyph"))) ?? nil
         order = Int(values.number("order") ?? 0)
+        subtitle = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("subtitle"))) ?? nil
     }
 }
 extension RoadmapPoint {
@@ -135,6 +138,7 @@ extension RoadmapNode {
         updated = values.number("updated") ?? 0
         draft = (try? values.decodeIfPresent(Bool.self,forKey:RoadmapKey("draft"))) ?? nil
         note = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("note"))) ?? nil
+        subtitle = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("subtitle"))) ?? nil
     }
 }
 extension RoadmapEdge {

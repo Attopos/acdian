@@ -10,7 +10,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const fold = s => String(s ?? '').normalize('NFKC').toLowerCase();
 const now = () => Math.floor(Date.now() / 1000);
 
-const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 68, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
+const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 56, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
 const FAR = 0.5, NEAR = 1.3;
 const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
@@ -111,7 +111,7 @@ function distances(id, within) {
 function learningPath(id) {
   const chain = ancestors(id), dist = distances(id, chain);
   return [...chain].map(other => S.byId.get(other))
-    .sort((a, b) => dist.get(b.id) - dist.get(a.id) || a.d.level - b.d.level || a.i - b.i)
+    .sort((a, b) => dist.get(b.id) - dist.get(a.id) || (a.col ?? 0) - (b.col ?? 0) || a.i - b.i)
     .map(node => {
       const via = (S.outs.get(node.id) || []).filter(edge => directed(edge.d.kind) && (edge.b.id === id || chain.has(edge.b.id))).sort((a, b) => dist.get(a.b.id) - dist.get(b.b.id))[0];
       return { id: node.id, why: via?.d.why || '', toward: via?.b.id };
@@ -135,15 +135,21 @@ function wrap(text, width, font) {
 function layout() {
   const titleFont = `550 14px ${FONT}`;
   const widest = Math.max(96, ...S.nodes.map(n => textWidth(n.d.title || '', titleFont)));
-  const W = Math.round(Math.min(208, Math.max(148, widest + 56)));
+  const W = Math.round(Math.min(320, Math.max(148, widest + 56)));
   const groups = S.domains.map(domain => ({ domain, nodes: S.nodes.filter(n => n.d.domain === domain.id) })).filter(g => g.nodes.length || S.editing);
   const capstones = groups.filter(g => g.nodes.length && g.nodes.every(n => (n.d.level ?? 0) >= 3));
   const lanes = groups.filter(g => !capstones.includes(g));
   const regionW = 3 * W + 2 * COL_GAP + 2 * PAD_X, pitch = NODE_H + ROW_GAP;
   for (const group of lanes) {
-    group.columns = [0, 1, 2].map(level => group.nodes.filter(n => Math.min(2, Math.max(0, n.d.level ?? 0)) === level));
+    const inside = n => [...(S.ins.get(n.id) || [])].filter(e => directed(e.d.kind) && e.a.d.domain === n.d.domain).map(e => e.a);
+    const linked = n => inside(n).length || (S.outs.get(n.id) || []).some(e => directed(e.d.kind) && e.b.d.domain === n.d.domain);
+    const rank = new Map(), depth = n => { if (rank.has(n.id)) return rank.get(n.id); rank.set(n.id, 0); const r = Math.min(2, Math.max(0, ...inside(n).map(p => depth(p) + 1))); rank.set(n.id, r); return r; };
+    group.columns = [[], [], []];
+    group.nodes.filter(linked).forEach(n => group.columns[depth(n)].push(n));
+    group.nodes.filter(n => !linked(n)).forEach(n => { const shortest = [2, 1, 0].reduce((best, i) => group.columns[i].length < group.columns[best].length ? i : best, 2); group.columns[shortest].push(n); });
+    group.nodes.forEach(n => { n.col = group.columns.findIndex(stack => stack.includes(n)); });
     group.rows = Math.max(1, ...group.columns.map(c => c.length));
-    const level = n => Math.min(2, Math.max(0, n.d.level ?? 0)), at = new Map();
+    const level = n => n.col, at = new Map();
     const settle = () => group.columns.forEach(stack => stack.forEach((n, i) => at.set(n.id, (group.rows - stack.length) / 2 + i)));
     const pull = (n, side) => {
       const near = [...(S.ins.get(n.id) || []).map(e => e.a), ...(S.outs.get(n.id) || []).map(e => e.b)].filter(o => o.d.domain === n.d.domain && Math.sign(level(o) - level(n)) === side);
@@ -331,7 +337,6 @@ function draw(animate = false) {
     const label = g.append('g').attr('class', 'label');
     label.append('g').attr('class', 'glyph').attr('transform', 'translate(0,-13)scale(.6667)');
     label.append('text').attr('x', 24).attr('class', 'name');
-    g.append('g').attr('class', 'levels');
     const far = g.append('g').attr('class', 'far');
     far.append('text').attr('class', 'name');
     return g;
@@ -340,11 +345,8 @@ function draw(animate = false) {
   move(region.select('rect')).attr('x', d => d.x).attr('y', d => d.y).attr('width', d => d.w).attr('height', d => d.h);
   move(region.select('.label')).attr('transform', d => `translate(${d.x + PAD_X},${d.y + 30})`);
   region.select('.label .glyph').html(d => glyph(d.domain.glyph));
-  region.select('.label .name').text(d => d.domain.title);
-  region.select('.levels').each(function (d) {
-    const used = d.capstone ? [3] : [0, 1, 2].filter(level => d.nodes.some(n => Math.min(2, Math.max(0, n.d.level ?? 0)) === level));
-    d3.select(this).selectAll('text').data(used).join('text').attr('x', level => d.x + PAD_X + (d.capstone ? 0 : level * (S.layout.W + COL_GAP)) + 1).attr('y', d.y + PAD_TOP - 13).text(level => T(LEVELS[level]));
-  });
+  region.select('.label .name').each(function (d) { d3.select(this).html(`${esc(d.domain.title)}${d.domain.subtitle ? `<tspan class="sub" dx="8">${esc(d.domain.subtitle)}</tspan>` : ''}`); });
+
   move(region.select('.far')).attr('transform', d => `translate(${d.x + d.w / 2},${d.y + d.h / 2 + 14})`);
   region.select('.far .name').text(d => d.domain.title);
 
@@ -390,7 +392,8 @@ function draw(animate = false) {
   node.select('.halo').attr('width', d => d.w + 8).attr('height', d => (near ? d.hNear : NODE_H) + 8);
   node.select('.card').attr('width', d => d.w).attr('height', d => near ? d.hNear : NODE_H);
   node.select('.icon').html(d => ICONS[d.d.draft ? 'circle-dashed' : 'file-text']);
-  node.select('.title').text(d => d.d.title);
+  const fit = (text, room) => { const font = `600 14px ${FONT}`; if (textWidth(text, font) <= room) return text; let s = text; while (s.length > 1 && textWidth(s + '…', font) > room) s = s.slice(0, -1); return s.trimEnd() + '…'; };
+  node.select('.title').text(d => fit(d.d.title, d.w - 45)).each(function (d) { d3.select(this).selectAll('title').data([d.d.subtitle ? `${d.d.title} · ${d.d.subtitle}` : d.d.title]).join('title').text(t => t); });
   node.select('.summary').each(function (d) { d3.select(this).selectAll('tspan').data(d.lines).join('tspan').attr('x', 12).attr('y', (_, i) => NODE_H + 7 + i * 12.5).text(line => line); });
   drawHandles(); drawMinimap(); drawHead(); applyState();
   $('empty').hidden = S.nodes.length > 0;
@@ -435,7 +438,7 @@ function applyState(flow = false) {
   } else {
     const query = fold(S.query.trim());
     if (query) {
-      const text = n => fold([n.d.title, S.domains.find(d => d.id === n.d.domain)?.title, n.d.summary, ...(n.d.keyPoints || []).map(k => k.text)].join(' '));
+      const text = n => fold([n.d.title, n.d.subtitle, S.domains.find(d => d.id === n.d.domain)?.title, n.d.summary, ...(n.d.keyPoints || []).map(k => k.text)].join(' '));
       S.matches = S.nodes.filter(n => text(n).includes(query)).sort((a, b) => (fold(b.d.title).startsWith(query) - fold(a.d.title).startsWith(query)) || (fold(b.d.title).includes(query) - fold(a.d.title).includes(query)) || a.i - b.i).map(n => n.id);
     }
     const matched = new Set(S.matches);
@@ -533,7 +536,7 @@ function hover(node) {
     if (node.dragging) return;
     const figure = figuresOf(node)[0];
     card.className = 'float';
-    card.innerHTML = `<h4>${esc(node.d.title)}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h4><p>${esc(node.d.summary || '')}</p>${figure ? `<img alt="" src="${esc(themed(figure))}">` : ''}`;
+    card.innerHTML = `<h4>${esc(node.d.title)}${node.d.subtitle ? `<small>${esc(node.d.subtitle)}</small>` : ''}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h4><p>${esc(node.d.summary || '')}</p>${figure ? `<img alt="" src="${esc(themed(figure))}">` : ''}`;
     const image = card.querySelector('img');
     const show = () => place(card, S.t.applyX(node.x), S.t.applyY(node.y) - 4, node.w * S.t.k);
     if (image) { image.addEventListener('load', show); image.addEventListener('error', () => { image.remove(); show(); }); }
@@ -583,8 +586,8 @@ function renderPanel() {
   const pages = (node.d.pages || []).map(key => ({ key, info: S.pages.get(key) }));
   const pageIcon = ic('file-text'), goIcon = ic('chevron-right', 'go');
   const h3 = (name, text) => `<h3>${ic(name)}<span>${esc(T(text))}</span></h3>`;
-  const top = `<div class="top"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${esc(domain?.title || '')}</span><span class="sep">·</span><span>${esc(T(LEVELS[Math.min(3, Math.max(0, node.d.level ?? 0))]))}</span><button class="close" data-close aria-label="Close">${ic('x')}</button></div>`
-    + `<h2>${esc(node.d.title)}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h2><p class="lead">${esc(node.d.summary || '')}</p></div>`;
+  const top = `<div class="top"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${esc(domain?.title || '')}</span><button class="close" data-close aria-label="Close">${ic('x')}</button></div>`
+    + `<h2>${esc(node.d.title)}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h2>${node.d.subtitle ? `<p class="sub">${esc(node.d.subtitle)}</p>` : ''}<p class="lead">${esc(node.d.summary || '')}</p></div>`;
   let main = '', side = '';
   if (figures.length) main += `<button class="figure" data-figure="0"><img alt="${esc(T('原理图'))}" src="${esc(themed(figures[0]))}">${figures.length > 1 ? `<span>1 / ${figures.length}</span>` : ''}</button>`;
   if ((node.d.keyPoints || []).length) main += `${h3('list-checks', '要点')}<ol>${node.d.keyPoints.map((k, i) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}<small>§ ${esc(k.heading)}</small></span></button></li>`).join('')}</ol>`;

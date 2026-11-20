@@ -56,6 +56,7 @@ svg text { font-family: var(--acd-font); }
 /* regions */
 .region > rect { fill: var(--tint); fill-opacity: var(--rm-tint-a); stroke: var(--tint); stroke-opacity: .14; stroke-width: 1; transition: fill-opacity .2s ease-out; }
 .region .label text { fill: var(--rm-ink); font-size: 14px; font-weight: 650; letter-spacing: .01em; }
+.region .label .sub { fill: var(--rm-muted); font-size: 12px; font-weight: 500; }
 .region .levels text { fill: var(--rm-muted); font-size: 10.5px; font-weight: 600; letter-spacing: .12em; opacity: .62; }
 .ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .glyph { fill: none; stroke: var(--rm-muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -200,6 +201,8 @@ svg text { font-family: var(--acd-font); }
 #app #panel .close:hover { background: var(--rm-faint); color: var(--rm-ink); }
 #panel .close svg { width: 15px; height: 15px; }
 #panel h2 { margin: 16px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; color: var(--rm-ink); font-size: 28px; font-weight: 720; line-height: 1.24; letter-spacing: .004em; text-wrap: balance; }
+#panel .sub { margin: 4px 0 0; color: var(--rm-muted); font-size: 15px; font-weight: 500; }
+#hover h4 small { margin-left: 8px; color: var(--rm-muted); font-size: 12px; font-weight: 500; }
 #panel .lead { margin: 12px 0 0; max-width: 46em; color: var(--rm-text); font-size: 15.5px; line-height: 1.75; text-wrap: pretty; hanging-punctuation: allow-end; }
 #panel .cols { margin-top: 22px; }
 #panel .cols > div > h3:first-child, #panel .cols > div > .figure:first-child { margin-top: 0; }
