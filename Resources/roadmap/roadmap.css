@@ -155,7 +155,7 @@ svg text { font-family: var(--acd-font); }
 #search:focus-within #search-kbd { display: none; }
 #zoom-level { min-width: 36px; text-align: center; font-size: 11.5px; font-weight: 550; font-variant-numeric: tabular-nums; }
 #tools { position: absolute; top: 14px; right: 16px; display: flex; gap: 8px; transition: right .24s ease-out; }
-.panel-open #tools { right: calc(50% + 14px); }
+.panel-open #tools { right: calc(200% / 3 + 14px); }
 .panel-open:not(.compact) #search { left: 20px; margin-left: 0; top: 76px; width: 232px; }
 .group { display: flex; height: 32px; border-radius: 9px; background: var(--rm-faint); overflow: hidden; }
 #app .group button { min-width: 32px; height: 32px; padding: 0 9px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--rm-muted); font-size: 12.5px; font-weight: 500; transition: color .15s ease-out, background .15s ease-out; }
@@ -200,7 +200,7 @@ svg text { font-family: var(--acd-font); }
 @keyframes rise-center { from { opacity: 0; transform: translate(-50%, 4px); } }
 
 /* detail panel */
-#panel { position: absolute; top: 12px; right: 12px; bottom: 12px; width: calc(50% - 12px); font-feature-settings: 'tnum'; display: flex; flex-direction: column; background: var(--rm-float); box-shadow: var(--rm-shadow); border-radius: 14px; transform: translateX(calc(100% + 24px)); transition: transform .24s ease-out; z-index: 4; overflow: hidden; -webkit-user-select: text; user-select: text; }
+#panel { position: absolute; top: 12px; right: 12px; bottom: 12px; width: calc(200% / 3 - 12px); font-feature-settings: 'tnum'; display: flex; flex-direction: column; background: var(--rm-float); box-shadow: var(--rm-shadow); border-radius: 14px; transform: translateX(calc(100% + 24px)); transition: transform .24s ease-out; z-index: 4; overflow: hidden; -webkit-user-select: text; user-select: text; }
 .panel-open #panel { transform: none; }
 #panel .scroll { flex: 1; overflow-y: auto; padding: 22px 28px 28px; scrollbar-width: none; container-type: inline-size; }
 #panel .scroll::-webkit-scrollbar { display: none; }
