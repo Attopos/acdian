@@ -119,7 +119,7 @@
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   }
 
-  const TILE = 512, CELL = 400, KEEP = 64, OVERVIEW = 1400;
+  const TILE = 512, CELL = 400, OVERVIEW = 1400;
 
   function boxOf(op) {
     let b;
@@ -152,8 +152,8 @@
   }
 
   class SvgRaster {
-    constructor(root, host) {
-      this.root = root; this.host = host; this.ops = []; this.cells = new Map(); this.dirty = true;
+    constructor(root, host, options = {}) {
+      this.keep = options.keep || 64; this.root = root; this.host = host; this.ops = []; this.cells = new Map(); this.dirty = true;
       this.layers = []; this.overview = null; this.pumping = 0; this.renders = 0; this.scratch = document.createElement('canvas');
       this.t = { k: 1, x: 0, y: 0 }; this.w = 0; this.h = 0; this.dpr = 1; this.live = false;
     }
@@ -236,10 +236,10 @@
       return out.sort((p, q) => p[2] - q[2]);
     }
     trim(layer) {
-      if (layer.tiles.size <= KEEP) return;
+      if (layer.tiles.size <= this.keep) return;
       const [a, b, c, d] = this.range(layer, 0), cx = (a + c) / 2, cy = (b + d) / 2;
       const far = [...layer.tiles.keys()].map(k => { const [x, y] = k.split(',').map(Number); return [k, Math.hypot(x - cx, y - cy)]; }).sort((p, q) => q[1] - p[1]);
-      for (const [k] of far.slice(0, layer.tiles.size - KEEP)) { const el = layer.tiles.get(k); free(el); el.remove?.(); layer.tiles.delete(k); }
+      for (const [k] of far.slice(0, layer.tiles.size - this.keep)) { const el = layer.tiles.get(k); free(el); el.remove?.(); layer.tiles.delete(k); }
     }
     drop(layer) { for (const el of layer.tiles.values()) free(el); free(layer.bridge); layer.el.remove(); this.layers = this.layers.filter(l => l !== layer); }
     settleLayers() {

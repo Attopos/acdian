@@ -11,7 +11,9 @@ const IN_GAP = 40, BAND_GAP = 76, FLOW_HEAD = 76, COLUMN_GAP = 220, GUTTER = 40;
 const FAR = 0.5, NEAR = 1.3;
 const MARGIN = 600, margin = () => compact() || rasterOn() ? 0 : MARGIN;
 const toZoom = t => d3.zoomIdentity.translate(t.x + margin(), t.y + margin()).scale(t.k);
-const compact = () => (innerWidth || 1024) < 700;
+const compact = () => (innerWidth || 1024) < 700 || (S.platform === 'ios' && Math.min(innerWidth || 1024, innerHeight || 1024) < 500);
+const wide = () => compact() && (innerWidth || 0) > (innerHeight || 0) * 1.3;
+const sheet = () => !compact() && S.platform === 'ios' && (innerHeight || 0) > (innerWidth || 0) * 1.05;
 const rasterOn = () => !compact() && !S.editing && !!window.SvgRaster && S.rasterize !== false;
 const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
@@ -351,7 +353,7 @@ function draw(animate = false) {
   d3.select('#links').selectAll('g.link').data(links, d => d.key).join(enter => {
     const g = enter.append('g').attr('class', 'link');
     g.append('path').attr('class', 'line'); g.append('path').attr('class', 'tip').attr('d', 'M0,0L-10,-5L-10,5Z'); g.append('path').attr('class', 'hit');
-    g.on('pointerenter', (event, d) => linkHover(d, event)).on('pointermove', (event, d) => linkHover(d, event)).on('pointerleave', () => linkHover(null));
+    g.on('pointerenter', (event, d) => { if (event.pointerType !== 'touch') linkHover(d, event); }).on('pointermove', (event, d) => { if (event.pointerType !== 'touch') linkHover(d, event); }).on('pointerleave', () => linkHover(null));
     return g;
   }).attr('data-key', d => d.key).style('--tint', d => d.tint).each(function (d) {
     const g = d3.select(this);
@@ -364,7 +366,7 @@ function draw(animate = false) {
   const edge = d3.select('#edges').selectAll('g.edge').data(S.edges, d => d.id).join(enter => {
     const g = enter.append('g').attr('class', 'edge');
     g.append('path').attr('class', 'line'); g.append('path').attr('class', 'head').attr('d', headPath); g.append('path').attr('class', 'hit');
-    g.on('pointerenter', (event, d) => edgeHover(d, event)).on('pointermove', (event, d) => edgeHover(d, event)).on('pointerleave', () => edgeHover(null));
+    g.on('pointerenter', (event, d) => { if (event.pointerType !== 'touch') edgeHover(d, event); }).on('pointermove', (event, d) => { if (event.pointerType !== 'touch') edgeHover(d, event); }).on('pointerleave', () => edgeHover(null));
     g.on('click', (event, d) => { if (S.editing) { event.stopPropagation(); editEdge(d, event); } });
     return g;
   });
@@ -501,7 +503,7 @@ function syncRaster() {
   const on = rasterOn();
   hideHover();
   if (app.classList.contains('raster') !== on) { app.classList.toggle('raster', on); const z = toZoom(S.t); svg.node().__zoom = z; S.z = z; drawn = null; }
-  if (on && !raster) raster = new window.SvgRaster($('world'), $('paint'));
+  if (on && !raster) raster = new window.SvgRaster($('world'), $('paint'), { keep: S.platform === 'ios' ? 32 : 64 });
   if (on) raster.invalidate(); else drawn = null;
   if (!frame) frame = requestAnimationFrame(paint);
 }
@@ -549,23 +551,32 @@ function backdrop() {
 }
 function viewport() { const rect = $('scroller').getBoundingClientRect(); return { w: rect.width || innerWidth, h: rect.height || innerHeight }; }
 function fitTransform() {
-  const { w, h } = viewport(), b = S.layout.bounds, open = app.classList.contains('panel-open') && !compact();
+  const { w, h } = viewport(), b = S.layout.bounds, open = app.classList.contains('panel-open') && !compact() && !sheet();
   const left = 28, right = 28 + (open ? panelSpace() : 0), top = 72, bottom = 36;
   if (compact()) { const side = 56, k = Math.min(1, (w - 2 * side) / b.w); return d3.zoomIdentity.translate(side + (w - 2 * side - b.w * k) / 2 - b.x * k, 116 - b.y * k).scale(k); }
   const k = Math.max(0.18, Math.min(1.15, (w - left - right) / b.w, (h - top - bottom) / b.h));
   return d3.zoomIdentity.translate(left + (w - left - right - b.w * k) / 2 - b.x * k, top + (h - top - bottom - b.h * k) / 2 - b.y * k).scale(k);
 }
+function startTransform() {
+  const fit = fitTransform(), first = S.layout.heads?.[0];
+  if (compact() || S.platform !== 'ios' || fit.k >= 0.45 || !first) return fit;
+  const regions = S.layout.regions.filter(r => r.flow === first.id);
+  if (!regions.length) return fit;
+  const { w } = viewport(), x0 = Math.min(...regions.map(r => r.x)), x1 = Math.max(...regions.map(r => r.x + r.w)), k = Math.min(1, (w - 56) / (x1 - x0));
+  return d3.zoomIdentity.translate(28 + (w - 56 - (x1 - x0) * k) / 2 - x0 * k, 72 - first.y * k).scale(k);
+}
 function go(transform, ms = 300) { const target = svg.interrupt(); (dur(ms) ? target.transition().duration(dur(ms)).ease(d3.easeCubicOut) : target).call(zoom.transform, toZoom(transform)); }
 function flyTo(node, scale) {
-  const { w, h } = viewport(), open = app.classList.contains('panel-open') && !compact();
+  const { w, h } = viewport(), open = app.classList.contains('panel-open') && !compact() && !sheet();
   if (compact()) {
-    const scroller = $('scroller'), top = 120, bottom = 56 + (app.classList.contains('panel-open') ? $('panel').getBoundingClientRect().height + 16 : 0);
+    const scroller = $('scroller'), opened = app.classList.contains('panel-open'), side = opened && wide() ? $('panel').getBoundingClientRect().width + 16 : 0;
+    const top = side ? 72 : 120, bottom = 56 + (opened && !side ? $('panel').getBoundingClientRect().height + 16 : 0);
     const cx = S.t.applyX(node.x + node.w / 2), cy = S.t.applyY(node.y + NODE_H / 2);
-    scroller.scrollTo({ left: cx - w / 2, top: cy - (top + (h - top - bottom) / 2), behavior: dur(300) ? 'smooth' : 'auto' });
+    scroller.scrollTo({ left: cx - (w - side) / 2, top: cy - (top + (h - top - bottom) / 2), behavior: dur(300) ? 'smooth' : 'auto' });
     return;
   }
-  const sheet = compact() && app.classList.contains('panel-open') ? $('panel').getBoundingClientRect().height + 16 : 0;
-  const left = 40, right = 40 + (open ? panelSpace() : 0), top = open ? 172 : compact() ? 120 : 96, bottom = 56 + sheet;
+  const below = sheet() && app.classList.contains('panel-open') ? $('panel').getBoundingClientRect().height + 16 : 0;
+  const left = 40, right = 40 + (open ? panelSpace() : 0), top = open ? 172 : 96, bottom = 56 + below;
   const group = scale ? [node] : S.nodes.filter(n => n === node || S.highlighted.has(n.id));
   const x0 = Math.min(...group.map(n => n.x)), y0 = Math.min(...group.map(n => n.y)), x1 = Math.max(...group.map(n => n.x + n.w)), y1 = Math.max(...group.map(n => n.y + NODE_H));
   const k = scale || Math.max(0.6, Math.min(1.1, (w - left - right) / (x1 - x0), (h - top - bottom) / (y1 - y0)));
@@ -628,7 +639,7 @@ function place(el, x, y, anchorWidth = 0) {
 
 // ---------- hover ----------
 let hoverTimer, hoveredLink = null, hoveredEdge = null, hoveredNode = null;
-const hoverable = () => !app.classList.contains('moving') && !popoverOpen();
+const hoverable = () => !compact() && !app.classList.contains('moving') && !popoverOpen();
 function mark() {
   const els = [];
   if (hoveredNode) els.push(d3.select(`#nodes g.node[data-id="${CSS.escape(hoveredNode.id)}"]`).node());
@@ -810,7 +821,8 @@ document.addEventListener('keydown', event => {
 });
 let wasCompact = compact();
 addEventListener('resize', () => {
-  app.classList.toggle('compact', compact());
+  app.classList.toggle('compact', compact()); app.classList.toggle('sheet', sheet()); app.classList.toggle('wide', wide());
+  if (!S.loaded) return;
   if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); zoomLimits(); draw(); if (compact()) settle(fitTransform().k, false); else { unsettle(); svg.call(zoom.transform, toZoom(fitTransform())); } }
   syncRaster(); drawViewport();
 });
@@ -1005,7 +1017,7 @@ kit.onTheme(theme => {
 function load(message, update) {
   const first = !S.loaded;
   S.editable = !!message.editable; S.platform = message.platform || S.platform; S.title = message.title || S.title;
-  app.classList.toggle('touch', S.platform === 'ios'); app.classList.toggle('compact', compact());
+  app.classList.toggle('touch', S.platform === 'ios'); app.classList.toggle('compact', compact()); app.classList.toggle('sheet', sheet()); app.classList.toggle('wide', wide()); wasCompact = compact();
   S.doc = message.roadmap || { nodes: [], edges: [], domains: [] }; S.doc.nodes ||= []; S.doc.edges ||= []; S.doc.domains ||= [];
   S.pages = new Map((message.pages || []).map(page => [page.key, page])); S.mentions = message.mentions || [];
   if (!S.editable) S.editing = false;
@@ -1013,7 +1025,7 @@ function load(message, update) {
   if (S.focus && !S.byId.has(S.focus)) focus(null); else if (S.focus) { renderPanel(); applyState(); }
   if (first) {
     const view = message.view || S.doc.view, saved = view && Number.isFinite(view.k) && !(view.x === 0 && view.y === 0 && view.k === 1);
-    if (compact()) settle(fitTransform().k, false); else svg.call(zoom.transform, toZoom(saved ? d3.zoomIdentity.translate(view.x, view.y).scale(view.k) : fitTransform()));
+    if (compact()) settle(fitTransform().k, false); else svg.call(zoom.transform, toZoom(saved ? d3.zoomIdentity.translate(view.x, view.y).scale(view.k) : startTransform()));
     S.loaded = true; app.classList.add('ready'); app.setAttribute('aria-busy', 'false');
     if (message.focus) focus(message.focus, { scale: 1 });
   } else if (message.focus && S.byId.has(message.focus)) focus(message.focus, { scale: 1 });
