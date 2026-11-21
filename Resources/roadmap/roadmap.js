@@ -351,6 +351,7 @@ function draw(animate = false) {
   d3.select('#links').selectAll('g.link').data(links, d => d.key).join(enter => {
     const g = enter.append('g').attr('class', 'link');
     g.append('path').attr('class', 'line'); g.append('path').attr('class', 'tip').attr('d', 'M0,0L-10,-5L-10,5Z'); g.append('path').attr('class', 'hit');
+    g.on('pointerenter', (event, d) => linkHover(d, event)).on('pointermove', (event, d) => linkHover(d, event)).on('pointerleave', () => linkHover(null));
     return g;
   }).attr('data-key', d => d.key).style('--tint', d => d.tint).each(function (d) {
     const g = d3.select(this);
@@ -363,6 +364,7 @@ function draw(animate = false) {
   const edge = d3.select('#edges').selectAll('g.edge').data(S.edges, d => d.id).join(enter => {
     const g = enter.append('g').attr('class', 'edge');
     g.append('path').attr('class', 'line'); g.append('path').attr('class', 'head').attr('d', headPath); g.append('path').attr('class', 'hit');
+    g.on('pointerenter', (event, d) => edgeHover(d, event)).on('pointermove', (event, d) => edgeHover(d, event)).on('pointerleave', () => edgeHover(null));
     g.on('click', (event, d) => { if (S.editing) { event.stopPropagation(); editEdge(d, event); } });
     return g;
   });
@@ -380,7 +382,8 @@ function draw(animate = false) {
     g.append('text').attr('class', 'title').attr('x', 33).attr('y', NODE_H / 2 + 0.5);
     g.append('text').attr('class', 'summary');
     g.on('click', (event, d) => { event.stopPropagation(); if (!d.moved) focus(d.id); })
-      .on('dblclick', (event, d) => { event.stopPropagation(); if (S.editing) editNode(d); else openPage(d.d.pages?.[0], false); });
+      .on('dblclick', (event, d) => { event.stopPropagation(); if (S.editing) editNode(d); else openPage(d.d.pages?.[0], false); })
+      .on('pointerenter', (event, d) => { if (event.pointerType !== 'touch') hover(d); }).on('pointerleave', () => hover(null));
     return g;
   });
   node.attr('data-id', d => d.id).style('--tint', d => tint(S.domains.find(x => x.id === d.d.domain)?.color)).classed('draft', d => !!d.d.draft);
@@ -480,6 +483,7 @@ let drawn = null, wheeling = 0;
 function moving(on) {
   if (app.classList.contains('moving') === on) return;
   app.classList.toggle('moving', on);
+  if (on) hideHover();
   if (!on && raster && rasterOn() && !frame) frame = requestAnimationFrame(paint);
 }
 function nudge() { if (compact()) return; moving(true); clearTimeout(wheeling); wheeling = setTimeout(() => { wheeling = 0; settleView(); }, 160); }
@@ -495,6 +499,7 @@ function covers(z) {
 let raster = null;
 function syncRaster() {
   const on = rasterOn();
+  hideHover();
   if (app.classList.contains('raster') !== on) { app.classList.toggle('raster', on); const z = toZoom(S.t); svg.node().__zoom = z; S.z = z; drawn = null; }
   if (on && !raster) raster = new window.SvgRaster($('world'), $('paint'));
   if (on) raster.invalidate(); else drawn = null;
@@ -619,6 +624,66 @@ function place(el, x, y, anchorWidth = 0) {
   if (left < 12) left = Math.max(12, Math.min(w - box.width - 12, x));
   top = Math.max(12, Math.min(h - box.height - 12, top));
   el.style.left = left + 'px'; el.style.top = top + 'px';
+}
+
+// ---------- hover ----------
+let hoverTimer, hoveredLink = null, hoveredEdge = null, hoveredNode = null;
+const hoverable = () => !app.classList.contains('moving') && !popoverOpen();
+function mark() {
+  const els = [];
+  if (hoveredNode) els.push(d3.select(`#nodes g.node[data-id="${CSS.escape(hoveredNode.id)}"]`).node());
+  if (hoveredLink) { els.push(d3.select(`#links g.link[data-key="${CSS.escape(hoveredLink.key)}"]`).node()); hoveredLink.edges.forEach(e => els.push(d3.select(`#edges g.edge[data-id="${CSS.escape(e.id)}"]`).node())); }
+  if (hoveredEdge) els.push(d3.select(`#edges g.edge[data-id="${CSS.escape(hoveredEdge.id)}"]`).node());
+  const layer = d3.select('#hilite g');
+  layer.selectAll('*').remove();
+  if (rasterOn()) {
+    layer.attr('transform', S.t);
+    for (const el of els.filter(Boolean)) { const copy = el.cloneNode(true); copy.classList.add('hover'); layer.node().appendChild(copy); }
+    return;
+  }
+  d3.selectAll('#nodes g.node, #links g.link, #edges g.edge').classed('hover', function () { return els.includes(this); });
+}
+function hideHover() {
+  clearTimeout(hoverTimer); hoveredNode = hoveredLink = hoveredEdge = null;
+  $('hover').hidden = true; $('edge-tip').hidden = true; mark();
+}
+function hover(node) {
+  clearTimeout(hoverTimer);
+  const card = $('hover');
+  if (!node || S.zoom === 'far' || !hoverable()) { if (hoveredNode) { hoveredNode = null; mark(); } card.hidden = true; return; }
+  hoveredNode = node; mark();
+  hoverTimer = setTimeout(() => {
+    if (node.dragging || !hoverable()) return;
+    const figure = figuresOf(node)[0];
+    card.className = 'float';
+    card.innerHTML = `<h4>${esc(node.d.title)}${node.d.subtitle ? `<small>${esc(node.d.subtitle)}</small>` : ''}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h4><p>${esc(node.d.summary || '')}</p>${figure ? `<img alt="" src="${esc(themed(figure))}">` : ''}`;
+    const image = card.querySelector('img');
+    const show = () => place(card, S.t.applyX(node.x), S.t.applyY(node.y) - 4, node.w * S.t.k);
+    if (image) { image.addEventListener('load', show); image.addEventListener('error', () => { image.remove(); show(); }); }
+    show();
+  }, 240);
+}
+function follow(tip, event) { place(tip, ...d3.pointer(event, app).map((v, i) => v + (i ? 14 : 4))); }
+function linkHover(link, event) {
+  const tip = $('edge-tip');
+  if (link && !hoverable()) link = null;
+  if (link && link === hoveredLink && event) { follow(tip, event); return; }
+  hoveredLink = link; mark();
+  if (!link) { tip.hidden = true; return; }
+  tip.className = 'float';
+  tip.innerHTML = `<b><em>${esc(link.from.domain.title)}</em> → <em>${esc(link.to.domain.title)}</em></b><ul>${link.edges.map(e => `<li>${esc(e.a.d.title)} → ${esc(e.b.d.title)}</li>`).join('')}</ul>`;
+  if (event) follow(tip, event);
+}
+function edgeHover(edge, event) {
+  const tip = $('edge-tip');
+  if (edge && (!hoverable() || S.zoom === 'far')) edge = null;
+  if (edge && edge === hoveredEdge && event) { follow(tip, event); return; }
+  hoveredEdge = edge; mark();
+  if (!edge) { tip.hidden = true; return; }
+  const arrow = edge.d.kind === 'related' ? '—' : '→';
+  tip.className = 'float';
+  tip.innerHTML = `<b><em>${esc(edge.a.d.title)}</em> ${arrow} <em>${esc(edge.b.d.title)}</em> · ${esc(T(KIND_NAMES[edge.d.kind] || '相关'))}</b>${esc(edge.d.why || '')}`;
+  if (event) follow(tip, event);
 }
 
 // ---------- focus and panel ----------

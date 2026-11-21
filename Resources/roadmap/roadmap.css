@@ -128,8 +128,8 @@ svg text { font-family: var(--acd-font); }
 .edge[data-kind="related"] path.line { stroke-width: .9; }
 .edge[data-kind="related"] { opacity: 0; pointer-events: none; }
 .edge[data-kind="related"].lit, .edge[data-kind="related"].shown { opacity: 1; pointer-events: auto; }
-.edge.cross:not(.lit):not(.flow) { opacity: 0 !important; visibility: hidden; pointer-events: none; }
-.editing .edge.cross:not(.lit):not(.flow) { opacity: .5 !important; visibility: visible; pointer-events: auto; }
+.edge.cross:not(.lit):not(.flow):not(.hover) { opacity: 0 !important; visibility: hidden; pointer-events: none; }
+.editing .edge.cross:not(.lit):not(.flow):not(.hover) { opacity: .5 !important; visibility: visible; pointer-events: auto; }
 .edge.dim { opacity: .12; }
 #minimap.whole { opacity: 0; pointer-events: none; }
 .edge.flow path.line { stroke: var(--rm-accent); stroke-width: 1.9; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--rm-accent) 45%, transparent)); }
@@ -316,3 +316,26 @@ svg text { font-family: var(--acd-font); }
 #panel .block .rel { padding: 6px 0; }
 #panel .block .rel p { margin-top: 4px; font-size: 12.5px; color: var(--rm-muted); }
 #app #panel .block .page { width: calc(100% + 12px); margin: 0 -6px; padding: 6px; }
+
+#hilite { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; display: none; }
+.raster #hilite { display: block; }
+#hilite * { pointer-events: none !important; transition: none !important; }
+.moving #hilite, .moving #hover, .moving #edge-tip { display: none; }
+.link.hover .line { stroke: var(--tint); }
+.link.hover { isolation: isolate; }
+.link.hover .tip { fill-opacity: 1; }
+.node.hover .card { fill: var(--rm-card-hover); stroke: var(--rm-stroke-strong); }
+.node.draft.hover .card { fill: var(--rm-faint); }
+.edge.cross.hover path.line { stroke: var(--rm-line-strong); stroke-width: 1.5; }
+.edge.hover path.line { stroke: var(--rm-line-strong); }
+.edge.hover .head { fill: var(--rm-line-strong); }
+#hover { position: absolute; width: 280px; padding: 13px 14px 14px; pointer-events: none; z-index: 5; animation: rise .16s ease-out; }
+#hover h4 { margin: 0 0 4px; display: flex; align-items: center; gap: 8px; color: var(--rm-ink); font-size: 14px; font-weight: 650; }
+#hover h4 small { display: block; margin: 2px 0 0; color: var(--rm-muted); font-size: 12px; font-weight: 500; }
+#hover p { margin: 0; color: var(--rm-text); font-size: 13px; line-height: 1.62; text-wrap: pretty; }
+#hover img { display: block; width: 100%; margin-top: 10px; border-radius: 6px; background: var(--rm-faint); }
+#edge-tip { position: absolute; max-width: 300px; padding: 10px 13px 11px; pointer-events: none; z-index: 6; font-size: 13px; line-height: 1.62; text-wrap: pretty; color: var(--rm-text); animation: rise .14s ease-out; }
+#edge-tip b { display: block; margin-bottom: 2px; color: var(--rm-muted); font-size: 11px; font-weight: 600; }
+#edge-tip b em { font-style: normal; color: var(--rm-ink); }
+#edge-tip ul { margin: 6px 0 0; padding: 0; list-style: none; color: var(--rm-text); font-size: 12.5px; line-height: 1.6; }
+@media (prefers-reduced-motion: reduce) { #hover, #edge-tip { animation-name: fade; } }
