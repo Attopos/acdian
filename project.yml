@@ -13,7 +13,7 @@ settings:
     DEVELOPMENT_TEAM: DC9UKDP974
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "1.7.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
 targets:
   ACdian:
     type: application
