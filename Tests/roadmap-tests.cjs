@@ -71,7 +71,7 @@ const roadmap = {
 
   check(await page.evaluate(() => Math.abs(document.getElementById('panel').getBoundingClientRect().width / document.getElementById('app').getBoundingClientRect().width - 2 / 3) < 0.02), 'The detail panel takes two thirds of the view');
   check(await page.$$eval('#links g.link', links => links.length > 0 && links.every(l => l.querySelector('.line').getAttribute('d'))), 'Domains are joined by routed links');
-  check(await page.$$eval('g.edge.cross:not(.lit):not(.flow):not(.hover)', edges => edges.every(e => getComputedStyle(e).opacity === '0')), 'Edges between domains stay hidden until they are lit');
+  check(await page.$$eval('g.edge.cross:not(.lit):not(.flow)', edges => edges.every(e => getComputedStyle(e).opacity === '0')), 'Edges between domains stay hidden until they are lit');
   await page.keyboard.press('Escape');
   check((await state()).focus === null, 'Esc leaves focus');
   await page.waitForTimeout(400);

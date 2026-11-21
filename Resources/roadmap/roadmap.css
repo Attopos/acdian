@@ -54,8 +54,7 @@ body { padding: 0; color: var(--rm-text); font: 13px/1.5 var(--acd-font); -webki
 #scroller { position: absolute; inset: 0; overflow: hidden; }
 #app:not(.compact) #canvas { inset: -600px; width: calc(100% + 1200px); height: calc(100% + 1200px); transform-origin: 0 0; will-change: transform; }
 .moving #world { pointer-events: none; }
-.moving #world *, .moving #hover, .moving #edge-tip { transition: none !important; }
-.moving #hover, .moving #edge-tip { display: none; }
+.moving #world * { transition: none !important; }
 .compact #scroller { overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .compact #canvas { position: static; display: block; touch-action: pan-x pan-y; }
 .compact #minimap { display: none; }
@@ -92,20 +91,15 @@ svg text { font-family: var(--acd-font); }
 .link .line { fill: none; stroke: color-mix(in srgb, var(--tint) 55%, var(--rm-bg)); stroke-opacity: 1; stroke-linecap: round; stroke-linejoin: round; transition: stroke-opacity .18s ease-out; }
 .link .tip { fill: color-mix(in srgb, var(--tint) 70%, var(--rm-bg)); fill-opacity: 1; stroke: none; }
 .link .hit { fill: none; stroke: transparent; stroke-width: 18; pointer-events: stroke; }
-.link.hover .line { stroke: var(--tint); }
-.link.hover { isolation: isolate; }
-.link.hover .tip { fill-opacity: 1; }
 .panel-open .link { opacity: .16; }
 
 
 /* nodes */
 .node .card { fill: var(--rm-card); stroke: var(--rm-stroke); stroke-width: 1; filter: var(--rm-card-shadow); transition: stroke .18s ease-out, fill .18s ease-out, height .22s ease-out; }
-.node:hover .card { fill: var(--rm-card-hover); stroke: var(--rm-stroke-strong); }
 .node .sub { fill: var(--rm-muted); font-size: 11.5px; font-weight: 400; dominant-baseline: central; }
 [data-zoom="near"] .node .sub { opacity: 1; }
 .node .title { fill: var(--rm-ink); font-size: 14px; font-weight: 600; letter-spacing: .005em; dominant-baseline: central; }
 .node.draft .card { fill: transparent; stroke: var(--rm-stroke); stroke-dasharray: 3 3; filter: none; }
-.node.draft:hover .card { fill: var(--rm-faint); }
 .node.draft .title { fill: var(--rm-muted); font-weight: 500; }
 .node .icon { fill: none; stroke: var(--tint); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .node.draft .icon { stroke: var(--rm-muted); opacity: .75; }
@@ -128,13 +122,10 @@ svg text { font-family: var(--acd-font); }
 .edge[data-kind="related"] path.line { stroke-width: .9; }
 .edge[data-kind="related"] { opacity: 0; pointer-events: none; }
 .edge[data-kind="related"].lit, .edge[data-kind="related"].shown { opacity: 1; pointer-events: auto; }
-.edge.cross:not(.lit):not(.flow):not(.hover) { opacity: 0 !important; pointer-events: none; }
-.editing .edge.cross:not(.lit):not(.flow):not(.hover) { opacity: .5 !important; pointer-events: auto; }
-.edge.cross.hover path.line { stroke: var(--rm-line-strong); stroke-width: 1.5; }
+.edge.cross:not(.lit):not(.flow) { opacity: 0 !important; visibility: hidden; pointer-events: none; }
+.editing .edge.cross:not(.lit):not(.flow) { opacity: .5 !important; visibility: visible; pointer-events: auto; }
 .edge.dim { opacity: .12; }
 #minimap.whole { opacity: 0; pointer-events: none; }
-.edge.hover path.line, .edge.lit path.line { stroke: var(--rm-line-strong); }
-.edge.hover .head, .edge.lit .head { fill: var(--rm-line-strong); }
 .edge.flow path.line { stroke: var(--rm-accent); stroke-width: 1.9; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--rm-accent) 45%, transparent)); }
 .edge.flow .head { fill: var(--rm-accent); }
 .mention { fill: none; stroke: var(--rm-line); stroke-width: 1; stroke-dasharray: 3 5; opacity: 0; pointer-events: none; }
@@ -189,14 +180,7 @@ svg text { font-family: var(--acd-font); }
 #minimap .mm-node { fill: var(--rm-muted); opacity: .75; }
 #minimap .mm-view { fill: var(--rm-ink); fill-opacity: .07; stroke: var(--rm-ink); stroke-opacity: .55; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: grab; }
 
-#hover { position: absolute; width: 280px; padding: 13px 14px 14px; pointer-events: none; z-index: 5; animation: rise .16s ease-out; }
-#hover h4 { margin: 0 0 4px; display: flex; align-items: center; gap: 8px; color: var(--rm-ink); font-size: 14px; font-weight: 650; }
-#hover p { margin: 0; color: var(--rm-text); font-size: 13px; line-height: 1.62; text-wrap: pretty; }
-#hover img { display: block; width: 100%; margin-top: 10px; border-radius: 6px; background: var(--rm-faint); }
 .tag { flex: none; padding: 0 6px; border-radius: 5px; font-size: 10.5px; font-weight: 600; line-height: 17px; color: var(--rm-muted); box-shadow: inset 0 0 0 1px var(--rm-stroke); }
-#edge-tip { position: absolute; max-width: 300px; padding: 10px 13px 11px; pointer-events: none; z-index: 6; font-size: 13px; line-height: 1.62; text-wrap: pretty; color: var(--rm-text); animation: rise .14s ease-out; }
-#edge-tip b { display: block; margin-bottom: 2px; color: var(--rm-muted); font-size: 11px; font-weight: 600; }
-#edge-tip b em { font-style: normal; color: var(--rm-ink); }
 #toast { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); padding: 8px 14px; font-size: 12.5px; color: var(--rm-ink); z-index: 9; animation: rise .16s ease-out; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 #toast { animation-name: rise-center; }
@@ -221,7 +205,6 @@ svg text { font-family: var(--acd-font); }
 #panel .close svg { width: 15px; height: 15px; }
 #panel h2 { margin: 16px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; color: var(--rm-ink); font-size: 28px; font-weight: 720; line-height: 1.24; letter-spacing: .004em; text-wrap: balance; }
 #panel .sub { margin: 4px 0 0; color: var(--rm-muted); font-size: 15px; font-weight: 500; }
-#hover h4 small { display: block; margin: 2px 0 0; color: var(--rm-muted); font-size: 12px; font-weight: 500; }
 #panel .lead { margin: 12px 0 0; max-width: 46em; color: var(--rm-text); font-size: 15.5px; line-height: 1.75; text-wrap: pretty; hanging-punctuation: allow-end; }
 #panel .cols { margin-top: 22px; }
 #panel .cols > div > h3:first-child, #panel .cols > div > .figure:first-child { margin-top: 0; }
@@ -308,8 +291,22 @@ svg text { font-family: var(--acd-font); }
 .compact.panel-open #tools { right: 16px; }
 .compact #panel .cols { grid-template-columns: 1fr; }
 .compact .flow .title { font-size: 26px; }
-@media (prefers-reduced-motion: reduce) { #panel, #tools, #minimap { transition: none; } #hover, #edge-tip, #toast, #popover { animation-name: fade; } }
+@media (prefers-reduced-motion: reduce) { #panel, #tools, #minimap { transition: none; } #toast, #popover { animation-name: fade; } }
 
-#edge-tip ul { margin: 6px 0 0; padding: 0; list-style: none; color: var(--rm-text); font-size: 12.5px; line-height: 1.6; }
 
 #panel .crumb .topic { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--rm-ink) 7%, transparent); color: var(--rm-muted); font-size: 11.5px; font-weight: 500; }
+#panel .block { margin-top: 14px; padding: 14px 16px 16px; border-radius: 12px; background: var(--rm-faint); }
+#panel .side > .block:first-child { margin-top: 0; }
+#panel .block h3 { margin: 0 0 10px; padding-top: 0; box-shadow: none; }
+#panel .points h3 { margin-top: 22px; }
+#panel .cols > .main > .points:first-child h3 { margin-top: 0; padding-top: 0; box-shadow: none; }
+#app #panel .source { display: flex; align-items: center; gap: 8px; width: 100%; margin: 14px 0 2px; padding: 6px 0; color: var(--rm-ink); font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--rm-hair); }
+#panel .source:first-of-type { margin-top: 0; }
+#panel .source svg { width: 14px; height: 14px; color: var(--rm-muted); }
+#panel .source .go { margin-left: auto; opacity: .5; }
+#panel .relgroup + .relgroup { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rm-hair); }
+#panel .relgroup h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; color: var(--rm-muted); font-size: 11.5px; font-weight: 650; letter-spacing: .04em; }
+#panel .relgroup h4 span { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--rm-ink) 7%, transparent); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+#panel .block .rel { padding: 6px 0; }
+#panel .block .rel p { margin-top: 4px; font-size: 12.5px; color: var(--rm-muted); }
+#app #panel .block .page { width: calc(100% + 12px); margin: 0 -6px; padding: 6px; }

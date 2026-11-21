@@ -24,12 +24,12 @@ const COLORS = ['pink', 'black', 'rose', 'plum', 'amber', 'teal', 'sky', 'graphi
 const STRINGS = {
   en: { '入门': 'Intro', '基础': 'Basics', '进阶': 'Advanced', '实战': 'In practice', '先学': 'Learn first', '应用': 'Applied in', '相关': 'Related',
     '%1 个节点 · %2 篇已写成页面': '%1 nodes · %2 with pages', '已写成页面': 'Has a page', '搜索节点': 'Search nodes', '图例': 'Legend', '先学 A 再学 B': 'Learn A before B', 'B 是 A 的实际应用': 'B applies A', '相关，聚焦时显示': 'Related, shown on focus', '待写': 'To write', '还没有页面': 'No page yet',
-    '要点': 'Key points', '页面': 'Pages', '学完可以继续': 'Next', '学习路径': 'Learning path', '原理图': 'Figure', '页面互链': 'Page links', '适合窗口': 'Fit window', '放大': 'Zoom in', '缩小': 'Zoom out', '编辑': 'Edit', '完成': 'Done',
+    '要点': 'Key points', '页面': 'Pages', '学完可以继续': 'Next', '学习路径': 'Learning path', '关系': 'Connections', '原理图': 'Figure', '页面互链': 'Page links', '适合窗口': 'Fit window', '放大': 'Zoom in', '缩小': 'Zoom out', '编辑': 'Edit', '完成': 'Done',
     '没有前置，可以从这里开始。': 'No prerequisites. Start here.', '这个节点还没有页面，摘要是通用常识。': 'This node has no page yet; the summary is general knowledge.', '页面不存在': 'Page not found', '用到的概念': 'Uses', '在这里用到': 'Used in',
     '这张路线图还是空的': 'This roadmap is empty', '打开「编辑」，双击空白处新建节点。': 'Turn on Edit and double-click the canvas to add a node.', '这样连会成环：%1 已经排在 %2 后面。': 'That would make a loop: %1 already comes after %2.', '未挂靠的页面': 'Unattached pages', '所有页面都已挂上': 'Every page is attached', '新节点': 'New node', '为什么有这条关系？一句话。': 'Why does this relation exist? One sentence.', '删除': 'Delete', '节点标题': 'Node title', '新建页面': 'New page', '已撤销': 'Undone', '没有可撤销的操作': 'Nothing to undo', '这两个节点之间已经有关系了。': 'These two nodes are already related.', '把页面拖到节点上挂靠': 'Drag a page onto a node to attach it', '目标': 'Goal', '移除节点': 'Remove node', '取消挂靠': 'Detach' },
   es: { '入门': 'Inicio', '基础': 'Bases', '进阶': 'Avanzado', '实战': 'En práctica', '先学': 'Aprende antes', '应用': 'Se aplica en', '相关': 'Relacionado',
     '%1 个节点 · %2 篇已写成页面': '%1 nodos · %2 con página', '已写成页面': 'Con página', '搜索节点': 'Buscar nodos', '图例': 'Leyenda', '先学 A 再学 B': 'Aprende A antes que B', 'B 是 A 的实际应用': 'B aplica A', '相关，聚焦时显示': 'Relacionado, visible al enfocar', '待写': 'Por escribir', '还没有页面': 'Aún sin página',
-    '要点': 'Puntos clave', '页面': 'Páginas', '学完可以继续': 'Después', '学习路径': 'Ruta de aprendizaje', '原理图': 'Figura', '页面互链': 'Enlaces entre páginas', '适合窗口': 'Ajustar a la ventana', '放大': 'Acercar', '缩小': 'Alejar', '编辑': 'Editar', '完成': 'Listo',
+    '要点': 'Puntos clave', '页面': 'Páginas', '学完可以继续': 'Después', '学习路径': 'Ruta de aprendizaje', '关系': 'Relaciones', '原理图': 'Figura', '页面互链': 'Enlaces entre páginas', '适合窗口': 'Ajustar a la ventana', '放大': 'Acercar', '缩小': 'Alejar', '编辑': 'Editar', '完成': 'Listo',
     '没有前置，可以从这里开始。': 'Sin requisitos. Empieza aquí.', '这个节点还没有页面，摘要是通用常识。': 'Este nodo aún no tiene página; el resumen es conocimiento general.', '页面不存在': 'Página no encontrada', '用到的概念': 'Usa', '在这里用到': 'Se usa en',
     '这张路线图还是空的': 'Este mapa está vacío', '打开「编辑」，双击空白处新建节点。': 'Activa Editar y haz doble clic en el lienzo para añadir un nodo.', '这样连会成环：%1 已经排在 %2 后面。': 'Eso crearía un ciclo: %1 ya va después de %2.', '未挂靠的页面': 'Páginas sin asignar', '所有页面都已挂上': 'Todas las páginas están asignadas', '新节点': 'Nodo nuevo', '为什么有这条关系？一句话。': '¿Por qué existe esta relación? Una frase.', '删除': 'Eliminar', '节点标题': 'Título del nodo', '新建页面': 'Página nueva', '已撤销': 'Deshecho', '没有可撤销的操作': 'Nada que deshacer', '这两个节点之间已经有关系了。': 'Estos dos nodos ya están relacionados.', '把页面拖到节点上挂靠': 'Arrastra una página a un nodo para asignarla', '目标': 'Meta', '移除节点': 'Quitar nodo', '取消挂靠': 'Desvincular' },
 };
@@ -354,7 +354,6 @@ function draw(animate = false) {
   d3.select('#links').selectAll('g.link').data(links, d => d.key).join(enter => {
     const g = enter.append('g').attr('class', 'link');
     g.append('path').attr('class', 'line'); g.append('path').attr('class', 'tip').attr('d', 'M0,0L-10,-5L-10,5Z'); g.append('path').attr('class', 'hit');
-    g.on('pointerenter', (event, d) => linkHover(d, event)).on('pointermove', (event, d) => linkHover(d, event)).on('pointerleave', () => linkHover(null));
     return g;
   }).attr('data-key', d => d.key).style('--tint', d => d.tint).each(function (d) {
     const g = d3.select(this);
@@ -367,7 +366,7 @@ function draw(animate = false) {
   const edge = d3.select('#edges').selectAll('g.edge').data(S.edges, d => d.id).join(enter => {
     const g = enter.append('g').attr('class', 'edge');
     g.append('path').attr('class', 'line'); g.append('path').attr('class', 'head').attr('d', headPath); g.append('path').attr('class', 'hit');
-    g.on('pointerenter', (event, d) => edgeHover(d, event)).on('pointermove', (event, d) => edgeHover(d, event)).on('pointerleave', () => edgeHover(null)).on('click', (event, d) => { if (S.editing) { event.stopPropagation(); editEdge(d, event); } });
+    g.on('click', (event, d) => { if (S.editing) { event.stopPropagation(); editEdge(d, event); } });
     return g;
   });
   edge.attr('data-kind', d => d.d.kind).attr('data-id', d => d.id).classed('cross', d => d.a.d.domain !== d.b.d.domain);
@@ -384,8 +383,7 @@ function draw(animate = false) {
     g.append('text').attr('class', 'title').attr('x', 33).attr('y', NODE_H / 2 + 0.5);
     g.append('text').attr('class', 'summary');
     g.on('click', (event, d) => { event.stopPropagation(); if (!d.moved) focus(d.id); })
-      .on('dblclick', (event, d) => { event.stopPropagation(); if (S.editing) editNode(d); else openPage(d.d.pages?.[0], false); })
-      .on('pointerenter', (event, d) => { if (event.pointerType !== 'touch') hover(d); }).on('pointerleave', () => hover(null));
+      .on('dblclick', (event, d) => { event.stopPropagation(); if (S.editing) editNode(d); else openPage(d.d.pages?.[0], false); });
     return g;
   });
   node.attr('data-id', d => d.id).style('--tint', d => tint(S.domains.find(x => x.id === d.d.domain)?.color)).classed('draft', d => !!d.d.draft);
@@ -454,7 +452,7 @@ function applyState(flow = false) {
 
 // ---------- viewport ----------
 const zoom = d3.zoom().scaleExtent([0.18, 2.6]).filter(event => event.type !== 'wheel' && event.type !== 'dblclick' && !event.button && !(S.editing && event.target.closest?.('.node, .handle')) && (!compact() || settling || (event.touches?.length ?? 0) >= 2))
-  .on('start', event => { if (event.sourceEvent?.type === 'mousedown') svg.classed('grabbing', true); hover(null); })
+  .on('start', event => { if (event.sourceEvent?.type === 'mousedown') svg.classed('grabbing', true); })
   .on('zoom', event => { if (event.sourceEvent && !compact()) moving(true); const m = margin(); S.z = event.transform; S.t = d3.zoomIdentity.translate(S.z.x - m, S.z.y - m).scale(S.z.k); if (!frame) frame = requestAnimationFrame(paint); })
   .on('end', () => { svg.classed('grabbing', false); if (!wheeling) settleView(); if (compact() && !settling) settle(); });
 let frame = 0, settling = false;
@@ -482,7 +480,6 @@ let drawn = null, wheeling = 0;
 function moving(on) {
   if (app.classList.contains('moving') === on) return;
   app.classList.toggle('moving', on);
-  if (on) { hover(null); linkHover(null); edgeHover(null); }
 }
 function nudge() { if (compact()) return; moving(true); clearTimeout(wheeling); wheeling = setTimeout(() => { wheeling = 0; settleView(); }, 160); }
 function settleView() {
@@ -577,8 +574,7 @@ function minimapDrag(event) {
 }
 $('minimap').addEventListener('pointerdown', event => { event.preventDefault(); $('minimap').setPointerCapture(event.pointerId); minimapDrag(event); const moveTo = e => minimapDrag(e), stop = () => { $('minimap').removeEventListener('pointermove', moveTo); $('minimap').removeEventListener('pointerup', stop); }; $('minimap').addEventListener('pointermove', moveTo); $('minimap').addEventListener('pointerup', stop); });
 
-// ---------- hover ----------
-let hoverTimer;
+// ---------- figures ----------
 const themed = url => /\.svg(\?|$)/i.test(url.split('#')[0]) && url.startsWith('acdian-resource:') ? `${url.split('#')[0]}${url.includes('?') ? '&' : '?'}appearance=${S.theme}#acdian-${S.theme}` : url;
 const figuresOf = node => (node.d.pages || []).flatMap(key => S.pages.get(key)?.figures || []);
 function place(el, x, y, anchorWidth = 0) {
@@ -590,52 +586,12 @@ function place(el, x, y, anchorWidth = 0) {
   top = Math.max(12, Math.min(h - box.height - 12, top));
   el.style.left = left + 'px'; el.style.top = top + 'px';
 }
-function hover(node) {
-  clearTimeout(hoverTimer);
-  const card = $('hover');
-  if (!node || S.zoom === 'far' || popoverOpen()) { card.hidden = true; return; }
-  hoverTimer = setTimeout(() => {
-    if (node.dragging) return;
-    const figure = figuresOf(node)[0];
-    card.className = 'float';
-    card.innerHTML = `<h4>${esc(node.d.title)}${node.d.subtitle ? `<small>${esc(node.d.subtitle)}</small>` : ''}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h4><p>${esc(node.d.summary || '')}</p>${figure ? `<img alt="" src="${esc(themed(figure))}">` : ''}`;
-    const image = card.querySelector('img');
-    const show = () => place(card, S.t.applyX(node.x), S.t.applyY(node.y) - 4, node.w * S.t.k);
-    if (image) { image.addEventListener('load', show); image.addEventListener('error', () => { image.remove(); show(); }); }
-    show();
-  }, 240);
-}
-let hoveredLink = null, hoveredEdge = null;
-function linkHover(link, event) {
-  const tip = $('edge-tip');
-  if (link && link === hoveredLink && event) { place(tip, ...d3.pointer(event, app).map((v, i) => v + (i ? 14 : 4))); return; }
-  hoveredLink = link;
-  d3.selectAll('#links g.link').classed('hover', d => d === link).filter(d => d === link).raise();
-  d3.selectAll('#edges g.edge').classed('hover', d => !!link && link.edges.includes(d));
-  if (!link || popoverOpen()) { tip.hidden = true; return; }
-  tip.className = 'float';
-  tip.innerHTML = `<b><em>${esc(link.from.domain.title)}</em> → <em>${esc(link.to.domain.title)}</em></b><ul>${link.edges.map(e => `<li>${esc(e.a.d.title)} → ${esc(e.b.d.title)}</li>`).join('')}</ul>`;
-  const [x, y] = event ? d3.pointer(event, app) : [S.t.applyX(link.mid[0]), S.t.applyY(link.mid[1])];
-  place(tip, x + 4, y + 14);
-}
-function edgeHover(edge, event) {
-  const tip = $('edge-tip');
-  if (edge && edge === hoveredEdge && event) { place(tip, ...d3.pointer(event, app).map((v, i) => v + (i ? 14 : 4))); return; }
-  hoveredEdge = edge;
-  d3.selectAll('#edges g.edge').classed('hover', d => d === edge);
-  if (!edge || S.zoom === 'far' || popoverOpen()) { tip.hidden = true; return; }
-  const arrow = edge.d.kind === 'related' ? '—' : '→';
-  tip.className = 'float';
-  tip.innerHTML = `<b><em>${esc(edge.a.d.title)}</em> ${arrow} <em>${esc(edge.b.d.title)}</em> · ${esc(T(KIND_NAMES[edge.d.kind] || '相关'))}</b>${esc(edge.d.why || '')}`;
-  const [x, y] = event ? d3.pointer(event, app) : [S.t.applyX(edge.mid[0]), S.t.applyY(edge.mid[1])];
-  place(tip, x + 4, y + 14);
-}
 
 // ---------- focus and panel ----------
 function focus(id, options = {}) {
   const node = id ? S.byId.get(id) : null;
   S.focus = node ? node.id : null;
-  hover(null); closePopover();
+  closePopover();
   app.classList.toggle('panel-open', !!node);
   $('panel').setAttribute('aria-hidden', node ? 'false' : 'true');
   applyState(true);
@@ -657,18 +613,24 @@ function renderPanel() {
   const top = `<div class="top"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${step ? `${step} · ` : ''}${esc(domain?.title || '')}</span>${node.d.topic ? `<span class="topic">${esc(node.d.topic)}</span>` : ''}<button class="close" data-close aria-label="Close">${ic('x')}</button></div>`
     + `<h2>${esc(node.d.title)}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h2>${node.d.subtitle ? `<p class="sub">${esc(node.d.subtitle)}</p>` : ''}<p class="lead">${esc(node.d.summary || '')}</p></div>`;
   let main = '', side = '';
+  const block = (name, text, body, extra = '') => `<section class="block${extra}">${h3(name, text)}${body}</section>`;
   if (figures.length) main += `<button class="figure" data-figure="0"><img alt="${esc(T('原理图'))}" src="${esc(themed(figures[0]))}">${figures.length > 1 ? `<span>1 / ${figures.length}</span>` : ''}</button>`;
-  if ((node.d.keyPoints || []).length) main += `${h3('list-checks', '要点')}<ol>${node.d.keyPoints.map((k, i) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}<small>§ ${esc(k.heading)}</small></span></button></li>`).join('')}</ol>`;
-  side += h3('file-text', '页面');
-  side += pages.length ? `<ul>${pages.map(({ key, info }) => `<li><button class="page${info && info.exists === false ? ' missing' : ''}" data-page="${esc(key)}">${pageIcon}<span>${esc(info?.title || key.split('/').pop())}</span>${info && info.exists === false ? `<span class="tag">${esc(T('页面不存在'))}</span>` : goIcon}</button></li>`).join('')}</ul>`
-    : `<p class="hint">${esc(node.d.note || T('这个节点还没有页面，摘要是通用常识。'))}</p>${S.editing ? `<button class="page" data-new-page>${pageIcon}<span>${esc(T('新建页面'))}</span></button>` : ''}`;
-  if (before.length) side += `${h3('log-in', '先学')}<ul>${before.map(e => relation(e, e.a, e.d.kind === 'applies' ? T('用到的概念') : '')).join('')}</ul>`;
-  if (after.length) side += `${h3('log-out', '学完可以继续')}<ul>${after.map(e => relation(e, e.b, e.d.kind === 'applies' ? T('在这里用到') : '')).join('')}</ul>`;
-  if (related.length) side += `${h3('link-2', '相关')}<ul>${related.map(e => relation(e, e.a.id === node.id ? e.b : e.a, '')).join('')}</ul>`;
-  side += h3('route', '学习路径');
-  if (path.length) side += `<ol class="path">${path.map(step => { const other = S.byId.get(step.id); return `<li><button class="chip${other.d.draft ? ' draft' : ''}" data-focus="${esc(other.id)}">${esc(other.d.title)}</button><p>${esc(step.why)}</p></li>`; }).join('')}<li class="goal"><button class="chip" data-focus="${esc(node.id)}">${esc(node.d.title)}</button></li></ol>`;
-  else side += `<p class="hint">${esc(T('没有前置，可以从这里开始。'))}</p>`;
-  if (S.editing) side += `${h3('pencil', '编辑')}<ul><li><button class="page" data-edit-node>${esc(T('节点标题'))}…</button></li><li><button class="page" data-remove-node>${esc(T('移除节点'))}</button></li></ul>`;
+  const points = node.d.keyPoints || [];
+  if (points.length) {
+    const groups = [];
+    points.forEach((k, i) => { const last = groups[groups.length - 1]; if (last && last.page === (k.page || '')) last.items.push([k, i]); else groups.push({ page: k.page || '', items: [[k, i]] }); });
+    const pageTitle = key => S.pages.get(key)?.title || key.split('/').pop();
+    main += `<section class="points">${h3('list-checks', '要点')}${groups.map(g => `${g.page && groups.length > 1 ? `<button class="source" data-page="${esc(g.page)}">${pageIcon}<span>${esc(pageTitle(g.page))}</span>${goIcon}</button>` : ''}<ol>${g.items.map(([k, i]) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}${k.heading ? `<small>§ ${esc(k.heading)}</small>` : ''}</span></button></li>`).join('')}</ol>`).join('')}</section>`;
+  }
+  side += block('file-text', '页面', pages.length ? `<ul>${pages.map(({ key, info }) => `<li><button class="page${info && info.exists === false ? ' missing' : ''}" data-page="${esc(key)}">${pageIcon}<span>${esc(info?.title || key.split('/').pop())}</span>${info && info.exists === false ? `<span class="tag">${esc(T('页面不存在'))}</span>` : goIcon}</button></li>`).join('')}</ul>`
+    : `<p class="hint">${esc(node.d.note || T('这个节点还没有页面，摘要是通用常识。'))}</p>${S.editing ? `<button class="page" data-new-page>${pageIcon}<span>${esc(T('新建页面'))}</span></button>` : ''}`);
+  const groupOf = (label, items) => items.length ? `<div class="relgroup"><h4>${esc(T(label))}<span>${items.length}</span></h4><ul>${items.join('')}</ul></div>` : '';
+  const rels = groupOf('先学', before.map(e => relation(e, e.a, e.d.kind === 'applies' ? T('用到的概念') : '')))
+    + groupOf('学完可以继续', after.map(e => relation(e, e.b, e.d.kind === 'applies' ? T('在这里用到') : '')))
+    + groupOf('相关', related.map(e => relation(e, e.a.id === node.id ? e.b : e.a, '')));
+  if (rels) side += block('link-2', '关系', rels);
+  side += block('route', '学习路径', path.length ? `<ol class="path">${path.map(step => { const other = S.byId.get(step.id); return `<li><button class="chip${other.d.draft ? ' draft' : ''}" data-focus="${esc(other.id)}">${esc(other.d.title)}</button><p>${esc(step.why)}</p></li>`; }).join('')}<li class="goal"><button class="chip" data-focus="${esc(node.id)}">${esc(node.d.title)}</button></li></ol>` : `<p class="hint">${esc(T('没有前置，可以从这里开始。'))}</p>`);
+  if (S.editing) side += block('pencil', '编辑', `<ul><li><button class="page" data-edit-node>${esc(T('节点标题'))}…</button></li><li><button class="page" data-remove-node>${esc(T('移除节点'))}</button></li></ul>`);
   const html = `<div class="scroll">${top}<div class="cols${main ? '' : ' solo'}">${main ? `<div class="main">${main}</div>` : ''}<div class="side">${side}</div></div></div>`;
   const panel = $('panel'), keep = panel.dataset.node === node.id ? panel.querySelector('.scroll')?.scrollTop : 0;
   panel.dataset.node = node.id; panel.innerHTML = html;
@@ -787,7 +749,7 @@ function startDrag(event, node) {
   const moveTo = e => {
     const at = d3.pointer(e, $('world')), dx = at[0] - start[0], dy = at[1] - start[1];
     if (!moved && Math.hypot(dx, dy) * S.t.k < 4) return;
-    if (!moved) { moved = true; snapshot(); node.dragging = true; hover(null); }
+    if (!moved) { moved = true; snapshot(); node.dragging = true; }
     node.x = Math.round(origin[0] + dx); node.y = Math.round(origin[1] + dy); node.d.x = node.x; node.d.y = node.y;
     relayout();
   };
@@ -833,7 +795,7 @@ function connect(from, to, kind = 'requires') {
   return edge;
 }
 function editEdge(edge, event) {
-  hover(null); edgeHover(null);
+  
   const el = $('popover'); el.className = 'float';
   el.innerHTML = `<div class="segment">${['requires', 'applies', 'related'].map(kind => `<button data-kind="${kind}" aria-pressed="${edge.d.kind === kind}">${esc(T(KIND_NAMES[kind]))}</button>`).join('')}</div><textarea placeholder="${esc(T('为什么有这条关系？一句话。'))}">${esc(edge.d.why || '')}</textarea><div class="actions"><button class="danger" data-delete>${esc(T('删除'))}</button><button class="primary" data-done>${esc(T('完成'))}</button></div>`;
   const [x, y] = event ? d3.pointer(event, app) : [S.t.applyX(edge.mid[0]), S.t.applyY(edge.mid[1])];
@@ -882,7 +844,7 @@ function newNodeAt(event) {
   editNode(node);
 }
 function editNode(node) {
-  hover(null);
+  
   const el = $('popover'); el.className = 'float';
   el.innerHTML = `<label>${esc(T('节点标题'))}</label><input type="text" value="${esc(node.d.title)}"><textarea placeholder="${esc(T('这个节点还没有页面，摘要是通用常识。'))}">${esc(node.d.summary || '')}</textarea><div class="actions"><button class="danger" data-delete>${esc(T('移除节点'))}</button><button class="primary" data-done>${esc(T('完成'))}</button></div>`;
   place(el, S.t.applyX(node.x), S.t.applyY(node.y + NODE_H) + 8);
