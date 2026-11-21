@@ -13,9 +13,10 @@ const now = () => Math.floor(Date.now() / 1000);
 const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 56, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
 const IN_GAP = 40, BAND_GAP = 76, FLOW_HEAD = 76, COLUMN_GAP = 220, GUTTER = 40;
 const FAR = 0.5, NEAR = 1.3;
-const MARGIN = 600, margin = () => compact() ? 0 : MARGIN;
+const MARGIN = 600, margin = () => compact() || rasterOn() ? 0 : MARGIN;
 const toZoom = t => d3.zoomIdentity.translate(t.x + margin(), t.y + margin()).scale(t.k);
 const compact = () => (innerWidth || 1024) < 700;
+const rasterOn = () => !compact() && !S.editing && !!window.SvgRaster && S.rasterize !== false;
 const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
 const KIND_NAMES = { requires: '先学', applies: '应用', related: '相关' };
@@ -307,7 +308,7 @@ function routeAll() {
 // ---------- drawing ----------
 const headPath = 'M0,0L-7.5,-3.6L-7.5,3.6Z';
 function draw(animate = false) {
-  const { regions, links, mentions } = S.layout, t = animate ? dur(240) : 0;
+  const { regions, links, mentions } = S.layout, t = animate && !rasterOn() ? dur(240) : 0;
   const move = selection => t ? selection.transition().duration(t).ease(d3.easeCubicOut) : selection;
 
   const region = d3.select('#regions').selectAll('g.region').data(regions, d => d.id).join(enter => {
@@ -409,8 +410,10 @@ function setZoomMode(mode) {
   if (mode === S.zoom) return;
   S.zoom = mode; svg.attr('data-zoom', mode);
   const near = mode === 'near';
-  d3.selectAll('#nodes .card').transition().duration(dur(220)).ease(d3.easeCubicOut).attr('height', d => near ? d.hNear : NODE_H);
-  d3.selectAll('#nodes .halo').transition().duration(dur(220)).ease(d3.easeCubicOut).attr('height', d => (near ? d.hNear : NODE_H) + 8);
+  const ease = selection => rasterOn() ? selection : selection.transition().duration(dur(220)).ease(d3.easeCubicOut);
+  ease(d3.selectAll('#nodes .card')).attr('height', d => near ? d.hNear : NODE_H);
+  ease(d3.selectAll('#nodes .halo')).attr('height', d => (near ? d.hNear : NODE_H) + 8);
+  repaint();
 }
 
 // ---------- state classes ----------
@@ -432,7 +435,7 @@ function applyState(flow = false) {
     edge.classed('dim', e => !inChain(e) && !touches(e)).classed('lit', e => touches(e) && !inChain(e));
     edge.each(function (e) {
       const on = inChain(e), el = d3.select(this);
-      if (!on || !flow || reduced.matches) { el.classed('flow', on); return; }
+      if (!on || !flow || reduced.matches || rasterOn()) { el.classed('flow', on); return; }
       el.classed('flow', false);
       flowTimers.push(setTimeout(() => el.classed('flow', true), (far - (dist.get(e.a.id) || 0)) / far * 380));
     });
@@ -448,6 +451,7 @@ function applyState(flow = false) {
   }
   $('search-count').textContent = S.query.trim() && !focusNode ? String(S.matches.length) : '';
   app.classList.toggle('show-mentions', S.showMentions);
+  repaint();
 }
 
 // ---------- viewport ----------
@@ -480,6 +484,7 @@ let drawn = null, wheeling = 0;
 function moving(on) {
   if (app.classList.contains('moving') === on) return;
   app.classList.toggle('moving', on);
+  if (!on && raster && rasterOn() && !frame) frame = requestAnimationFrame(paint);
 }
 function nudge() { if (compact()) return; moving(true); clearTimeout(wheeling); wheeling = setTimeout(() => { wheeling = 0; settleView(); }, 160); }
 function settleView() {
@@ -491,8 +496,41 @@ function covers(z) {
   const { w, h } = viewport(), s = z.k / drawn.k, tx = z.x - s * drawn.x, ty = z.y - s * drawn.y;
   return s > 0.55 && s < 1.8 && tx <= MARGIN && ty <= MARGIN && s * (w + 2 * MARGIN) + tx >= MARGIN + w && s * (h + 2 * MARGIN) + ty >= MARGIN + h ? { s, tx, ty } : null;
 }
+let raster = null, dotColor = '';
+function syncRaster() {
+  const on = rasterOn();
+  if (app.classList.contains('raster') !== on) { app.classList.toggle('raster', on); const z = toZoom(S.t); svg.node().__zoom = z; S.z = z; drawn = null; }
+  if (on && !raster) raster = new window.SvgRaster($('world'), $('paint'));
+  if (on) raster.invalidate(); else drawn = null;
+  if (!frame) frame = requestAnimationFrame(paint);
+}
+function repaint() { if (!raster || !rasterOn()) return; raster.invalidate(); if (!frame) frame = requestAnimationFrame(paint); }
+function dots(ctx, t, w, h, dpr) {
+  const k = t.k, step = 28 * k * (k < 0.6 ? 2 : 1);
+  if (step < 4) return;
+  dotColor ||= getComputedStyle(app).getPropertyValue('--rm-dot').trim() || '#8884';
+  ctx.fillStyle = dotColor;
+  const ox = ((t.x % step) + step) % step + step / 2, oy = ((t.y % step) + step) % step + step / 2;
+  ctx.beginPath();
+  for (let x = ox - step; x < w + step; x += step) for (let y = oy - step; y < h + step; y += step) { ctx.moveTo((x + 1.1) * dpr, y * dpr); ctx.arc(x * dpr, y * dpr, 1.1 * dpr, 0, Math.PI * 2); }
+  ctx.fill();
+}
+function paintRaster() {
+  const { w, h } = viewport();
+  raster.resize(w, h, devicePixelRatio || 1);
+  raster.paint(S.t, dots, app.classList.contains('moving'));
+  const level = $('zoom-level'); if (level) level.textContent = Math.round(S.t.k * 100) + '%';
+}
 function paint() {
   frame = 0;
+  if (raster && rasterOn()) {
+    drawn = null; paintRaster();
+    if (!app.classList.contains('moving')) world.attr('transform', S.t);
+    setZoomMode(S.t.k >= NEAR ? 'near' : S.t.k < FAR ? 'far' : 'mid');
+    if (raster.dirty) paintRaster();
+    drawViewport(); viewChanged();
+    return;
+  }
   const z = S.z || toZoom(S.t), lift = drawn && !compact() && app.classList.contains('moving') ? covers(z) : null;
   if (lift) {
     svg.style('transform', lift.s === 1 ? `translate3d(${lift.tx}px,${lift.ty}px,0)` : `translate3d(${lift.tx}px,${lift.ty}px,0) scale(${lift.s})`);
@@ -549,8 +587,8 @@ $('canvas').addEventListener('wheel', event => {
 let gestureScale = 1;
 $('canvas').addEventListener('gesturestart', event => { if (S.platform === 'ios') return; event.preventDefault(); gestureScale = S.t.k; });
 $('canvas').addEventListener('gesturechange', event => { if (S.platform === 'ios') return; event.preventDefault(); nudge(); svg.call(zoom.scaleTo, gestureScale * event.scale, [event.clientX + margin(), event.clientY + margin()]); });
-svg.on('click', () => { if (popoverOpen()) { closePopover(); return; } if (S.focus) focus(null); });
-svg.on('dblclick', event => { if (S.editing && !event.target.closest('.node, .edge')) newNodeAt(event); });
+svg.on('click', event => { if (popoverOpen()) { closePopover(); return; } const hit = rasterOn() && S.zoom !== 'far' && nodeAtClient(event.clientX, event.clientY); if (hit) { focus(hit.id); return; } if (S.focus) focus(null); });
+svg.on('dblclick', event => { const hit = rasterOn() && S.zoom !== 'far' && nodeAtClient(event.clientX, event.clientY); if (hit) { openPage(hit.d.pages?.[0], false); return; } if (S.editing && !event.target.closest('.node, .edge')) newNodeAt(event); });
 
 // ---------- minimap ----------
 function drawMinimap() {
@@ -713,7 +751,7 @@ let wasCompact = compact();
 addEventListener('resize', () => {
   app.classList.toggle('compact', compact());
   if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); zoomLimits(); draw(); if (compact()) settle(fitTransform().k, false); else { unsettle(); svg.call(zoom.transform, toZoom(fitTransform())); } }
-  drawViewport();
+  syncRaster(); drawViewport();
 });
 
 // ---------- editing ----------
@@ -733,7 +771,7 @@ function undo() {
   toast(T('已撤销'));
 }
 function setEditing(on) {
-  S.editing = !!on && S.editable; app.classList.toggle('editing', S.editing); closePopover(); drawChrome(); layout(); draw(); drawDrawer();
+  S.editing = !!on && S.editable; app.classList.toggle('editing', S.editing); closePopover(); drawChrome(); layout(); draw(); drawDrawer(); syncRaster();
   if (S.focus) renderPanel();
 }
 function drawHandles() {
@@ -880,7 +918,7 @@ function drawDrawer() {
   el.innerHTML = `<h5>${esc(T('未挂靠的页面'))}</h5>${pages.length ? pages.map(page => `<span class="item" draggable="true" data-key="${esc(page.key)}">${esc(page.title)}</span>`).join('') + `<div class="none">${esc(T('把页面拖到节点上挂靠'))}</div>` : `<div class="none">${esc(T('所有页面都已挂上'))}</div>`}`;
 }
 $('drawer').addEventListener('dragstart', event => { const key = event.target.dataset?.key; if (key) { event.dataTransfer.setData('text/plain', 'acdian-roadmap-page:' + key); event.dataTransfer.effectAllowed = 'link'; } });
-function nodeAtClient(x, y) { const [wx, wy] = S.t.invert([x - $('scroller').getBoundingClientRect().left, y - $('scroller').getBoundingClientRect().top]); return S.nodes.find(n => wx > n.x && wx < n.x + n.w && wy > n.y && wy < n.y + NODE_H) || null; }
+function nodeAtClient(x, y) { const [wx, wy] = S.t.invert([x - $('scroller').getBoundingClientRect().left, y - $('scroller').getBoundingClientRect().top]); return S.nodes.find(n => wx > n.x && wx < n.x + n.w && wy > n.y && wy < n.y + (S.zoom === 'near' ? n.hNear : NODE_H)) || null; }
 $('canvas').addEventListener('dragover', event => { if (!S.editing) return; event.preventDefault(); const over = nodeAtClient(event.clientX, event.clientY); d3.selectAll('#nodes g.node').classed('drop', d => d === over); });
 $('canvas').addEventListener('dragleave', () => d3.selectAll('#nodes g.node').classed('drop', false));
 $('canvas').addEventListener('drop', event => {
@@ -900,7 +938,7 @@ function attach(id, key) {
 
 // ---------- messages ----------
 function setTheme(theme) {
-  S.theme = theme === 'light' ? 'light' : 'dark'; document.documentElement.dataset.theme = S.theme;
+  S.theme = theme === 'light' ? 'light' : 'dark'; document.documentElement.dataset.theme = S.theme; dotColor = ''; repaint();
   document.querySelectorAll('img[src^="acdian-resource:"]').forEach(image => { const next = themed(image.getAttribute('src')); if (next !== image.getAttribute('src')) image.setAttribute('src', next); });
 }
 function load(message, update) {
@@ -911,7 +949,7 @@ function load(message, update) {
   S.doc = message.roadmap || { nodes: [], edges: [], domains: [] }; S.doc.nodes ||= []; S.doc.edges ||= []; S.doc.domains ||= [];
   S.pages = new Map((message.pages || []).map(page => [page.key, page])); S.mentions = message.mentions || [];
   if (!S.editable) S.editing = false;
-  index(); layout(); zoomLimits(); drawChrome(); draw(update && !first); drawDrawer();
+  index(); layout(); zoomLimits(); drawChrome(); draw(update && !first); drawDrawer(); syncRaster();
   if (S.focus && !S.byId.has(S.focus)) focus(null); else if (S.focus) { renderPanel(); applyState(); }
   if (first) {
     const view = message.view || S.doc.view, saved = view && Number.isFinite(view.k) && !(view.x === 0 && view.y === 0 && view.k === 1);

@@ -84,7 +84,8 @@ const roadmap = {
   same((await state()).matches, ['http', 'nat', 'proxy', 'chain', 'gfw'], 'Search matches a domain name');
   await page.evaluate(() => window.acdianRoadmap.search(''));
 
-  await page.dblclick('g.node[data-id="lonely"]');
+  const lonely = await page.$eval('g.node[data-id="lonely"] .card', e => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+  await page.mouse.dblclick(lonely[0], lonely[1]);
   check((await posted('openPage')).length === 0, 'A node without a page opens nothing');
   await page.evaluate(() => { window.acdianRoadmap.setZoom(0.3); });
   check((await state()).zoom === 'far', 'Zooming out switches to the far view');

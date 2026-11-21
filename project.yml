@@ -40,11 +40,15 @@ targets:
           - "vendor/**"
           - "interactive/**"
           - "roadmap/**"
+          - "kit/**"
           - "AppIcon*"
       - path: Resources/vendor
         type: folder
         buildPhase: resources
       - path: Resources/roadmap
+        type: folder
+        buildPhase: resources
+      - path: Resources/kit
         type: folder
         buildPhase: resources
       - path: Resources/interactive
