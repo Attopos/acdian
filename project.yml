@@ -28,6 +28,7 @@ targets:
       - path: Sources/Modules.swift
       - path: Sources/Components.swift
       - path: Sources/Roadmap.swift
+      - path: Sources/ComponentBridge.swift
       - path: Sources/Localization.swift
       - path: Sources/PagesStorage.swift
       - path: Sources/AppModel.swift

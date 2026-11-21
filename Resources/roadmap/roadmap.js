@@ -1,13 +1,9 @@
 (() => {
 'use strict';
 const d3 = window.d3;
-const $ = id => document.getElementById(id);
+const kit = window.AcdianKit;
+const { $, esc, fold, dur, post } = kit;
 const app = $('app'), svg = d3.select('#canvas'), world = d3.select('#world');
-const post = message => { try { window.webkit.messageHandlers.acdian.postMessage(message); } catch { (window.__posted ||= []).push(message); } };
-const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-const dur = ms => reduced.matches ? 0 : ms;
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const fold = s => String(s ?? '').normalize('NFKC').toLowerCase();
 const now = () => Math.floor(Date.now() / 1000);
 
 const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 56, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
@@ -34,7 +30,7 @@ const STRINGS = {
     '没有前置，可以从这里开始。': 'Sin requisitos. Empieza aquí.', '这个节点还没有页面，摘要是通用常识。': 'Este nodo aún no tiene página; el resumen es conocimiento general.', '页面不存在': 'Página no encontrada', '用到的概念': 'Usa', '在这里用到': 'Se usa en',
     '这张路线图还是空的': 'Este mapa está vacío', '打开「编辑」，双击空白处新建节点。': 'Activa Editar y haz doble clic en el lienzo para añadir un nodo.', '这样连会成环：%1 已经排在 %2 后面。': 'Eso crearía un ciclo: %1 ya va después de %2.', '未挂靠的页面': 'Páginas sin asignar', '所有页面都已挂上': 'Todas las páginas están asignadas', '新节点': 'Nodo nuevo', '为什么有这条关系？一句话。': '¿Por qué existe esta relación? Una frase.', '删除': 'Eliminar', '节点标题': 'Título del nodo', '新建页面': 'Página nueva', '已撤销': 'Deshecho', '没有可撤销的操作': 'Nada que deshacer', '这两个节点之间已经有关系了。': 'Estos dos nodos ya están relacionados.', '把页面拖到节点上挂靠': 'Arrastra una página a un nodo para asignarla', '目标': 'Meta', '移除节点': 'Quitar nodo', '取消挂靠': 'Desvincular' },
 };
-const T = (key, ...args) => { let text = STRINGS[S.language]?.[key] ?? key; args.forEach((value, i) => { text = text.replace('%' + (i + 1), value); }); return text; };
+const T = kit.strings(STRINGS);
 
 const ICONS = {
   'activity': '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />',
@@ -77,7 +73,7 @@ const glyph = name => ICONS[GLYPH_ICONS[name] || name] || ICONS.circle;
 const ic = (name, cls = '') => `<svg viewBox="0 0 24 24" class="ic${cls ? ' ' + cls : ''}" aria-hidden="true">${ICONS[name] || ICONS.circle}</svg>`;
 const glyphSVG = name => `<svg viewBox="0 0 24 24" class="ic glyph" aria-hidden="true">${glyph(name)}</svg>`;
 
-const S = { doc: null, pages: new Map(), mentions: [], theme: 'dark', language: 'zh-Hans', editable: false, platform: 'mac', nodes: [], edges: [], byId: new Map(), domains: [], layout: null,
+const S = { doc: null, pages: new Map(), mentions: [], theme: 'dark', editable: false, platform: 'mac', nodes: [], edges: [], byId: new Map(), domains: [], layout: null,
   zoom: 'mid', focus: null, query: '', matches: [], showMentions: false, editing: false, t: d3.zoomIdentity, chain: new Set(), highlighted: new Set(), dirtyNodes: new Set(), dirtyEdges: new Set(), removed: {}, undo: [], legendClosed: true, loaded: false };
 
 // ---------- model ----------
@@ -435,7 +431,7 @@ function applyState(flow = false) {
     edge.classed('dim', e => !inChain(e) && !touches(e)).classed('lit', e => touches(e) && !inChain(e));
     edge.each(function (e) {
       const on = inChain(e), el = d3.select(this);
-      if (!on || !flow || reduced.matches || rasterOn()) { el.classed('flow', on); return; }
+      if (!on || !flow || kit.reduced.matches || rasterOn()) { el.classed('flow', on); return; }
       el.classed('flow', false);
       flowTimers.push(setTimeout(() => el.classed('flow', true), (far - (dist.get(e.a.id) || 0)) / far * 380));
     });
@@ -496,7 +492,7 @@ function covers(z) {
   const { w, h } = viewport(), s = z.k / drawn.k, tx = z.x - s * drawn.x, ty = z.y - s * drawn.y;
   return s > 0.55 && s < 1.8 && tx <= MARGIN && ty <= MARGIN && s * (w + 2 * MARGIN) + tx >= MARGIN + w && s * (h + 2 * MARGIN) + ty >= MARGIN + h ? { s, tx, ty } : null;
 }
-let raster = null, dotColor = '', paperColor = '';
+let raster = null;
 function syncRaster() {
   const on = rasterOn();
   if (app.classList.contains('raster') !== on) { app.classList.toggle('raster', on); const z = toZoom(S.t); svg.node().__zoom = z; S.z = z; drawn = null; }
@@ -506,12 +502,10 @@ function syncRaster() {
 }
 function repaint() { if (!raster || !rasterOn()) return; raster.invalidate(); if (!frame) frame = requestAnimationFrame(paint); }
 function dots(ctx, t, w, h, dpr) {
-  paperColor ||= getComputedStyle(app).getPropertyValue('--rm-bg').trim() || '#fff';
-  ctx.fillStyle = paperColor; ctx.fillRect(0, 0, w * dpr, h * dpr);
+  ctx.fillStyle = kit.cssVar('--rm-bg', app, '#fff'); ctx.fillRect(0, 0, w * dpr, h * dpr);
   const k = t.k, step = 28 * k * (k < 0.6 ? 2 : 1);
   if (step < 4) return;
-  dotColor ||= getComputedStyle(app).getPropertyValue('--rm-dot').trim() || '#8884';
-  ctx.fillStyle = dotColor;
+  ctx.fillStyle = kit.cssVar('--rm-dot', app, '#8884');
   const ox = ((t.x % step) + step) % step + step / 2, oy = ((t.y % step) + step) % step + step / 2;
   ctx.beginPath();
   for (let x = ox - step; x < w + step; x += step) for (let y = oy - step; y < h + step; y += step) { ctx.moveTo((x + 1.1) * dpr, y * dpr); ctx.arc(x * dpr, y * dpr, 1.1 * dpr, 0, Math.PI * 2); }
@@ -939,15 +933,14 @@ function attach(id, key) {
 }
 
 // ---------- messages ----------
-function setTheme(theme) {
-  S.theme = theme === 'light' ? 'light' : 'dark'; document.documentElement.dataset.theme = S.theme; dotColor = ''; paperColor = ''; repaint();
+kit.onTheme(theme => {
+  S.theme = theme; repaint();
   document.querySelectorAll('img[src^="acdian-resource:"]').forEach(image => { const next = themed(image.getAttribute('src')); if (next !== image.getAttribute('src')) image.setAttribute('src', next); });
-}
+});
 function load(message, update) {
   const first = !S.loaded;
-  if (message.theme) setTheme(message.theme);
-  S.language = message.language || S.language; S.editable = !!message.editable; S.platform = message.platform || S.platform; S.title = message.title || S.title;
-  document.documentElement.lang = S.language; app.classList.toggle('touch', S.platform === 'ios'); app.classList.toggle('compact', compact());
+  S.editable = !!message.editable; S.platform = message.platform || S.platform; S.title = message.title || S.title;
+  app.classList.toggle('touch', S.platform === 'ios'); app.classList.toggle('compact', compact());
   S.doc = message.roadmap || { nodes: [], edges: [], domains: [] }; S.doc.nodes ||= []; S.doc.edges ||= []; S.doc.domains ||= [];
   S.pages = new Map((message.pages || []).map(page => [page.key, page])); S.mentions = message.mentions || [];
   if (!S.editable) S.editing = false;
@@ -960,20 +953,17 @@ function load(message, update) {
     if (message.focus) focus(message.focus, { scale: 1 });
   } else if (message.focus && S.byId.has(message.focus)) focus(message.focus, { scale: 1 });
 }
-window.acdianRoadmap = {
-  receive(message) {
-    if (!message || typeof message !== 'object') return;
-    if (message.type === 'load') load(message, false);
-    else if (message.type === 'update') { if (S.dirtyNodes.size || S.dirtyEdges.size || popoverOpen()) return; load(message, true); }
-    else if (message.type === 'theme') setTheme(message.theme);
-    else if (message.type === 'focus') { const node = S.byId.get(message.id); if (node) focus(node.id, { scale: 1 }); }
-    else if (message.type === 'find') { input.focus(); input.select(); }
-    else if (message.type === 'attach') attach(nodeAtClient(message.x, message.y)?.id, message.key);
-    else if (message.type === 'flush') flush();
-  },
+kit.mount('roadmap', {
+  load: message => load(message, false),
+  update: message => { if (S.dirtyNodes.size || S.dirtyEdges.size || popoverOpen()) return; load(message, true); },
+  focus: message => { const node = S.byId.get(message.id); if (node) focus(node.id, { scale: 1 }); },
+  find: () => { input.focus(); input.select(); },
+  attach: message => attach(nodeAtClient(message.x, message.y)?.id, message.key),
+  flush,
+}, {
   state: () => (frame && (cancelAnimationFrame(frame), paint()), { focus: S.focus, zoom: S.zoom, k: S.t.k, highlighted: [...S.highlighted].sort(), chain: [...S.chain].sort(), path: S.focus ? learningPath(S.focus).map(step => step.id) : [], matches: [...S.matches], editing: S.editing, nodes: S.nodes.map(n => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: NODE_H, draft: !!n.d.draft })), bounds: S.layout?.bounds }),
   focus, fit: () => compact() ? settle(fitTransform().k, false) : svg.call(zoom.transform, toZoom(fitTransform())), setZoom: k => { const { w, h } = viewport(); svg.call(zoom.scaleTo, k, [w / 2 + margin(), h / 2 + margin()]); }, search: text => { input.value = text; S.query = text; applyState(); }, flush, undo, setEditing, connect: (a, b, kind) => !!connect(S.byId.get(a), S.byId.get(b), kind), attach,
-};
+});
 svg.attr('data-zoom', 'mid');
-post({ type: 'ready' });
+kit.ready();
 })();
