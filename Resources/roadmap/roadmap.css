@@ -55,7 +55,8 @@ body { padding: 0; color: var(--rm-text); font: 13px/1.5 var(--acd-font); -webki
 #app:not(.compact) #canvas { inset: -600px; width: calc(100% + 1200px); height: calc(100% + 1200px); transform-origin: 0 0; will-change: transform; }
 .moving #world { pointer-events: none; }
 .moving #world * { transition: none !important; }
-#paint { position: absolute; left: 0; top: 0; max-width: none; max-height: none; display: none; pointer-events: none; will-change: transform; }
+#paint { position: absolute; inset: 0; overflow: hidden; display: none; pointer-events: none; contain: strict; }
+#paint canvas { max-width: none; max-height: none; }
 .raster #paint { display: block; }
 .raster #world { opacity: 0; }
 .raster #world * { transition: none !important; }

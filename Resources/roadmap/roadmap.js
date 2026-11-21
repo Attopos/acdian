@@ -496,7 +496,7 @@ function covers(z) {
   const { w, h } = viewport(), s = z.k / drawn.k, tx = z.x - s * drawn.x, ty = z.y - s * drawn.y;
   return s > 0.55 && s < 1.8 && tx <= MARGIN && ty <= MARGIN && s * (w + 2 * MARGIN) + tx >= MARGIN + w && s * (h + 2 * MARGIN) + ty >= MARGIN + h ? { s, tx, ty } : null;
 }
-let raster = null, dotColor = '';
+let raster = null, dotColor = '', paperColor = '';
 function syncRaster() {
   const on = rasterOn();
   if (app.classList.contains('raster') !== on) { app.classList.toggle('raster', on); const z = toZoom(S.t); svg.node().__zoom = z; S.z = z; drawn = null; }
@@ -506,6 +506,8 @@ function syncRaster() {
 }
 function repaint() { if (!raster || !rasterOn()) return; raster.invalidate(); if (!frame) frame = requestAnimationFrame(paint); }
 function dots(ctx, t, w, h, dpr) {
+  paperColor ||= getComputedStyle(app).getPropertyValue('--rm-bg').trim() || '#fff';
+  ctx.fillStyle = paperColor; ctx.fillRect(0, 0, w * dpr, h * dpr);
   const k = t.k, step = 28 * k * (k < 0.6 ? 2 : 1);
   if (step < 4) return;
   dotColor ||= getComputedStyle(app).getPropertyValue('--rm-dot').trim() || '#8884';
@@ -938,7 +940,7 @@ function attach(id, key) {
 
 // ---------- messages ----------
 function setTheme(theme) {
-  S.theme = theme === 'light' ? 'light' : 'dark'; document.documentElement.dataset.theme = S.theme; dotColor = ''; repaint();
+  S.theme = theme === 'light' ? 'light' : 'dark'; document.documentElement.dataset.theme = S.theme; dotColor = ''; paperColor = ''; repaint();
   document.querySelectorAll('img[src^="acdian-resource:"]').forEach(image => { const next = themed(image.getAttribute('src')); if (next !== image.getAttribute('src')) image.setAttribute('src', next); });
 }
 function load(message, update) {
