@@ -13,7 +13,7 @@ const now = () => Math.floor(Date.now() / 1000);
 const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 56, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
 const IN_GAP = 40, BAND_GAP = 76, FLOW_HEAD = 76, COLUMN_GAP = 220, GUTTER = 40;
 const FAR = 0.5, NEAR = 1.3;
-const MARGIN = 360, margin = () => compact() ? 0 : MARGIN;
+const MARGIN = 600, margin = () => compact() ? 0 : MARGIN;
 const toZoom = t => d3.zoomIdentity.translate(t.x + margin(), t.y + margin()).scale(t.k);
 const compact = () => (innerWidth || 1024) < 700;
 const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
@@ -455,8 +455,8 @@ function applyState(flow = false) {
 // ---------- viewport ----------
 const zoom = d3.zoom().scaleExtent([0.18, 2.6]).filter(event => event.type !== 'wheel' && event.type !== 'dblclick' && !event.button && !(S.editing && event.target.closest?.('.node, .handle')) && (!compact() || settling || (event.touches?.length ?? 0) >= 2))
   .on('start', event => { if (event.sourceEvent?.type === 'mousedown') svg.classed('grabbing', true); hover(null); })
-  .on('zoom', event => { const m = margin(); S.z = event.transform; S.t = d3.zoomIdentity.translate(S.z.x - m, S.z.y - m).scale(S.z.k); if (!frame) frame = requestAnimationFrame(paint); })
-  .on('end', () => { svg.classed('grabbing', false); if (frame) { cancelAnimationFrame(frame); paint(); } if (drawn && S.z && (S.z.x !== drawn.x || S.z.y !== drawn.y)) { drawn = null; paint(); } if (compact() && !settling) settle(); });
+  .on('zoom', event => { if (event.sourceEvent && !compact()) moving(true); const m = margin(); S.z = event.transform; S.t = d3.zoomIdentity.translate(S.z.x - m, S.z.y - m).scale(S.z.k); if (!frame) frame = requestAnimationFrame(paint); })
+  .on('end', () => { svg.classed('grabbing', false); if (!wheeling) settleView(); if (compact() && !settling) settle(); });
 let frame = 0, settling = false;
 function canonical(k) {
   const { w } = viewport(), b = S.layout.bounds, side = 56, width = Math.max(w, b.w * k + 2 * side);
@@ -478,12 +478,27 @@ function zoomBy(factor) {
   if (compact()) target.call(zoom.scaleBy, factor, [scroller.scrollLeft + w / 2, scroller.scrollTop + h / 2]); else target.call(zoom.scaleBy, factor);
 }
 function unsettle() { svg.attr('width', null).attr('height', null).style('width', null).style('height', null); $('scroller').scrollTop = 0; $('scroller').scrollLeft = 0; }
-let drawn = null;
+let drawn = null, wheeling = 0;
+function moving(on) {
+  if (app.classList.contains('moving') === on) return;
+  app.classList.toggle('moving', on);
+  if (on) { hover(null); linkHover(null); edgeHover(null); }
+}
+function nudge() { if (compact()) return; moving(true); clearTimeout(wheeling); wheeling = setTimeout(() => { wheeling = 0; settleView(); }, 160); }
+function settleView() {
+  if (frame) { cancelAnimationFrame(frame); paint(); }
+  if (drawn && S.z && (S.z.x !== drawn.x || S.z.y !== drawn.y || S.z.k !== drawn.k)) { drawn = null; paint(); }
+  moving(false);
+}
+function covers(z) {
+  const { w, h } = viewport(), s = z.k / drawn.k, tx = z.x - s * drawn.x, ty = z.y - s * drawn.y;
+  return s > 0.55 && s < 1.8 && tx <= MARGIN && ty <= MARGIN && s * (w + 2 * MARGIN) + tx >= MARGIN + w && s * (h + 2 * MARGIN) + ty >= MARGIN + h ? { s, tx, ty } : null;
+}
 function paint() {
   frame = 0;
-  const z = S.z || toZoom(S.t), dx = drawn ? z.x - drawn.x : 0, dy = drawn ? z.y - drawn.y : 0;
-  if (drawn && !compact() && z.k === drawn.k && Math.abs(dx) < MARGIN * 0.7 && Math.abs(dy) < MARGIN * 0.7) {
-    svg.style('transform', `translate3d(${dx}px,${dy}px,0)`);
+  const z = S.z || toZoom(S.t), lift = drawn && !compact() && app.classList.contains('moving') ? covers(z) : null;
+  if (lift) {
+    svg.style('transform', lift.s === 1 ? `translate3d(${lift.tx}px,${lift.ty}px,0)` : `translate3d(${lift.tx}px,${lift.ty}px,0) scale(${lift.s})`);
   } else {
     drawn = z; world.attr('transform', z); svg.style('transform', null); backdrop();
   }
@@ -530,12 +545,13 @@ $('canvas').addEventListener('wheel', event => {
   if (compact() && !(event.ctrlKey || event.metaKey)) return;
   event.preventDefault();
   const [x, y] = d3.pointer(event, $('canvas'));
+  nudge();
   if (event.ctrlKey || event.metaKey) svg.call(zoom.scaleBy, Math.exp(-event.deltaY * (event.ctrlKey && !event.metaKey ? 0.012 : 0.004)), [x, y]);
   else svg.call(zoom.translateBy, -event.deltaX / S.t.k, -event.deltaY / S.t.k);
 }, { passive: false });
 let gestureScale = 1;
 $('canvas').addEventListener('gesturestart', event => { if (S.platform === 'ios') return; event.preventDefault(); gestureScale = S.t.k; });
-$('canvas').addEventListener('gesturechange', event => { if (S.platform === 'ios') return; event.preventDefault(); svg.call(zoom.scaleTo, gestureScale * event.scale, [event.clientX + margin(), event.clientY + margin()]); });
+$('canvas').addEventListener('gesturechange', event => { if (S.platform === 'ios') return; event.preventDefault(); nudge(); svg.call(zoom.scaleTo, gestureScale * event.scale, [event.clientX + margin(), event.clientY + margin()]); });
 svg.on('click', () => { if (popoverOpen()) { closePopover(); return; } if (S.focus) focus(null); });
 svg.on('dblclick', event => { if (S.editing && !event.target.closest('.node, .edge')) newNodeAt(event); });
 
@@ -589,8 +605,11 @@ function hover(node) {
     show();
   }, 240);
 }
+let hoveredLink = null, hoveredEdge = null;
 function linkHover(link, event) {
   const tip = $('edge-tip');
+  if (link && link === hoveredLink && event) { place(tip, ...d3.pointer(event, app).map((v, i) => v + (i ? 14 : 4))); return; }
+  hoveredLink = link;
   d3.selectAll('#links g.link').classed('hover', d => d === link).filter(d => d === link).raise();
   d3.selectAll('#edges g.edge').classed('hover', d => !!link && link.edges.includes(d));
   if (!link || popoverOpen()) { tip.hidden = true; return; }
@@ -601,6 +620,8 @@ function linkHover(link, event) {
 }
 function edgeHover(edge, event) {
   const tip = $('edge-tip');
+  if (edge && edge === hoveredEdge && event) { place(tip, ...d3.pointer(event, app).map((v, i) => v + (i ? 14 : 4))); return; }
+  hoveredEdge = edge;
   d3.selectAll('#edges g.edge').classed('hover', d => d === edge);
   if (!edge || S.zoom === 'far' || popoverOpen()) { tip.hidden = true; return; }
   const arrow = edge.d.kind === 'related' ? '—' : '→';

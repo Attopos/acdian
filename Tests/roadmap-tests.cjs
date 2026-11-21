@@ -102,6 +102,18 @@ const roadmap = {
   const undone = (await posted('save')).pop();
   check(undone.removed['edge:nat>gfw'] > 0, 'Undo posts the deletion');
 
+  await page.keyboard.press('Escape');
+  const where = () => page.evaluate(() => { const r = document.querySelector('g.node').getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y)]; });
+  await page.mouse.move(500, 400);
+  await page.keyboard.down('Control'); await page.mouse.wheel(0, -30); await page.keyboard.up('Control');
+  await page.mouse.wheel(40, 30);
+  const lifted = await page.evaluate(() => [document.getElementById('app').classList.contains('moving'), document.getElementById('canvas').style.transform]);
+  check(lifted[0] && /scale/.test(lifted[1]), 'Scrolling and pinching move the drawn canvas instead of redrawing it');
+  const during = await where();
+  await page.waitForTimeout(300);
+  check(!(await page.evaluate(() => document.getElementById('app').classList.contains('moving') || document.getElementById('canvas').style.transform)), 'The canvas is redrawn once the gesture ends');
+  same(await where(), during, 'Nodes stay where they were when the canvas is redrawn');
+
   same(errors, [], 'No script errors');
   await browser.close();
   console.log(`Roadmap page tests passed: ${checks} checks`);
