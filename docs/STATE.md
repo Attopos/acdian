@@ -21,6 +21,5 @@ Mac 和 iOS 版 1.7.0（iOS 构建号从 1 起，TestFlight 每次上传后自�
 ## 注意
 
 - 路线图手势期间只做 CSS 平移缩放、停下再重绘（`moving`、`settleView`）；改绘制逻辑时别破坏这条。
-- Swift 测试编译要带上 `Sources/Roadmap.swift`。网页测试 `node Tests/roadmap-tests.cjs` 只在有 Playwright 的环境跑。
+- Swift 测试编译要带上 `Sources/Roadmap.swift`；`TabTests`、`EditorSnapshotTests` 各有一处在 main 上本来就失败。网页测试 `node Tests/roadmap-tests.cjs` 只在有 Playwright 的环境跑。
 - 旧版本 App 改模块设置会写掉 `home`；旧版本保存路线图会写掉 `flows`、`topic`。
-- `TabTests`、`EditorSnapshotTests` 各有一处在 main 上本来就失败。
