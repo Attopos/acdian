@@ -20,6 +20,6 @@ Mac 和 iOS 版 1.7.0（iOS 构建号从 1 起，TestFlight 每次上传后自�
 
 ## 注意
 
-- 路线图在 Mac / iPad 宽屏非编辑状态下用分块位图画（`Resources/kit/svg-raster.js`：SVG 留作数据和点击层，透明；512pt 一块，空闲时预画周围两圈并转成图片，拖动中不画新块、露出的地方先用整图缩略）；编辑和 iPhone 仍是 SVG。改 SVG 后要 `repaint()`。
+- 路线图在 Mac / iPad 宽屏非编辑状态下用分块位图画（`Resources/kit/svg-raster.js`：SVG 留作数据和点击层，透明；512pt 一块，在 DOM 外画好转成图片；拖动、捏合、按钮缩放期间只挪和缩放现成图片，停下才换清晰度、切语义缩放档）；编辑和 iPhone 仍是 SVG。改 SVG 后要 `repaint()`。
 - Swift 测试编译要带上 `Sources/Roadmap.swift`；`TabTests`、`EditorSnapshotTests` 各有一处在 main 上本来就失败。网页测试 `node Tests/roadmap-tests.cjs` 只在有 Playwright 的环境跑。
 - 旧版本 App 改模块设置会写掉 `home`；旧版本保存路线图会写掉 `flows`、`topic`。

@@ -119,7 +119,7 @@
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   }
 
-  const TILE = 512, CELL = 400, KEEP = 64, OVERVIEW = 2400;
+  const TILE = 512, CELL = 400, KEEP = 64, OVERVIEW = 1400;
 
   function boxOf(op) {
     let b;
@@ -131,21 +131,31 @@
     return [Math.min(...X) - pad, Math.min(...Y) - pad, Math.max(...X) + pad, Math.max(...Y) + pad];
   }
 
-  const free = el => { if (el.tagName === 'IMG') URL.revokeObjectURL(el.src); else el.width = el.height = 0; };
+  const PENDING = { pending: true };
+  const free = el => { if (el?.tagName === 'IMG') URL.revokeObjectURL(el.src); else if (el?.tagName === 'CANVAS') el.width = el.height = 0; };
+  const place = (el, x, y, w, h) => Object.assign(el.style, { position: 'absolute', left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
 
   function layerEl(host, level) {
     const el = document.createElement('div');
     el.className = 'raster-layer';
     Object.assign(el.style, { position: 'absolute', left: '0', top: '0', transformOrigin: '0 0', willChange: 'transform' });
     host.appendChild(el);
-    return { el, level, tiles: new Map(), stale: false };
+    return { el, level, tiles: new Map(), stale: false, bridge: null };
+  }
+
+  function toImage(canvas, done) {
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      const img = new Image(); img.src = URL.createObjectURL(blob);
+      img.decode().then(() => done(img), () => URL.revokeObjectURL(img.src));
+    });
   }
 
   class SvgRaster {
     constructor(root, host) {
       this.root = root; this.host = host; this.ops = []; this.cells = new Map(); this.dirty = true;
-      this.layers = []; this.overview = null; this.queue = []; this.pumping = 0; this.renders = 0;
-      this.t = { k: 1, x: 0, y: 0 }; this.w = 0; this.h = 0; this.dpr = 1;
+      this.layers = []; this.overview = null; this.pumping = 0; this.renders = 0; this.scratch = document.createElement('canvas');
+      this.t = { k: 1, x: 0, y: 0 }; this.w = 0; this.h = 0; this.dpr = 1; this.live = false;
     }
     invalidate() { this.dirty = true; }
     rebuild() {
@@ -180,116 +190,99 @@
       }
       return list.sort((a, b) => a.i - b.i);
     }
+    paintArea(ctx, level, lx, ly, w, h, dpr) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+      if (this.before) this.before(ctx, { k: level, x: -lx, y: -ly }, w, h, dpr); else ctx.clearRect(0, 0, w * dpr, h * dpr);
+      const x0 = lx / level, y0 = ly / level, x1 = (lx + w) / level, y1 = (ly + h) / level;
+      draw(ctx, this.opsIn(x0, y0, x1, y1), level * dpr, -lx * dpr, -ly * dpr, [x0, y0, x1, y1]);
+    }
     drawOverview() {
       const [x0, y0, x1, y1] = this.bounds, bw = x1 - x0, bh = y1 - y0, level = Math.min(1, OVERVIEW / Math.max(bw, bh));
-      if (!this.overview) { this.overview = layerEl(this.host, level); this.host.insertBefore(this.overview.el, this.host.firstChild); this.overview.canvas = document.createElement('canvas'); this.overview.el.appendChild(this.overview.canvas); }
-      if (this.overview.img) { URL.revokeObjectURL(this.overview.img.src); this.overview.img.replaceWith(this.overview.canvas = document.createElement('canvas')); this.overview.img = null; }
-      const o = this.overview, c = o.canvas, W = Math.ceil(bw * level), H = Math.ceil(bh * level), dpr = Math.min(this.dpr, 2, Math.sqrt(12e6 / (W * H)));
-      o.level = level;
-      c.width = Math.ceil(W * dpr); c.height = Math.ceil(H * dpr);
-      Object.assign(c.style, { position: 'absolute', left: x0 * level + 'px', top: y0 * level + 'px', width: W + 'px', height: H + 'px' });
+      if (!this.overview) { this.overview = layerEl(this.host, level); this.host.insertBefore(this.overview.el, this.host.firstChild); }
+      const o = this.overview, W = Math.ceil(bw * level), H = Math.ceil(bh * level), dpr = Math.min(1, Math.sqrt(4e6 / (W * H)));
+      const c = document.createElement('canvas');
+      c.width = Math.ceil(W * dpr); c.height = Math.ceil(H * dpr); place(c, x0 * level, y0 * level, W, H);
       const ctx = c.getContext('2d');
-      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height);
       draw(ctx, this.ops.filter(op => op.box), level * dpr, -x0 * level * dpr, -y0 * level * dpr, this.bounds);
+      o.level = level; free(o.view); o.view?.remove(); o.el.appendChild(c); o.view = c;
       this.overviewStale = false;
     }
     renderTile(layer, ix, iy) {
-      const key = ix + ',' + iy;
-      if (layer.tiles.has(key)) return;
-      const dpr = this.dpr, L = layer.level, c = document.createElement('canvas');
-      c.width = c.height = Math.round(TILE * dpr);
-      Object.assign(c.style, { position: 'absolute', left: ix * TILE + 'px', top: iy * TILE + 'px', width: TILE + 'px', height: TILE + 'px' });
-      const ctx = c.getContext('2d'), x0 = ix * TILE / L, y0 = iy * TILE / L, x1 = (ix + 1) * TILE / L, y1 = (iy + 1) * TILE / L;
-      if (this.before) this.before(ctx, { k: L, x: -ix * TILE, y: -iy * TILE }, TILE, TILE, dpr);
-      draw(ctx, this.opsIn(x0, y0, x1, y1), L * dpr, -ix * TILE * dpr, -iy * TILE * dpr, [x0, y0, x1, y1]);
-      layer.el.appendChild(c); layer.tiles.set(key, c); this.renders++;
-    }
-    freeze(layer, key) {
-      const c = layer.tiles.get(key);
-      if (!c || c.tagName !== 'CANVAS' || c.freezing) return false;
-      c.freezing = true;
-      c.toBlob(blob => {
-        if (!blob || layer.tiles.get(key) !== c) return;
-        const img = new Image(); img.src = URL.createObjectURL(blob);
-        Object.assign(img.style, { position: 'absolute', left: c.style.left, top: c.style.top, width: c.style.width, height: c.style.height });
-        img.decode().then(() => { if (layer.tiles.get(key) !== c) { URL.revokeObjectURL(img.src); return; } c.replaceWith(img); c.width = c.height = 0; layer.tiles.set(key, img); }, () => URL.revokeObjectURL(img.src));
+      const key = ix + ',' + iy, dpr = this.dpr, c = this.scratch, size = Math.round(TILE * dpr);
+      if (c.width !== size) { c.width = c.height = size; }
+      this.paintArea(c.getContext('2d'), layer.level, ix * TILE, iy * TILE, TILE, TILE, dpr);
+      layer.tiles.set(key, PENDING); this.renders++;
+      toImage(c, img => {
+        if (!this.layers.includes(layer) || layer.tiles.get(key) !== PENDING) { URL.revokeObjectURL(img.src); return; }
+        place(img, ix * TILE, iy * TILE, TILE, TILE); layer.el.appendChild(img); layer.tiles.set(key, img);
+        this.settleLayers();
       });
-      return true;
     }
-    freezeOverview() {
-      const o = this.overview, c = o?.canvas;
-      if (!c || o.img || c.freezing) return false;
-      c.freezing = true;
-      c.toBlob(blob => {
-        if (!blob || o.canvas !== c) return;
-        const img = new Image(); img.src = URL.createObjectURL(blob); img.style.cssText = c.style.cssText;
-        img.decode().then(() => { if (o.canvas !== c) { URL.revokeObjectURL(img.src); return; } c.replaceWith(img); o.img = img; }, () => URL.revokeObjectURL(img.src));
-      });
-      return true;
+    bridge(layer) {
+      const t = this.t, dpr = this.dpr, c = document.createElement('canvas');
+      c.width = Math.round(this.w * dpr); c.height = Math.round(this.h * dpr);
+      place(c, -t.x, -t.y, this.w, this.h);
+      this.paintArea(c.getContext('2d'), layer.level, -t.x, -t.y, this.w, this.h, dpr);
+      layer.el.appendChild(c); layer.bridge = c;
     }
     range(layer, pad) {
       const t = this.t, s = t.k / layer.level;
       const x0 = -t.x / s, y0 = -t.y / s, x1 = (this.w - t.x) / s, y1 = (this.h - t.y) / s;
       return [Math.floor(x0 / TILE) - pad, Math.floor(y0 / TILE) - pad, Math.floor(x1 / TILE) + pad, Math.floor(y1 / TILE) + pad];
     }
-    missing(layer, pad) {
+    missing(layer, pad, ready) {
       const [a, b, c, d] = this.range(layer, pad), out = [], cx = (a + c) / 2, cy = (b + d) / 2;
-      for (let ix = a; ix <= c; ix++) for (let iy = b; iy <= d; iy++) if (!layer.tiles.has(ix + ',' + iy)) out.push([ix, iy, Math.hypot(ix - cx, iy - cy)]);
+      for (let ix = a; ix <= c; ix++) for (let iy = b; iy <= d; iy++) { const v = layer.tiles.get(ix + ',' + iy); if (!v || (ready && v === PENDING)) out.push([ix, iy, Math.hypot(ix - cx, iy - cy)]); }
       return out.sort((p, q) => p[2] - q[2]);
     }
     trim(layer) {
       if (layer.tiles.size <= KEEP) return;
       const [a, b, c, d] = this.range(layer, 0), cx = (a + c) / 2, cy = (b + d) / 2;
       const far = [...layer.tiles.keys()].map(k => { const [x, y] = k.split(',').map(Number); return [k, Math.hypot(x - cx, y - cy)]; }).sort((p, q) => q[1] - p[1]);
-      for (const [k] of far.slice(0, layer.tiles.size - KEEP)) { const c = layer.tiles.get(k); free(c); c.remove(); layer.tiles.delete(k); }
+      for (const [k] of far.slice(0, layer.tiles.size - KEEP)) { const el = layer.tiles.get(k); free(el); el.remove?.(); layer.tiles.delete(k); }
     }
-    drop(layer) { for (const c of layer.tiles.values()) free(c); layer.el.remove(); this.layers = this.layers.filter(l => l !== layer); }
-    place() {
+    drop(layer) { for (const el of layer.tiles.values()) free(el); free(layer.bridge); layer.el.remove(); this.layers = this.layers.filter(l => l !== layer); }
+    settleLayers() {
+      const front = this.layers[this.layers.length - 1];
+      if (!front || this.missing(front, 0, true).length) return;
+      for (const old of this.layers.slice(0, -1)) this.drop(old);
+      if (front.bridge) { free(front.bridge); front.bridge.remove(); front.bridge = null; }
+    }
+    position() {
       const t = this.t, d = this.dpr;
-      const set = (layer) => {
+      const set = layer => {
         const s = t.k / layer.level, x = s === 1 ? Math.round(t.x * d) / d : t.x, y = s === 1 ? Math.round(t.y * d) / d : t.y;
         layer.el.style.transform = s === 1 ? `translate3d(${x}px,${y}px,0)` : `translate3d(${x}px,${y}px,0) scale(${s})`;
       };
       if (this.overview) set(this.overview);
       for (const layer of this.layers) set(layer);
     }
-    settleLayers() {
-      const front = this.layers[this.layers.length - 1];
-      if (front && this.layers.length > 1 && !this.missing(front, 0).length) for (const old of this.layers.slice(0, -1)) this.drop(old);
-    }
     pump() {
       this.pumping = 0;
       const front = this.layers[this.layers.length - 1];
-      if (!front) return;
+      if (!front || this.live) return;
       const start = performance.now();
-      let todo = this.live ? [] : this.missing(front, 0);
-      if (!todo.length && !this.live) todo = this.missing(front, 2);
-      while (todo.length && performance.now() - start < 7) { const [ix, iy] = todo.shift(); this.renderTile(front, ix, iy); }
-      this.settleLayers(); this.trim(front);
-      let busy = todo.length > 0;
-      if (!busy && !this.live) {
-        if (this.overviewStale) { this.drawOverview(); busy = true; }
-        else if (this.freezeOverview()) busy = true;
-        else for (const key of front.tiles.keys()) if (this.freeze(front, key)) { busy = true; break; }
-      }
-      if (busy) this.pumping = requestAnimationFrame(() => this.pump());
+      let todo = this.missing(front, 0);
+      if (!todo.length) todo = this.missing(front, 2);
+      while (todo.length && performance.now() - start < 6) { const [ix, iy] = todo.shift(); this.renderTile(front, ix, iy); }
+      this.trim(front);
+      if (todo.length) this.pumping = requestAnimationFrame(() => this.pump());
+      else if (this.overviewStale) { clearTimeout(this.later); this.later = setTimeout(() => { if (!this.live && this.overviewStale) this.drawOverview(); }, 800); }
     }
     paint(t, before, live) {
       this.t = { k: t.k, x: t.x, y: t.y }; this.before = before; this.live = live;
       if (this.dirty) this.rebuild();
       if (!this.overview) this.drawOverview();
       let front = this.layers[this.layers.length - 1];
-      const ratio = front ? t.k / front.level : 1;
-      if (!front || front.stale || (!live && Math.abs(ratio - 1) > 1e-3) || ratio > 2 || ratio < 0.5) {
+      if (!front || (!live && (front.stale || Math.abs(t.k / front.level - 1) > 1e-3))) {
         const next = layerEl(this.host, t.k);
         this.layers.push(next);
         while (this.layers.length > 2) this.drop(this.layers[0]);
-        if (front && front.stale && !live) for (const [ix, iy] of this.missing(next, 0)) this.renderTile(next, ix, iy);
+        if (!live) this.bridge(next);
         front = next;
       }
-      this.place();
-      this.settleLayers();
-      if (!this.pumping) this.pumping = requestAnimationFrame(() => this.pump());
+      this.position();
+      if (!live && !this.pumping) this.pumping = requestAnimationFrame(() => this.pump());
     }
   }
   window.SvgRaster = SvgRaster;

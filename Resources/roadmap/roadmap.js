@@ -456,10 +456,10 @@ function applyState(flow = false) {
 
 // ---------- viewport ----------
 const zoom = d3.zoom().scaleExtent([0.18, 2.6]).filter(event => event.type !== 'wheel' && event.type !== 'dblclick' && !event.button && !(S.editing && event.target.closest?.('.node, .handle')) && (!compact() || settling || (event.touches?.length ?? 0) >= 2))
-  .on('start', event => { if (event.sourceEvent?.type === 'mousedown') svg.classed('grabbing', true); })
+  .on('start', event => { zooming = true; if (event.sourceEvent?.type === 'mousedown') svg.classed('grabbing', true); })
   .on('zoom', event => { if (event.sourceEvent && !compact()) moving(true); const m = margin(); S.z = event.transform; S.t = d3.zoomIdentity.translate(S.z.x - m, S.z.y - m).scale(S.z.k); if (!frame) frame = requestAnimationFrame(paint); })
-  .on('end', () => { svg.classed('grabbing', false); if (!wheeling) settleView(); if (compact() && !settling) settle(); });
-let frame = 0, settling = false;
+  .on('end', () => { zooming = false; svg.classed('grabbing', false); if (raster && rasterOn() && !frame) frame = requestAnimationFrame(paint); if (!wheeling) settleView(); if (compact() && !settling) settle(); });
+let frame = 0, settling = false, zooming = false;
 function canonical(k) {
   const { w } = viewport(), b = S.layout.bounds, side = 56, width = Math.max(w, b.w * k + 2 * side);
   return { width, height: b.h * k + 116 + 96, t: d3.zoomIdentity.translate((width - b.w * k) / 2 - b.x * k, 116 - b.y * k).scale(k) };
@@ -517,18 +517,18 @@ function dots(ctx, t, w, h, dpr) {
   for (let x = ox - step; x < w + step; x += step) for (let y = oy - step; y < h + step; y += step) { ctx.moveTo((x + 1.1) * dpr, y * dpr); ctx.arc(x * dpr, y * dpr, 1.1 * dpr, 0, Math.PI * 2); }
   ctx.fill();
 }
+const live = () => zooming || app.classList.contains('moving');
 function paintRaster() {
   const { w, h } = viewport();
   raster.resize(w, h, devicePixelRatio || 1);
-  raster.paint(S.t, dots, app.classList.contains('moving'));
+  raster.paint(S.t, dots, live());
   const level = $('zoom-level'); if (level) level.textContent = Math.round(S.t.k * 100) + '%';
 }
 function paint() {
   frame = 0;
   if (raster && rasterOn()) {
     drawn = null; paintRaster();
-    if (!app.classList.contains('moving')) world.attr('transform', S.t);
-    setZoomMode(S.t.k >= NEAR ? 'near' : S.t.k < FAR ? 'far' : 'mid');
+    if (!live()) { world.attr('transform', S.t); setZoomMode(S.t.k >= NEAR ? 'near' : S.t.k < FAR ? 'far' : 'mid'); }
     if (raster.dirty) paintRaster();
     drawViewport(); viewChanged();
     return;
