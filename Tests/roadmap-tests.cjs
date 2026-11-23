@@ -24,6 +24,17 @@ const roadmap = {
   const posted = type => page.evaluate(t => (window.__posted || []).filter(m => m.type === t), type);
   await send({ type: 'load', roadmap, pages: [], mentions: [], theme: 'dark', language: 'zh-Hans', editable: true, platform: 'mac' });
   let checks = 0;
+  const editing = () => page.evaluate(() => document.getElementById('app').classList.contains('editing'));
+  assert.equal(await page.locator('#tools [data-tool="edit"], #tools [data-tool="mentions"]').count(), 0, 'no edit or link button in the corner');
+  assert.equal(await page.locator('#search').isVisible(), false, 'no search box');
+  await page.mouse.click(640, 400);
+  await page.keyboard.press('Meta+e'); assert.equal(await editing(), true, 'Cmd-E starts editing');
+  await page.keyboard.press('Meta+e'); assert.equal(await editing(), false, 'Cmd-E ends editing');
+  await page.mouse.click(640, 700, { button: 'right' });
+  await page.locator('#popover [data-toggle-edit]').click(); assert.equal(await editing(), true, 'the context menu starts editing');
+  await page.mouse.click(640, 700, { button: 'right' });
+  assert.equal(await page.locator('#popover [data-toggle-edit]').textContent(), '完成编辑');
+  await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); assert.equal(await editing(), false, 'Escape ends editing');
   const check = (condition, message) => { assert.ok(condition, message); checks++; };
   const same = (actual, expected, message) => { assert.deepStrictEqual(actual, expected, message); checks++; };
 

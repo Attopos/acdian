@@ -23,12 +23,12 @@ const COLORS = ['pink', 'black', 'rose', 'plum', 'amber', 'teal', 'sky', 'graphi
 const STRINGS = {
   en: { '入门': 'Intro', '基础': 'Basics', '进阶': 'Advanced', '实战': 'In practice', '依赖': 'Depends on', '被依赖': 'Depended on by', '用到': 'Uses', '用在': 'Used in', '相关': 'Related', '节点': 'Nodes', '要点里提到': 'In key points', '搜索节点、要点或页面': 'Search nodes, key points or pages',
     
-    '要点': 'Key points', '页面': 'Pages', '关系': 'Connections', '原理图': 'Figure', '页面互链': 'Page links', '适合窗口': 'Fit window', '放大': 'Zoom in', '缩小': 'Zoom out', '编辑': 'Edit', '完成': 'Done',
+    '要点': 'Key points', '页面': 'Pages', '关系': 'Connections', '原理图': 'Figure', '页面互链': 'Page links', '适合窗口': 'Fit window', '放大': 'Zoom in', '缩小': 'Zoom out', '编辑': 'Edit', '完成': 'Done', '完成编辑': 'Done editing',
     '这个节点还没有页面，摘要是通用常识。': 'This node has no page yet; the summary is general knowledge.', '页面不存在': 'Page not found', 
     '这张路线图还是空的': 'This roadmap is empty', '打开「编辑」，双击空白处新建节点。': 'Turn on Edit and double-click the canvas to add a node.', '这样连会成环：%1 已经排在 %2 后面。': 'That would make a loop: %1 already comes after %2.', '未挂靠的页面': 'Unattached pages', '所有页面都已挂上': 'Every page is attached', '新节点': 'New node', '为什么有这条关系？一句话。': 'Why does this relation exist? One sentence.', '删除': 'Delete', '节点标题': 'Node title', '新建页面': 'New page', '已撤销': 'Undone', '没有可撤销的操作': 'Nothing to undo', '这两个节点之间已经有关系了。': 'These two nodes are already related.', '把页面拖到节点上挂靠': 'Drag a page onto a node to attach it', '目标': 'Goal', '移除节点': 'Remove node', '取消挂靠': 'Detach' },
   es: { '入门': 'Inicio', '基础': 'Bases', '进阶': 'Avanzado', '实战': 'En práctica', '依赖': 'Depende de', '被依赖': 'Lo usan', '用到': 'Usa', '用在': 'Se usa en', '相关': 'Relacionado', '节点': 'Nodos', '要点里提到': 'En puntos clave', '搜索节点、要点或页面': 'Buscar nodos, puntos clave o páginas',
     
-    '要点': 'Puntos clave', '页面': 'Páginas', '关系': 'Relaciones', '原理图': 'Figura', '页面互链': 'Enlaces entre páginas', '适合窗口': 'Ajustar a la ventana', '放大': 'Acercar', '缩小': 'Alejar', '编辑': 'Editar', '完成': 'Listo',
+    '要点': 'Puntos clave', '页面': 'Páginas', '关系': 'Relaciones', '原理图': 'Figura', '页面互链': 'Enlaces entre páginas', '适合窗口': 'Ajustar a la ventana', '放大': 'Acercar', '缩小': 'Alejar', '编辑': 'Editar', '完成': 'Listo', '完成编辑': 'Terminar edición',
     '这个节点还没有页面，摘要是通用常识。': 'Este nodo aún no tiene página; el resumen es conocimiento general.', '页面不存在': 'Página no encontrada', 
     '这张路线图还是空的': 'Este mapa está vacío', '打开「编辑」，双击空白处新建节点。': 'Activa Editar y haz doble clic en el lienzo para añadir un nodo.', '这样连会成环：%1 已经排在 %2 后面。': 'Eso crearía un ciclo: %1 ya va después de %2.', '未挂靠的页面': 'Páginas sin asignar', '所有页面都已挂上': 'Todas las páginas están asignadas', '新节点': 'Nodo nuevo', '为什么有这条关系？一句话。': '¿Por qué existe esta relación? Una frase.', '删除': 'Eliminar', '节点标题': 'Título del nodo', '新建页面': 'Página nueva', '已撤销': 'Deshecho', '没有可撤销的操作': 'Nada que deshacer', '这两个节点之间已经有关系了。': 'Estos dos nodos ya están relacionados.', '把页面拖到节点上挂靠': 'Arrastra una página a un nodo para asignarla', '目标': 'Meta', '移除节点': 'Quitar nodo', '取消挂靠': 'Desvincular' },
 };
@@ -738,8 +738,7 @@ function flush() {
 
 // ---------- chrome ----------
 function drawChrome() {
-  const canEdit = S.editable && S.platform !== 'ios';
-  $('tools').innerHTML = `${canEdit ? `<div class="group"><button data-tool="edit" aria-pressed="${S.editing}" title="${esc(T(S.editing ? '完成' : '编辑'))}">${ic('pencil')}<span>${esc(T(S.editing ? '完成' : '编辑'))}</span></button></div>` : ''}<div class="group"><button data-tool="out" title="${esc(T('缩小'))}">${ic('minus')}</button><button data-tool="fit" title="${esc(T('适合窗口'))}"><span id="zoom-level">${Math.round(S.t.k * 100)}%</span></button><button data-tool="in" title="${esc(T('放大'))}">${ic('plus')}</button></div>`;
+  $('tools').innerHTML = `<div class="group"><button data-tool="out" title="${esc(T('缩小'))}">${ic('minus')}</button><button data-tool="fit" title="${esc(T('适合窗口'))}"><span id="zoom-level">${Math.round(S.t.k * 100)}%</span></button><button data-tool="in" title="${esc(T('放大'))}">${ic('plus')}</button></div>`;
   $('search-input').placeholder = T('搜索节点、要点或页面');
 }
 $('legend').addEventListener('click', event => { if (event.target.closest('.toggle')) { S.legendClosed = !S.legendClosed; drawChrome(); } });
@@ -789,7 +788,8 @@ document.addEventListener('keydown', event => {
   else if (command && event.key === '-') { event.preventDefault(); zoomBy(1 / 1.3); }
   else if (command && event.key === '0') { event.preventDefault(); go(fitTransform()); }
   else if (command && event.key.toLowerCase() === 'z' && S.editing) { event.preventDefault(); undo(); }
-  else if (event.key === 'Escape') { if (app.classList.contains('searching')) closeSearch(); else if (!$('lightbox').hidden) $('lightbox').hidden = true; else if (popoverOpen()) closePopover(); else if (S.focus) focus(null); }
+  else if (command && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'e' && canEdit()) { event.preventDefault(); setEditing(!S.editing); }
+  else if (event.key === 'Escape') { if (app.classList.contains('searching')) closeSearch(); else if (!$('lightbox').hidden) $('lightbox').hidden = true; else if (popoverOpen()) closePopover(); else if (S.focus) focus(null); else if (S.editing) setEditing(false); }
   else if (S.editing && S.focus && (event.key === 'Backspace' || event.key === 'Delete')) removeNode(S.byId.get(S.focus));
 });
 let wasCompact = compact();
@@ -816,6 +816,18 @@ function undo() {
   if (S.focus && !S.byId.has(S.focus)) focus(null); else if (S.focus) renderPanel();
   toast(T('已撤销'));
 }
+const canEdit = () => S.editable && S.platform !== 'ios';
+app.addEventListener('contextmenu', event => {
+  if (event.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+  event.preventDefault();
+  if (!canEdit()) return;
+  closePopover();
+  const el = $('popover'); el.className = 'float menu';
+  el.innerHTML = `<button data-toggle-edit>${esc(T(S.editing ? '完成编辑' : '编辑'))}</button>`;
+  el.onclick = e => { if (!e.target.closest('[data-toggle-edit]')) return; closePopover(); setEditing(!S.editing); };
+  const [x, y] = d3.pointer(event, app);
+  place(el, x - 12, y);
+});
 function setEditing(on) {
   S.editing = !!on && S.editable; app.classList.toggle('editing', S.editing); closePopover(); drawChrome(); layout(); draw(); drawDrawer(); syncRaster();
   if (S.focus) renderPanel();
