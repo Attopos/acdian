@@ -1388,7 +1388,7 @@ test('--- typed on an empty line under a paragraph becomes a divider, not a head
 });
 
 async function visibleLines(page) {
-  return page.locator('.cm-line').evaluateAll(lines=>lines.filter(line=>line.getBoundingClientRect().height>3).map(line=>line.textContent));
+  return page.locator('.cm-line').evaluateAll(lines=>lines.filter(line=>line.getBoundingClientRect().height>3).map(line=>line.textContent.replace(/\u200b/g,'')));
 }
 
 test('two Enters end every kind of block in an empty line that stays visible', async t => {
@@ -1472,7 +1472,7 @@ test('display formulas written back to back on one line render one by one', asyn
 test('two Enters between paragraphs leave the two empty lines they show', async t => {
   for (const [name, source, expected, shown] of [
     ['paragraphs', 'A\n\nB\n', 'A\n\n\nB\n', ['A', '', '', 'B']],
-    ['paragraph before a list', 'A\n\n- B\n', 'A\n\n\n- B\n', ['A', '', '', '•B']]
+    ['paragraph before a list', 'A\n\n- B\n', 'A\n\n\n- B\n', ['A', '', '', 'B']]
   ]) await t.test(name, async sub => {
     const r = await editor(sub, source, { fontSize: 16 });
     await r.position(1);
@@ -1839,4 +1839,53 @@ test('the caret is drawn in an empty table cell', async t => {
   }
   await r.page.keyboard.type('Z');
   assert.equal((await r.get()).text, '| a |  |\n|---|---|\n| Z | 2 |\n');
+});
+
+test('list markers sit centred on the first line and the caret at an item start matches the text', async t => {
+  const source = 'Para\n\n- 连接与握手，这一项写得足够长，好让它在编辑区里换到第二行，看续行是不是和第一行的文字左边对齐\n- 第二项\n  - 二级\n    - 三级\n- \n\n1. 第一\n10. 第十\n\n- [ ] 任务\n\n> 引用\n\n# 标题\n';
+  const r = await editor(t, source, { fontSize: 16 });
+  await r.page.evaluate(() => document.fonts.ready);
+  const lines = source.split('\n');
+  const startOf = index => lines.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0);
+  const measure = at => r.page.evaluate(async at => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const view = window.acdianEditor, caret = document.querySelector('.cm-cursor').getBoundingClientRect();
+    const line = view.state.doc.lineAt(at), node = view.domAtPos(line.from).node, element = (node.nodeType === 1 ? node : node.parentElement).closest('.cm-line');
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let text = null;
+    for (let current; (current = walker.nextNode());) {
+      if (current.parentElement.closest('.cm-list-bullet,.cm-format-delimiter,.cm-task-widget') || !current.textContent.trim()) continue;
+      const range = document.createRange(); range.setStart(current, 0); range.setEnd(current, 1);
+      const box = range.getBoundingClientRect(); if (box.height) { text = box; break; }
+    }
+    const marker = element.querySelector('.cm-list-bullet'), mark = marker && getComputedStyle(marker, '::before');
+    const markerBox = marker?.getBoundingClientRect();
+    let dot = null;
+    if (marker && mark.content !== 'none' && mark.content !== 'normal') {
+      const size = parseFloat(mark.width);
+      dot = { size, centerY: markerBox.top + markerBox.height / 2 };
+    }
+    return { caret: { left: caret.left, top: caret.top, bottom: caret.bottom }, text: text && { left: text.left, top: text.top, bottom: text.bottom }, dot, rows: [...element.getClientRects()].length };
+  }, at);
+  for (const index of [2, 3, 4, 5, 8, 9, 11, 13, 15]) {
+    const prefix = /^(\s*(?:[-+*]\s+(?:\[[ xX]\]\s*)?|\d+[.)]\s+|>\s+|#+\s+))/.exec(lines[index])[1];
+    await r.position(startOf(index) + prefix.length);
+    const m = await measure(startOf(index) + prefix.length);
+    assert.ok(Math.abs(m.caret.left - m.text.left) <= 1.5, `${lines[index]}: caret x ${m.caret.left} vs text ${m.text.left}`);
+    assert.ok(m.caret.top >= m.text.top - 2 && m.caret.bottom <= m.text.bottom + 2, `${lines[index]}: caret ${m.caret.top}-${m.caret.bottom} stays within the text ${m.text.top}-${m.text.bottom}`);
+    if (index <= 5) {
+      assert.ok(m.dot, `${lines[index]}: the marker is drawn as a dot`);
+      assert.ok(m.dot.size >= 5 && m.dot.size <= 7.5, `${lines[index]}: dot size ${m.dot.size}`);
+      assert.ok(Math.abs(m.dot.centerY - (m.text.top + m.text.bottom) / 2) <= 1.5, `${lines[index]}: dot centre ${m.dot.centerY} vs text centre ${(m.text.top + m.text.bottom) / 2}`);
+    }
+  }
+  await r.position(startOf(6) + 2);
+  const empty = await r.page.evaluate(async () => { await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return document.querySelector('.cm-cursor').getBoundingClientRect().height; });
+  assert.ok(empty >= 16 && empty <= 22, `the caret in an empty item is one text line tall: ${empty}`);
+  const item = await r.page.locator('.cm-list-bullet').first().boundingBox();
+  await r.page.mouse.click(item.x + item.width / 2, item.y + item.height / 2);
+  const clicked = await measure(startOf(2) + 2);
+  assert.ok(Math.abs(clicked.caret.left - clicked.text.left) <= 1.5 && clicked.caret.top >= clicked.text.top - 2 && clicked.caret.bottom <= clicked.text.bottom + 2, 'a click on the marker puts an aligned caret at the text start');
+  const classes = await r.page.locator('.cm-list-bullet').evaluateAll(markers => markers.map(marker => marker.className));
+  assert.ok(classes[2] !== classes[0] && classes[3] !== classes[2], 'nested levels use different markers');
 });

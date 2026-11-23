@@ -146,9 +146,21 @@ function textEms(text) {
   const ems=measureContext?measureContext.measureText(expanded).width/size:expanded.length*.25;
   sourceEms.set(key,ems);return ems;
 }
-function listMarkerEms(text) {
+function orderedEms(state,tree,pos) {
+  let list=null;
+  for(let node=tree.resolveInner(pos,1);node;node=node.parent)if(node.name==='OrderedList'){list=node;break;}
+  if(!list)return null;
+  let widest=1.25;
+  for(let item=list.firstChild;item;item=item.nextSibling){
+    if(item.name!=='ListItem')continue;
+    const line=state.doc.lineAt(item.from),number=/^\s*(\d+)[.)]/.exec(line.text);
+    if(number)widest=Math.max(widest,textEms(number[1]+'.')+.35);
+  }
+  return widest;
+}
+function listMarkerEms(text,state,tree,pos) {
   const task=/^[-+*]\s+\[[ xX]\]/.exec(text),ordered=/^(\d+)[.)]\s/.exec(text);
-  return task?1.55:ordered?Math.max(1.25,textEms(ordered[1]+'.')+.35):1.25;
+  return task?1.55:ordered?(state&&orderedEms(state,tree,pos))||Math.max(1.25,textEms(ordered[1]+'.')+.35):1.25;
 }
 // A nested item starts under its parent's text, as in Notion and Typora, however many spaces the source uses.
 function listNesting(state,tree,pos) {
@@ -156,7 +168,7 @@ function listNesting(state,tree,pos) {
   for(let node=tree.resolveInner(pos,1);node;node=node.parent){
     if(node.name!=='ListItem'||node.from>=pos)continue;
     const line=state.doc.lineAt(node.from);if(line.from===state.doc.lineAt(pos).from)continue;
-    ems+=listMarkerEms(line.text.slice(node.from-line.from));
+    ems+=listMarkerEms(line.text.slice(node.from-line.from),state,tree,node.from);
   }
   return ems;
 }
@@ -165,9 +177,9 @@ function listLineStyle(hang,marker) {
 }
 
 class BulletWidget extends WidgetType {
-  constructor(label) { super(); this.label = label; }
-  eq(other) { return this.label === other.label; }
-  toDOM() { const span = document.createElement('span'); span.className = this.label==='•' ? 'cm-list-bullet cm-list-dot' : 'cm-list-bullet'; span.textContent = this.label; span.setAttribute('aria-hidden','true'); return span; }
+  constructor(label,level=1) { super(); this.label = label; this.level = level; }
+  eq(other) { return this.label === other.label && this.level === other.level; }
+  toDOM() { const span = document.createElement('span'); const dot = this.label==='•'; span.className = dot ? 'cm-list-bullet cm-list-dot cm-list-dot-'+this.level : 'cm-list-bullet cm-list-number'; span.textContent = dot ? '\u200b' : this.label; span.setAttribute('aria-hidden','true'); return span; }
 }
 class TaskWidget extends WidgetType {
   constructor(from, checked, language) { super(); Object.assign(this,{from,checked,language}); }
@@ -762,13 +774,16 @@ function decorations(state,reuse=new Map(),blocks=[]) {
     const task=/^(\s*)[-+*]\s+\[([ xX])\]\s*/.exec(line.text);
     const bullet=/^(\s*)(?:([-+*])\s+|(\d+)[.)]\s+)/.exec(line.text);
     if(task||bullet) {
-      const marker=task?1.55:bullet[3]?Math.max(1.25,textEms(bullet[3]+'.')+.35):1.25;
+      const marker=task?1.55:bullet[3]?orderedEms(state,tree,line.from+bullet[1].length)||Math.max(1.25,textEms(bullet[3]+'.')+.35):1.25;
       const indent=(task||bullet)[1],nested=indent?listNesting(state,tree,line.from+indent.length):0,width=nested||textEms(indent);
       if(nested)list.push(Decoration.mark({class:'cm-list-indent',attributes:{style:`width:${nested.toFixed(3)}em`}}).range(line.from,line.from+indent.length));
       list.push(Decoration.line({class:'cm-list-line',attributes:{style:listLineStyle(width+marker,marker)}}).range(line.from));
     }
     if(task)list.push(Decoration.replace({widget:new TaskWidget(line.from,task[2].toLowerCase()==='x',state.facet(editorLanguage))}).range(line.from+task[1].length,line.from+task[0].length));
-    else if(bullet)list.push(Decoration.replace({widget:new BulletWidget(bullet[3]?bullet[3]+'.':'•')}).range(line.from+bullet[1].length,line.from+bullet[0].length));
+    else if(bullet){
+      let depth=0;for(let node=tree.resolveInner(line.from+bullet[1].length,1);node;node=node.parent)if(node.name==='ListItem')depth++;
+      list.push(Decoration.replace({widget:new BulletWidget(bullet[3]?bullet[3]+'.':'•',(Math.max(1,depth)-1)%3+1)}).range(line.from+bullet[1].length,line.from+bullet[0].length));
+    }
     const links=/(!?)\[\[([^\]\n]+)\]\]|\[([^\]\n]+)\]\(([^)\n]+)\)/g; let match;
     while((match=links.exec(line.text))) {
       if(match[1])continue;
@@ -991,7 +1006,7 @@ const boundaryCaretFilter=EditorState.transactionFilter.of(tr=>{
   let tableBefore=false,tableAfter=false;
   state.field(liveField).between(Math.max(0,pos-1),Math.min(state.doc.length,pos+1),(from,to,decoration)=>{if(/cm-table-syntax/.test(decoration.spec.class||'')){if(to===pos&&from<pos)tableBefore=true;if(from===pos&&to>pos)tableAfter=true;}});
   const before=syntaxBefore(state,pos)<pos||tableBefore,after=syntaxAfter(state,pos)>pos||tableAfter;
-  const assoc=before&&!after&&pos<line.to?1:after&&!before&&pos>line.from?-1:range.assoc;
+  const assoc=visiblePrefixEnd(state,pos)===pos&&pos<line.to?1:before&&!after&&pos<line.to?1:after&&!before&&pos>line.from?-1:range.assoc;
   return pos!==range.head||assoc!==range.assoc?[tr,{selection:EditorSelection.create([EditorSelection.cursor(pos,assoc,undefined,range.goalColumn)]),sequential:true}]:tr;
 });
 // A click left of a list item's text, on its indent or bullet, puts the caret at the start of the text, as in Notion.
@@ -1328,7 +1343,8 @@ window.acdianScrollTo=raw=>{
   const scroller=view.scrollDOM,offset=view.documentTop-scroller.getBoundingClientRect().top+scroller.scrollTop,block=view.lineBlockAt(pos);
   const lineDOM=view.domAtPos(pos).node,element=lineDOM.nodeType===1?lineDOM:lineDOM.parentElement,headingLine=element?.closest?.('.cm-line'),airAbove=headingLine?parseFloat(getComputedStyle(headingLine).paddingTop)||0:0;
   scroller.scrollTop=Math.max(0,offset+block.top+airAbove-Math.min(72,scroller.clientHeight*.12));
-  requestAnimationFrame(()=>{const target=view.domAtPos(pos).node,el=(target.nodeType===1?target:target.parentElement)?.closest?.('.cm-line');if(!el)return;el.classList.remove('cm-jump-flash');void el.offsetWidth;el.classList.add('cm-jump-flash');setTimeout(()=>el.classList.remove('cm-jump-flash'),1500);});
+  const jumpDoc=view.state.doc;
+  requestAnimationFrame(()=>{if(view.state.doc!==jumpDoc)return;const target=view.domAtPos(pos).node,el=(target.nodeType===1?target:target.parentElement)?.closest?.('.cm-line');if(!el)return;el.classList.remove('cm-jump-flash');void el.offsetWidth;el.classList.add('cm-jump-flash');setTimeout(()=>el.classList.remove('cm-jump-flash'),1500);});
   // The jumped-to heading stays current even when the page cannot scroll it to the top.
   headingFollowPausedUntil=performance.now()+400;reportHeading(headingStarts(view.state).indexOf(pos));
   return true;

@@ -1,4 +1,5 @@
-:root { --editor-font-size:16px; }
+:root { --editor-font-size:16px; --list-dot:#f0559e; }
+html.light { --list-dot:#d93b86; }
 html,body { height:100%; margin:0; }
 /* A hard flick stops at the top and bottom of the page instead of pulling it past them. */
 html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
@@ -81,7 +82,12 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-list-line *, .cm-editor .cm-quote-list-line * { text-indent:0; }
 .cm-editor .cm-list-bullet { display:inline-block; width:var(--cm-list-marker,1.25em); color:var(--marker); text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap; user-select:none; }
 /* The bullet glyph is drawn larger without changing the line or where the text starts. */
-.cm-editor .cm-list-dot { transform:scale(1.4); pointer-events:none; }
+.cm-editor .cm-list-bullet { line-height:1.2; }
+.cm-editor .cm-list-number { box-sizing:border-box; padding-right:.35em; text-align:right; }
+.cm-editor .cm-list-dot { position:relative; pointer-events:none; }
+.cm-editor .cm-list-dot::before { content:''; position:absolute; left:50%; top:50%; box-sizing:border-box; width:.36em; height:.36em; margin:-.18em 0 0 -.18em; border-radius:50%; background:var(--list-dot); }
+.cm-editor .cm-list-dot-2::before { background:transparent; border:1.5px solid var(--list-dot); }
+.cm-editor .cm-list-dot-3::before { width:.32em; height:.32em; margin:-.16em 0 0 -.16em; border-radius:1px; }
 .cm-editor .cm-task-widget { display:inline-flex; align-items:center; width:1.55em; vertical-align:middle; }
 .cm-editor .cm-task-widget input { accent-color:#d93b86; margin:0 6px 0 2px; width:14px; height:14px; cursor:pointer; }
 /* A click opens the link, so the pointer says so; the underline firms up on hover. */
