@@ -58,7 +58,7 @@ test('Backspace and Delete skip hidden bold markers, retain Unicode and remove e
  r.w.acdianUndo();assert.equal(r.get().text,'__中__');r.close();
 });
 test('typing star-space immediately produces a bullet, Enter continues/exits, Backspace removes markup',()=>{
- const r=setup();r.w.acdianInsertText('* ');assert.equal(r.w.document.querySelector('.cm-list-bullet').textContent,'•');
+ const r=setup();r.w.acdianInsertText('* ');assert.ok(r.w.document.querySelector('.cm-list-bullet').classList.contains('cm-list-dot'));
  r.w.acdianInsertText('第一项');r.w.acdianLiveEditorTest.simpleListEnter(r.view);assert.equal(r.get().text,'* 第一项\n* ');
  r.w.acdianLiveEditorTest.simpleListEnter(r.view);assert.equal(r.get().text,'* 第一项\n');
  r.w.acdianInsertText('- ');r.w.acdianLiveEditorTest.simpleListBackspace(r.view);assert.equal(r.get().text,'* 第一项\n');r.close();
