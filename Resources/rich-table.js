@@ -118,7 +118,9 @@ export function tableDecorations(state,tree) {
           'data-table-cell':String(cell.index),
           style:`text-align:${table.alignment[cell.index]||'left'};width:${Math.floor((widths[cell.index]||0)*1e5)/1e3}%`
         }}).range(cell.markFrom,cell.rawTo));
-        hide(cell.rawFrom,cell.contentFrom);hide(cell.contentTo,cell.rawTo);
+        if(cell.contentFrom===cell.contentTo&&cell.rawFrom<cell.contentFrom){hide(cell.rawFrom,cell.contentFrom-1);result.push(Decoration.mark({class:'cm-table-anchor'}).range(cell.contentFrom-1,cell.contentFrom));}
+        else hide(cell.rawFrom,cell.contentFrom);
+        hide(cell.contentTo,cell.rawTo);
         // The selected part of the cell's own text, so a selection highlights text, not rows.
         for(const range of state.selection.ranges) {
           const from=Math.max(range.from,cell.contentFrom),to=Math.min(range.to,cell.contentTo);

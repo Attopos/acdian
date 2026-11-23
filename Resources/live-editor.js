@@ -1,5 +1,5 @@
-import { EditorState, EditorSelection, StateField, StateEffect, Compartment, Transaction, findClusterBreak } from '@codemirror/state';
-import { EditorView, ViewPlugin, Decoration, WidgetType, keymap, placeholder, drawSelection } from '@codemirror/view';
+import { EditorState, EditorSelection, StateField, StateEffect, Compartment, Transaction, Prec, findClusterBreak } from '@codemirror/state';
+import { EditorView, ViewPlugin, Decoration, WidgetType, keymap, placeholder, drawSelection, BlockType } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
 import { syntaxTree, ensureSyntaxTree, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
@@ -468,14 +468,18 @@ function editableBlank(state,line) {
 // Markdown needs one blank line between blocks, and that separator stays
 // hidden. Every further blank line in a run is an empty line the writer left
 // on purpose, so it keeps the height of a line: in a run, all but the last
-// show. Runs before the first text stay hidden; after the last text the
-// file's final empty line stays hidden too.
+// show. Before the first text the first line of the run is the one hidden;
+// after the last text the file's final empty line stays hidden too.
+const voidLine=line=>line.text===''||line.text==='\r';
+function blankRun(doc,line) {
+  let first=line.number,last=line.number;
+  while(first>1&&voidLine(doc.line(first-1)))first--;
+  while(last<doc.lines&&voidLine(doc.line(last+1)))last++;
+  return {first,last,hidden:first===1?1:last};
+}
 function keptBlank(state,line) {
-  const doc=state.doc;
-  if(line.text.trim()||line.number>=doc.lines||doc.line(line.number+1).text.trim())return false;
-  let next=line.number+1;while(next<=doc.lines&&!doc.line(next).text.trim())next++;
-  let prev=line.number-1;while(prev>=1&&!doc.line(prev).text.trim())prev--;
-  return prev>=1;
+  if(!voidLine(line))return false;
+  return line.number!==blankRun(state.doc,line).hidden;
 }
 // Two Enters leave an empty line. When text is typed into a blank line, the
 // blank lines just above it would become Markdown's hidden separator, and a
@@ -557,19 +561,29 @@ const leftBlankFilter=EditorState.transactionFilter.of(tr=>{
   if(tr.docChanged||!tr.selection)return tr;
   const start=tr.startState,from=start.field(inputBlankField);if(from===null)return tr;
   const line=start.doc.lineAt(from),head=tr.newSelection.main.head;
-  if(line.from!==from||line.text.trim()||(head>=line.from&&head<=line.to)||line.number<=1||line.number>=start.doc.lines)return tr;
-  const above=start.doc.line(line.number-1),below=start.doc.line(line.number+1);
-  if(!above.text.trim()||!below.text.trim()||literalCodeLine(start,above)||literalCodeLine(start,below))return tr;
+  if(line.from!==from||!voidLine(line)||(head>=line.from&&head<=line.to)||line.number<=1)return tr;
+  const run=blankRun(start.doc,line);
+  if(run.hidden!==line.number||blankDocument(start.doc))return tr;
+  const above=run.first>1?start.doc.line(run.first-1):null,below=line.number<start.doc.lines?start.doc.line(line.number+1):null;
+  if(above&&literalCodeLine(start,above)||below&&literalCodeLine(start,below))return tr;
   return [tr,{changes:{from:line.from,insert:line.text.includes('\r')||above.text.endsWith('\r')?'\r\n':'\n'},sequential:true}];
+});
+const emptiedLineFilter=EditorState.transactionFilter.of(tr=>{
+  if(!tr.docChanged||!tr.isUserEvent('delete')||tr.startState.selection.ranges.length!==1||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
+  const doc=tr.newDoc,line=doc.lineAt(tr.newSelection.main.head),old=tr.startState.doc.lineAt(tr.startState.selection.main.head);
+  if(!voidLine(line)||voidLine(old)||old.number!==line.number||line.number<3||inCode(tr.startState,old.from))return tr;
+  const above=doc.line(line.number-1);
+  if(!voidLine(above)||blankRun(doc,above).first<=1)return tr;
+  return [tr,{changes:{from:above.from,to:line.from},sequential:true}];
 });
 const blankSelectionFilter=EditorState.transactionFilter.of(tr=>{
   if(tr.docChanged||!tr.selection||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
   const state=tr.state,range=tr.newSelection.main,line=state.doc.lineAt(range.head);
-  if(!hiddenSourceLine(state,line)&&(line.text.trim()||editableBlank(state,line)||keptBlank(state,line)||literalCodeLine(state,line)))return tr;
+  if(!hiddenSourceLine(state,line)&&(!voidLine(line)||editableBlank(state,line)||keptBlank(state,line)||literalCodeLine(state,line)))return tr;
   const direction=range.head<tr.startState.selection.main.head?-1:1;
   for(const step of [direction,-direction])for(let n=line.number+step;n>=1&&n<=state.doc.lines;n+=step) {
     const next=state.doc.line(n);
-    if(!hiddenSourceLine(state,next)&&(next.text.trim()||literalCodeLine(state,next)||editableBlank(state,next)||keptBlank(state,next)))return [tr,{selection:EditorSelection.cursor(step>0?(visiblePrefixEnd(state,next.from)??next.from):next.to),sequential:true}];
+    if(!hiddenSourceLine(state,next)&&(!voidLine(next)||literalCodeLine(state,next)||editableBlank(state,next)||keptBlank(state,next)))return [tr,{selection:EditorSelection.cursor(step>0?(visiblePrefixEnd(state,next.from)??next.from):next.to),sequential:true}];
   }
   return tr;
 });
@@ -791,12 +805,14 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       if(metadata.editable&&state.selection.ranges.some(range=>range.to>=from&&range.from<=to))continue;
       list.push(Decoration.replace({widget:new InlineMathWidget(match[1].trim())}).range(from,to));
     }
-    if(!line.text.trim()) {
+    if(voidLine(line)) {
       // Tables, code blocks, quotes and callouts end without a paragraph gap,
       // so the blank line after one keeps a gap before whatever follows.
       const prev=n>1?state.doc.line(n-1).text:'',next=n<state.doc.lines?state.doc.line(n+1).text:'';
       const gap=next.trim()&&(/^\s*(?:\||```|~~~|>)/.test(prev)||/^\s*(?:[-+*]|\d+[.)])\s/.test(prev)&&!/^\s/.test(next));
-      list.push(Decoration.line({class:'cm-blank-line'+(gap?' cm-block-gap':'')+(editableBlank(state,line)?' cm-input-blank-line':keptBlank(state,line)?' cm-kept-blank-line':'')}).range(line.from));
+      const shown=editableBlank(state,line)?' cm-input-blank-line':keptBlank(state,line)?' cm-kept-blank-line':'';
+      const after=shown&&/^\s*(?:[-+*]\s|\d+[.)]\s|>|\|)/.test(prev)&&!literalCodeLine(state,state.doc.line(n-1));
+      list.push(Decoration.line({class:'cm-blank-line'+(gap?' cm-block-gap':'')+shown+(after?' cm-gap-above':'')}).range(line.from));
     }
   }
   // The selection is shown as a highlight on its text only. Tables mark the
@@ -888,8 +904,62 @@ function removeBlockPrefix(view) {
 }
 function visiblePrefixEnd(state,pos) {
   if(inCode(state,pos))return null;
-  const line=state.doc.lineAt(pos),prefix=/^(?: {0,3}#{1,6}[ \t]+| {0,3}(?:>[ \t]+)+(?:\[![\w-]+(?:\|[^\]\n]*)?\][+-]?[ \t]*)?)/.exec(line.text);
+  const line=state.doc.lineAt(pos),prefix=/^(?: {0,3}#{1,6}[ \t]+| {0,3}(?:>[ \t]+)+(?:\[![\w-]+(?:\|[^\]\n]*)?\][+-]?[ \t]*)?|\s*[-+*]\s+\[[ xX]\]\s*|\s*(?:[-+*]|\d+[.)])\s+)/.exec(line.text);
   return prefix?line.from+prefix[0].length:null;
+}
+const hiddenMark=decoration=>!/cm-caret-anchor/.test(decoration.spec.class||'');
+function syntaxBefore(state,pos) {
+  const marks=state.field(boldDelimiterField);let start=pos,moved=true;
+  while(moved){moved=false;marks.between(Math.max(0,start-1),start,(from,to,decoration)=>{if(to===start&&from<start&&hiddenMark(decoration)){start=from;moved=true;return false;}});}
+  return start;
+}
+function syntaxAfter(state,pos) {
+  const marks=state.field(boldDelimiterField);let end=pos,moved=true;
+  while(moved){moved=false;marks.between(end,Math.min(state.doc.length,end+1),(from,to,decoration)=>{if(from===end&&to>end&&hiddenMark(decoration)){end=to;moved=true;return false;}});}
+  return end;
+}
+function dividerLine(state,line) {
+  let divider=false;
+  state.field(liveField).between(line.from,line.from,(_from,_to,decoration)=>{if(/(?:^| )cm-divider-line(?: |$)/.test(decoration.spec.class||''))divider=true;});
+  return divider;
+}
+function verticalStep(view,forward,extend) {
+  const {state}=view;
+  if(state.selection.ranges.length!==1)return false;
+  const range=state.selection.main;
+  if(!extend&&!range.empty)return false;
+  const next=view.moveVertically(range,forward),from=state.doc.lineAt(range.head).number,to=state.doc.lineAt(next.head).number,dir=forward?1:-1;
+  for(let n=from+dir;forward?n<to:n>to;n+=dir) {
+    const line=state.doc.line(n),block=view.lineBlockAt(line.from);
+    if(block.type!==BlockType.Text||block.from!==line.from||block.height<1)continue;
+    const box=view.contentDOM.getBoundingClientRect(),start=view.coordsAtPos(range.head,range.assoc||1);
+    const goal=range.goalColumn??(start?start.left-box.left:0),reach=Math.min(block.height/2,view.defaultLineHeight);
+    const y=view.documentTop+(forward?block.top+reach:block.bottom-reach),pos=view.posAtCoords({x:box.left+goal,y},false);
+    view.dispatch({selection:EditorSelection.create([extend?EditorSelection.range(range.anchor,pos,goal):EditorSelection.cursor(pos,0,undefined,goal)]),scrollIntoView:true,userEvent:'select'});
+    return true;
+  }
+  return false;
+}
+function stepCaret(view,forward,extend) {
+  const {state}=view;
+  if(state.selection.ranges.length!==1)return false;
+  const range=state.selection.main;
+  if(!extend&&!range.empty)return false;
+  let pos=range.head;
+  for(let step=0;step<8;step++) {
+    let next=view.moveByChar(EditorSelection.cursor(pos),forward).head;
+    if(next===pos)break;
+    if(forward){const end=syntaxAfter(state,pos);if(end>pos&&next<end)next=end;}
+    else{const start=syntaxBefore(state,pos);if(start<pos&&next>start)next=start;}
+    pos=next;
+    const from=Math.min(range.head,pos),to=Math.max(range.head,pos);
+    if(syntaxAfter(state,from)<to)break;
+  }
+  const line=state.doc.lineAt(pos);
+  if(dividerLine(state,line)&&state.doc.lineAt(range.head).number===line.number)pos=forward?Math.min(state.doc.length,line.to+1):Math.max(0,line.from-1);
+  if(pos===range.head)return false;
+  view.dispatch({selection:EditorSelection.create([extend?EditorSelection.range(range.anchor,pos):EditorSelection.cursor(pos)]),scrollIntoView:true,userEvent:'select'});
+  return true;
 }
 const formatSelectionFilter=EditorState.transactionFilter.of(tr=>{
   if(tr.docChanged||!tr.selection||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
@@ -898,11 +968,20 @@ const formatSelectionFilter=EditorState.transactionFilter.of(tr=>{
 });
 // Hidden syntax has no height, so a caret drawn against it shrinks to nothing at the top of the line. At a formatting boundary the caret leans on the visible text instead.
 const boundaryCaretFilter=EditorState.transactionFilter.of(tr=>{
-  if(tr.docChanged||!tr.selection||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
-  const range=tr.newSelection.main,pos=range.head,line=tr.state.doc.lineAt(pos);let ends=false,starts=false;
-  tr.state.field(boldDelimiterField).between(Math.max(0,pos-1),Math.min(tr.state.doc.length,pos+1),(from,to)=>{if(to===pos)ends=true;if(from===pos)starts=true;});
-  const assoc=ends&&!starts&&pos<line.to?1:starts&&!ends&&pos>line.from?-1:0;
-  return assoc&&assoc!==range.assoc?[tr,{selection:EditorSelection.cursor(pos,assoc,range.bidiLevel??undefined,range.goalColumn),sequential:true}]:tr;
+  if((!tr.docChanged&&!tr.selection)||tr.isUserEvent('input.type.compose')||tr.newSelection.ranges.length!==1||!tr.newSelection.main.empty)return tr;
+  const state=tr.state,range=tr.newSelection.main;let pos=range.head;
+  const line=state.doc.lineAt(pos);
+  if(inCode(state,pos))return tr;
+  if(!tr.isUserEvent('input')){
+    const start=syntaxBefore(state,pos),end=syntaxAfter(state,pos);
+    if(pos===line.to&&start<pos&&start>line.from)pos=start;
+    else if(pos===line.from&&end>pos&&end<line.to)pos=end;
+  }
+  let tableBefore=false,tableAfter=false;
+  state.field(liveField).between(Math.max(0,pos-1),Math.min(state.doc.length,pos+1),(from,to,decoration)=>{if(/cm-table-syntax/.test(decoration.spec.class||'')){if(to===pos&&from<pos)tableBefore=true;if(from===pos&&to>pos)tableAfter=true;}});
+  const before=syntaxBefore(state,pos)<pos||tableBefore,after=syntaxAfter(state,pos)>pos||tableAfter;
+  const assoc=before&&!after&&pos<line.to?1:after&&!before&&pos>line.from?-1:range.assoc;
+  return pos!==range.head||assoc!==range.assoc?[tr,{selection:EditorSelection.create([EditorSelection.cursor(pos,assoc,undefined,range.goalColumn)]),sequential:true}]:tr;
 });
 // A click left of a list item's text, on its indent or bullet, puts the caret at the start of the text, as in Notion.
 const listClickFilter=EditorState.transactionFilter.of(tr=>{
@@ -968,7 +1047,7 @@ const boldDelimiterField=StateField.define({
   provide:field=>[
     EditorView.decorations.from(field),
     EditorView.atomicRanges.of(view=>view.state.field(field)),
-    keymap.of([{key:'Backspace',run:view=>deleteDivider(view,false)||removeBlockPrefix(view)||deleteAroundBold(view,false)},{key:'Delete',run:view=>deleteDivider(view,true)||deleteAroundBold(view,true)}])
+    keymap.of([{key:'Backspace',run:view=>codeBlockEdge(view,false)||deleteDivider(view,false)||removeBlockPrefix(view)||deleteAroundBold(view,false)||joinAcrossSeparator(view,false)},{key:'Delete',run:view=>codeBlockEdge(view,true)||deleteDivider(view,true)||deleteAroundBold(view,true)||joinAcrossSeparator(view,true)}])
   ]
 });
 
@@ -995,9 +1074,8 @@ function leaveEmptyBlock(view,line) {
 }
 // Enter on an empty line right above Markdown's hidden separator moves onto
 // that separator instead of adding a line: the separator becomes the new empty
-// line, so two Enters after a paragraph leave one empty line, not two, once
-// the caret moves on. The document keeps the same text; the change only marks
-// the line as the one being typed into.
+// line and the separator is reused rather than pushed down. The document keeps
+// the same text; the change only marks the line as the one being typed into.
 function separatorEnter(view) {
   const {state}=view,range=state.selection.main;
   if(!range.empty||state.selection.ranges.length!==1||inCode(state,range.head))return false;
@@ -1006,6 +1084,54 @@ function separatorEnter(view) {
   const next=state.doc.line(line.number+1);
   if(next.text.trim()||!state.doc.line(line.number+2).text.trim()||literalCodeLine(state,state.doc.line(line.number+2)))return false;
   view.dispatch({changes:[{from:line.from,insert:state.doc.sliceString(next.from,next.to+1)},{from:next.from,to:next.to+1}],selection:{anchor:line.from+next.length+1},scrollIntoView:true,userEvent:'input'});
+  return true;
+}
+function plainTextLine(state,line) {
+  return !voidLine(line)&&!literalCodeLine(state,line)&&!hiddenSourceLine(state,line)&&!dividerLine(state,line)&&!/^\s*(?:\||\$\$|<|!\[|```|~~~)/.test(line.text);
+}
+function joinAcrossSeparator(view,forward) {
+  const {state}=view,range=state.selection.main;
+  if(state.readOnly||state.selection.ranges.length!==1||!range.empty)return false;
+  const line=state.doc.lineAt(range.head);
+  if(!plainTextLine(state,line)||range.head!==(forward?line.to:line.from))return false;
+  const dir=forward?1:-1;let n=line.number+dir;
+  while(n>=1&&n<=state.doc.lines&&voidLine(state.doc.line(n))&&!keptBlank(state,state.doc.line(n))&&!editableBlank(state,state.doc.line(n)))n+=dir;
+  if(n<1||n>state.doc.lines||Math.abs(n-line.number)<2)return false;
+  const other=state.doc.line(n);
+  if(!plainTextLine(state,other))return false;
+  if(forward){const end=visiblePrefixEnd(state,other.from)??other.from;view.dispatch({changes:{from:line.to,to:end},selection:{anchor:line.to},scrollIntoView:true,userEvent:'delete.forward'});}
+  else view.dispatch({changes:{from:other.to,to:line.from},selection:{anchor:other.to},scrollIntoView:true,userEvent:'delete.backward'});
+  return true;
+}
+function codeBlockEdge(view,forward) {
+  const {state}=view,range=state.selection.main;
+  if(state.readOnly||state.selection.ranges.length!==1||!range.empty)return false;
+  const tree=ensureSyntaxTree(state,state.doc.length,40)||syntaxTree(state);
+  let block=null;
+  for(let node=tree.resolveInner(range.head,forward?-1:1);node;node=node.parent)if(node.name==='FencedCode'){block=node;break;}
+  if(!block)return false;
+  const first=state.doc.lineAt(block.from),last=state.doc.lineAt(block.to),close=block.lastChild;
+  if(close?.name!=='CodeMark'||state.doc.lineAt(close.from).number!==last.number||last.number<=first.number)return false;
+  const line=state.doc.lineAt(range.head);
+  const edge=forward?line.number===last.number-1&&range.head===line.to:line.number===first.number+1&&range.head===line.from;
+  if(!edge)return false;
+  if(state.doc.sliceString(state.doc.line(first.number+1).from,state.doc.line(last.number-1).to).trim())return true;
+  const from=first.number>1&&voidLine(state.doc.line(first.number-1))?first.from-1:first.from;
+  view.dispatch({changes:{from,to:last.to},selection:{anchor:from},scrollIntoView:true,userEvent:forward?'delete.forward':'delete.backward'});
+  return true;
+}
+function enterAbove(view) {
+  const {state}=view,range=state.selection.main;
+  if(state.readOnly||state.selection.ranges.length!==1||!range.empty||view.composing)return false;
+  const line=state.doc.lineAt(range.head);
+  if(!plainTextLine(state,line)||inCode(state,range.head)||calloutHeader.test(line.text))return false;
+  const start=visiblePrefixEnd(state,line.from)??line.from;
+  if(range.head!==start||!line.text.slice(start-line.from).trim())return false;
+  const item=/^(\s*)([-+*]|\d+[.)])\s+(\[[ xX]\]\s*)?/.exec(line.text),quote=/^ {0,3}(?:>[ \t]+)+/.exec(line.text);
+  let k=0;while(line.number-k>1&&voidLine(state.doc.line(line.number-k-1)))k++;
+  const insert=item?item[1]+item[2]+' '+(item[3]!==undefined?'[ ] ':'')+'\n':quote?quote[0]+'\n':'\n'.repeat(k?1:2);
+  if(!item&&!quote&&k&&start===line.from)return false;
+  view.dispatch({changes:{from:line.from,insert},selection:{anchor:range.head+insert.length},scrollIntoView:true,userEvent:'input'});
   return true;
 }
 function simpleListBackspace(view) {
@@ -1017,11 +1143,11 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,boundaryCaretFilter,listClickFilter,leftBlankFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
-  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),markdownInput(),comments({post,path:()=>metadata.currentPath}),
+  boundaryCaretFilter,EditorView.scrollMargins.of(view=>{const height=view.scrollDOM.clientHeight;return {top:Math.min(56,height*.08),bottom:Math.min(96,height*.12)};}),history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,listClickFilter,leftBlankFilter,emptiedLineFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),Prec.highest(keymap.of([{key:'Enter',run:enterAbove}])),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
-  keymap.of([...tableKeymap,{key:'ArrowLeft',run:beforeBlockPrefix},{key:'ArrowUp',run:intoTitle},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap.filter(binding=>binding.key!=='Mod-['&&binding.key!=='Mod-]'),...historyKeymap,indentWithTab]),
+  keymap.of([...tableKeymap,{key:'ArrowLeft',run:view=>beforeBlockPrefix(view)||stepCaret(view,false,false),shift:view=>stepCaret(view,false,true)},{key:'ArrowRight',run:view=>stepCaret(view,true,false),shift:view=>stepCaret(view,true,true)},{key:'ArrowUp',run:view=>intoTitle(view)||verticalStep(view,false,false),shift:view=>verticalStep(view,false,true)},{key:'ArrowDown',run:view=>verticalStep(view,true,false),shift:view=>verticalStep(view,true,true)},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap.filter(binding=>binding.key!=='Mod-['&&binding.key!=='Mod-]'),...historyKeymap,indentWithTab]),
   EditorView.updateListener.of(update=>{
     if(applyingExternal)return;
     if(update.docChanged){for(const tr of update.transactions)if(tr.docChanged){applyRawChanges(tr);revision++;}lastSource=rawSource;const selection=update.state.selection.main;post({type:'change',text:rawSource,currentPath:metadata.currentPath,revision,selectionAnchor:selection.anchor,selectionHead:selection.head});}

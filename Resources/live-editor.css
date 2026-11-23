@@ -25,7 +25,8 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-content > .cm-line.cm-list-line, .cm-editor .cm-content > .cm-line.cm-quote-line:not(.cm-callout-line) { padding-bottom:calc(var(--editor-font-size) * .3); }
 .cm-editor .cm-blank-line { height:0!important; min-height:0!important; line-height:0!important; padding:0!important; font-size:0!important; }
 .cm-editor .cm-blank-line.cm-block-gap { height:calc(var(--editor-font-size) * .85)!important; }
-.cm-editor .cm-blank-line:is(.cm-input-blank-line,.cm-kept-blank-line) { height:auto!important; min-height:1.8em!important; line-height:1.8!important; font-size:inherit!important; }
+.cm-editor .cm-blank-line:is(.cm-input-blank-line,.cm-kept-blank-line) { height:auto!important; min-height:1.8em!important; line-height:1.8!important; font-size:inherit!important; padding:0 0 calc(var(--editor-font-size) * .85)!important; }
+.cm-editor .cm-blank-line.cm-gap-above { padding-top:calc(var(--editor-font-size) * .85)!important; }
 /* Reader image spacing must not expand CodeMirror's zero-width caret buffers. */
 .cm-editor .cm-widgetBuffer { margin:0!important; padding:0!important; border:0!important; border-radius:0; cursor:text; }
 .cm-editor .cm-cursor,.cm-editor .cm-dropCursor { border-left-color:var(--caret); }
@@ -79,7 +80,7 @@ html,body,.cm-editor .cm-scroller { overscroll-behavior:none; }
 .cm-editor .cm-list-line *, .cm-editor .cm-quote-list-line * { text-indent:0; }
 .cm-editor .cm-list-bullet { display:inline-block; width:var(--cm-list-marker,1.25em); color:var(--marker); text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap; user-select:none; }
 /* The bullet glyph is drawn larger without changing the line or where the text starts. */
-.cm-editor .cm-list-dot { transform:scale(1.4); }
+.cm-editor .cm-list-dot { transform:scale(1.4); pointer-events:none; }
 .cm-editor .cm-task-widget { display:inline-flex; align-items:center; width:1.55em; vertical-align:middle; }
 .cm-editor .cm-task-widget input { accent-color:#d93b86; margin:0 6px 0 2px; width:14px; height:14px; cursor:pointer; }
 /* A click opens the link, so the pointer says so; the underline firms up on hover. */
@@ -146,6 +147,7 @@ body.cm-table-col-resize .cm-content, body.cm-table-col-resize .cm-content * { c
 .cm-editor .cm-table-row ::selection { background:transparent; }
 .cm-editor .cm-table-header span { text-decoration:none; }
 .cm-editor .cm-table-separator { height:0!important; min-height:0!important; line-height:0!important; padding:0!important; border:0!important; }
+.cm-editor .cm-table-anchor { color:transparent; }
 .cm-editor .cm-table-syntax { font-size:0!important; color:transparent!important; letter-spacing:0; word-spacing:0; }
 .cm-editor .cm-tooltip.cm-slash-menu { width:340px; max-width:calc(100vw - 24px); border:1px solid var(--menu-border); border-radius:11px; background:var(--menu-bg); box-shadow:0 12px 40px var(--menu-shadow); overflow:hidden; font:14px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; }
 .cm-slash-title { padding:13px 15px 9px; font-size:12px; font-weight:600; color:var(--subtle); }

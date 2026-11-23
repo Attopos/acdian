@@ -123,7 +123,7 @@ test('initial document renders inactive syntax and reading layout without any cl
     };
   });
   assert.equal(initial.hasHeadingClass, true);
-  assert.equal(initial.headingFont, '34px');
+  assert.equal(initial.headingFont, '28px');
   assert.equal(initial.contentPaddingLeft, '58px');
   assert.ok(initial.strongCount > 0);
   assert.equal(initial.linkCount, 1);
@@ -368,14 +368,14 @@ test('typing slash at an empty block opens all insertable elements without chang
   const menu = r.page.locator('.cm-slash-menu');
   await menu.waitFor({ state: 'visible' });
   assert.deepEqual(await menu.getByRole('option').evaluateAll(options => options.map(option => option.dataset.command)), [
-    'text', 'h1', 'h2', 'h3', 'h4', 'quote', 'todo', 'bullet', 'number', 'code', 'callout'
+    'text', 'h1', 'h2', 'h3', 'h4', 'quote', 'todo', 'bullet', 'number', 'code', 'callout', 'toggle', 'table', 'divider', 'image'
   ]);
-  assert.equal(await menu.locator('.cm-slash-icon').count(), 11, 'every insertable element retains its icon');
-  assert.equal(await menu.locator('.cm-slash-label').count(), 11, 'every insertable element retains its label');
+  assert.equal(await menu.locator('.cm-slash-icon').count(), 15, 'every insertable element retains its icon');
+  assert.equal(await menu.locator('.cm-slash-label').count(), 15, 'every insertable element retains its label');
   assert.equal(await menu.locator('.cm-slash-description').count(), 0, 'the menu omits right-side descriptions from the DOM');
   assert.equal(await menu.locator('.cm-slash-footer').count(), 0, 'the menu omits the shortcut footer from the DOM');
   assert.equal(await menu.locator('[aria-selected="true"]').getAttribute('data-command'), 'text');
-  assert.equal((await r.get()).text, 'Before\n\n\n/\nAfter\n');
+  assert.equal((await r.get()).text, 'Before\n\n\n/\n\nAfter\n');
   assert.equal(await r.page.evaluate(() => window.acdianEditor.hasFocus), true);
 });
 
@@ -414,7 +414,7 @@ test('slash keyboard navigation wraps, chooses with Enter and cancels with Escap
   const menu = r.page.locator('.cm-slash-menu');
   await menu.waitFor({ state: 'visible' });
   await r.page.keyboard.press('ArrowUp');
-  assert.equal(await menu.locator('[aria-selected="true"]').getAttribute('data-command'), 'callout');
+  assert.equal(await menu.locator('[aria-selected="true"]').getAttribute('data-command'), 'image');
   await r.page.keyboard.press('ArrowDown');
   assert.equal(await menu.locator('[aria-selected="true"]').getAttribute('data-command'), 'text');
   await r.page.keyboard.press('ArrowDown');
@@ -459,7 +459,7 @@ test('Chinese IME composition keeps slash choices inactive until the query is co
 });
 
 test('every slash choice inserts its Markdown template with an isolated undo step', async t => {
-  const prefix = 'Before\n\n\n', suffix = '\nAfter\n';
+  const prefix = 'Before\n\n\n', suffix = '\n\nAfter\n';
   const choices = [
     ['text', '', 0],
     ['h1', '# ', 2],
@@ -513,7 +513,7 @@ test('slash choice removes its search query while preserving the rest of the blo
 
 test('slash does not trigger inside prose, URLs, inline code or fenced code', async t => {
   const fixtures = [
-    ['prose', 'A paragraph ', 'A paragraph '.length],
+    ['prose', 'A paragraph', 'A paragraph'.length],
     ['URL', 'https:', 'https:'.length],
     ['inline code', '`inline `\n', '`inline '.length],
     ['fenced code', '```js\n\n```\n', '```js\n'.length]
@@ -570,7 +570,7 @@ test('slash menu stays in a small viewport and scrolls to keyboard selection', a
   const box = await menu.boundingBox();
   assert.ok(box.x >= 0 && box.y >= 0, 'menu starts inside the viewport');
   assert.ok(box.x + box.width <= 391 && box.y + box.height <= 311, 'menu fits the viewport');
-  assert.equal(await menu.locator('[aria-selected="true"]').getAttribute('data-command'), 'callout');
+  assert.equal(await menu.locator('[aria-selected="true"]').getAttribute('data-command'), 'image');
 });
 
 test('typing three dashes, a space and Enter renders a divider without losing the caret', async t => {
@@ -689,14 +689,18 @@ test('bold delimiter boundaries support arrow movement and adjacent character de
   const r = await editor(t, source);
   await r.position(start);
   await r.page.keyboard.press('ArrowLeft');
-  assert.equal((await r.get()).selection.anchor, start - 2, 'left skips the hidden opening delimiter');
+  assert.equal((await r.get()).selection.anchor, start - 3, 'left crosses the hidden opening delimiter and one visible character in one press');
   await r.page.keyboard.press('ArrowRight');
-  assert.equal((await r.get()).selection.anchor, start);
+  assert.equal((await r.get()).selection.anchor, start - 2);
+  await r.page.keyboard.press('ArrowRight');
+  assert.equal((await r.get()).selection.anchor, start + 1, 'the spot just outside and just inside the delimiter is one stop, not two');
   await r.position(end);
   await r.page.keyboard.press('ArrowRight');
-  assert.equal((await r.get()).selection.anchor, end + 2, 'right skips the hidden closing delimiter');
+  assert.equal((await r.get()).selection.anchor, end + 3, 'right crosses the hidden closing delimiter and one visible character in one press');
   await r.page.keyboard.press('ArrowLeft');
-  assert.equal((await r.get()).selection.anchor, end);
+  assert.equal((await r.get()).selection.anchor, end + 2);
+  await r.page.keyboard.press('ArrowLeft');
+  assert.equal((await r.get()).selection.anchor, end - 1);
   await assertBoldDelimitersHidden(r.page);
 
   await r.position(start + 1);
@@ -788,7 +792,7 @@ test('Chinese composition inside active bold preserves content once with hidden 
   await assertBoldDelimitersHidden(r.page);
 });
 
-test('Enter uses compact line spacing and preserves normal Markdown newlines', async t => {
+test('Enter starts the next line one paragraph step below and preserves normal Markdown newlines', async t => {
   const r = await editor(t, 'First line', { fontSize: 16 });
   await r.position('First line'.length);
   await r.page.keyboard.press('Enter');
@@ -799,8 +803,8 @@ test('Enter uses compact line spacing and preserves normal Markdown newlines', a
     const style = getComputedStyle(document.querySelector('.cm-scroller'));
     return { font: parseFloat(style.fontSize), lineHeight: parseFloat(style.lineHeight), distance: lines[1].getBoundingClientRect().top - lines[0].getBoundingClientRect().top };
   });
-  assert.ok(Math.abs(layout.lineHeight / layout.font - 1.7) < 0.02);
-  assert.ok(layout.distance >= 27 && layout.distance <= 29, 'adjacent 16px lines stay close to the 27.2px line height');
+  assert.ok(Math.abs(layout.lineHeight / layout.font - 1.8) < 0.02);
+  assert.ok(Math.abs(layout.distance - 16 * (1.8 + .85)) <= 1, 'each source line is one line plus the paragraph gap');
 });
 
 test('every active rich format keeps syntax hidden for carets, raw-marker positions and spanning selections', async t => {
@@ -912,7 +916,7 @@ test('heading, blank-line and divider geometry is compact and unchanged by activ
   await r.page.evaluate(()=>document.fonts.ready);
   const before = await geometry();
   assert.equal(before.headings.length,4);
-  for (const [index, maximum] of [60,52,40,38].entries()) assert.ok(before.headings[index] <= maximum, `heading ${index+1} avoids the previous oversized block gap`);
+  for (const [index, maximum] of [46,58,49,43].entries()) assert.ok(before.headings[index] <= maximum, `heading ${index+1} avoids the previous oversized block gap`);
   assert.ok(before.blanks.length >= 8);
   for (const height of before.blanks) assert.ok(Math.abs(height) <= 0.5,'separator blank lines have zero visual height');
   for (const gap of before.headingGaps) assert.ok(Math.abs(gap) <= 0.5,'separator blank lines add no visual gap after headings');
@@ -962,7 +966,7 @@ test('Enter creates a writable normal-height paragraph while existing separators
   const input = r.page.locator('.cm-input-blank-line');
   assert.equal(await input.count(),1,'only the newly created paragraph has a visible input line');
   const height = await input.evaluate(line=>line.getBoundingClientRect().height);
-  assert.ok(height>=27&&height<=29,'the active empty paragraph retains the normal 27.2px body line height');
+  assert.ok(Math.abs(height-16*(1.8+.85))<=1,'the active empty paragraph is as tall as a paragraph line');
   const separators = await r.page.locator('.cm-blank-line:not(.cm-input-blank-line)').evaluateAll(lines=>lines.map(line=>line.getBoundingClientRect().height));
   assert.ok(separators.length>0);
   for (const separator of separators) assert.ok(Math.abs(separator)<=0.5);
@@ -1007,10 +1011,8 @@ test('an all-whitespace note starts with one visible writable input line and pre
   for (const [name,source] of [['LF',' \n\n'],['CRLF',' \r\n\t\r\n']]) await t.test(name,async sub=>{
     const r = await editor(sub,source,{fontSize:16});
     const assertInput = async () => {
-      const input = r.page.locator('.cm-input-blank-line');
-      assert.equal(await input.count(),1,'a whitespace-only note always exposes its current input line');
-      const height = await input.evaluate(line=>line.getBoundingClientRect().height);
-      assert.ok(height>=27&&height<=29,'the input line has the normal body line height');
+      const height = await r.page.evaluate(()=>{const view=window.acdianEditor;const line=view.state.doc.lineAt(view.state.selection.main.head);const node=view.domAtPos(line.from).node;return (node.nodeType===1?node:node.parentElement).closest('.cm-line').getBoundingClientRect().height;});
+      assert.ok(Math.abs(height-16*(1.8+.85))<=1,'the line holding the caret is drawn at the height of a paragraph line');
     };
     const before = await r.get();
     await assertInput();
@@ -1209,15 +1211,23 @@ test('wrapped list lines start under the item text, at every indent and marker',
   await r.page.setViewportSize({ width: 1100, height: 3000 });
   await r.page.waitForFunction(() => document.querySelectorAll('.cm-list-line, .cm-quote-list-line').length === 9);
   const rows = await r.page.locator('.cm-list-line, .cm-quote-list-line').evaluateAll(lines => lines.map(line => {
-    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-    let longest = null;
-    for (let node; (node = walker.nextNode());) if (!longest || node.length > longest.length) longest = node;
-    const range = document.createRange();
-    // Quote markers stay as text, so the node can begin with a marker or a space.
-    range.setStart(longest, longest.textContent.indexOf('这'));
-    range.setEnd(longest, longest.length);
-    const rects = [...range.getClientRects()];
-    return { first: rects[0].left, wrapped: rects[1]?.left, count: rects.length, lineLeft: line.getBoundingClientRect().left };
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT), rects = [];
+    let started = false;
+    for (let node; (node = walker.nextNode());) {
+      const at = started ? 0 : node.textContent.indexOf('这');
+      if (at < 0) continue;
+      started = true;
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, node.length);
+      rects.push(...[...range.getClientRects()].filter(rect => rect.width > 0));
+    }
+    const rows = [];
+    for (const rect of rects.sort((a, b) => a.top - b.top || a.left - b.left)) {
+      const row = rows.find(row => Math.abs(row.top - rect.top) < 5);
+      if (row) row.left = Math.min(row.left, rect.left); else rows.push({ top: rect.top, left: rect.left });
+    }
+    return { first: rows[0].left, wrapped: rows[1]?.left, count: rows.length, lineLeft: line.getBoundingClientRect().left };
   }));
   assert.equal(rows.length, 9);
   for (const row of rows) {
@@ -1225,7 +1235,7 @@ test('wrapped list lines start under the item text, at every indent and marker',
     assert.ok(Math.abs(row.first - row.wrapped) < 1, `wrapped line at ${row.wrapped}, text at ${row.first}`);
     assert.ok(row.wrapped > row.lineLeft + 10, 'wrapped lines are indented');
   }
-  const markerRows = await r.page.locator('.cm-list-bullet').evaluateAll(markers => markers.map(marker => marker.getClientRects().length === 1 && marker.getBoundingClientRect().height < 40));
+  const markerRows = await r.page.locator('.cm-list-bullet').evaluateAll(markers => markers.map(marker => marker.getClientRects().length === 1 && marker.offsetHeight < 40));
   assert.ok(markerRows.every(Boolean), 'markers stay on one line');
   assert.equal((await r.get()).text, source);
 });
@@ -1333,7 +1343,8 @@ test('extra blank lines between list items stay visible after the caret leaves',
   const kept = r.page.locator('.cm-kept-blank-line');
   assert.equal(await kept.count(),1,'the blank line left between two list items is kept');
   const height = await kept.evaluate(line=>line.getBoundingClientRect().height);
-  assert.ok(height>=27&&height<=29,'the kept blank line has the normal body line height');
+  const paragraph = await r.page.locator('.cm-line', { hasText: 'After' }).evaluate(line=>line.getBoundingClientRect().height);
+  assert.ok(Math.abs(height-paragraph-16*.85)<=1,'the kept blank line under a list is one paragraph line plus the gap that ends the list');
   const separators = await r.page.locator('.cm-blank-line:not(.cm-kept-blank-line):not(.cm-input-blank-line):not(.cm-block-gap)').evaluateAll(lines=>lines.map(line=>line.getBoundingClientRect().height));
   assert.equal(separators.length,2,'the separators, including the final line, stay');
   assert.equal(await r.page.locator('.cm-block-gap').count(),1,'the list ends with a paragraph gap before the text after it');
@@ -1345,11 +1356,14 @@ test('extra blank lines between list items stay visible after the caret leaves',
   assert.equal(await r.page.locator('.cm-kept-blank-line').count(),0);
 });
 
-test('blank lines before the first text stay hidden; after the last text only the final line does', async t => {
+test('a run of blank lines shows all but one: the first before the text, the last elsewhere', async t => {
   const source = '\n\nFirst\n\nLast\n\n\n';
   const r = await editor(t,source,{fontSize:16});
   await r.position(source.indexOf('First'));
-  assert.equal(await r.page.locator('.cm-kept-blank-line').count(),2);
+  assert.equal(await r.page.locator('.cm-kept-blank-line').count(),3);
+  await r.page.evaluate(() => window.acdianSetDocument({ text: '\nFirst\n', currentPath: 'one-leading.md' }));
+  await r.position(1);
+  assert.equal(await r.page.locator('.cm-kept-blank-line').count(),0,'a single blank line before the text stays hidden');
 });
 
 test('an empty line typed between two lines of text stays when the caret leaves it', async t => {
@@ -1455,10 +1469,10 @@ test('display formulas written back to back on one line render one by one', asyn
   assert.deepEqual(math, { displays: 3, errors: 0 });
 });
 
-test('two Enters between paragraphs leave one empty line, not two', async t => {
+test('two Enters between paragraphs leave the two empty lines they show', async t => {
   for (const [name, source, expected, shown] of [
-    ['paragraphs', 'A\n\nB\n', 'A\n\n\nB\n', ['A', '', 'B']],
-    ['paragraph before a list', 'A\n\n- B\n', 'A\n\n\n- B\n', ['A', '', '•B']]
+    ['paragraphs', 'A\n\nB\n', 'A\n\n\nB\n', ['A', '', '', 'B']],
+    ['paragraph before a list', 'A\n\n- B\n', 'A\n\n\n- B\n', ['A', '', '', '•B']]
   ]) await t.test(name, async sub => {
     const r = await editor(sub, source, { fontSize: 16 });
     await r.position(1);
@@ -1508,7 +1522,7 @@ test('a page changed on disk is patched in place, keeping the caret, scroll and 
   const typed = (await get()).text;
   await page.evaluate(() => { const s = window.acdianEditor.scrollDOM; s.scrollTop = s.scrollHeight * 0.7; });
   await page.waitForTimeout(100);
-  const before = await page.evaluate(() => ({ scroll: window.acdianEditor.scrollDOM.scrollTop, head: window.acdianEditor.state.selection.main.head }));
+  const before = await page.evaluate(() => ({ scroll: window.acdianEditor.scrollDOM.scrollTop, head: window.acdianEditor.state.selection.main.head, seen: (() => { const view = window.acdianEditor; for (let y = 200; y < 600; y += 4) { const pos = view.posAtCoords({ x: 500, y }); const line = pos === null ? null : view.state.doc.lineAt(pos); if (line && line.text) return { text: line.text, top: view.coordsAtPos(line.from).top }; } return null; })() }));
   // Another app adds a paragraph near the top and rewrites one far below.
   const disk = typed.replace('Line 3 of the page.', 'Line 3 of the page.\n\nAdded by another app.').replace('Line 180 of the page.', 'Line 180 changed.');
   await page.evaluate(({ disk, typed }) => window.acdianSetDocument({ text: disk, currentPath: 'a page changed on disk is patched in place, keeping the caret, scroll and undo.md', documentID: 'disk-doc', refresh: { base: typed } }), { disk, typed });
@@ -1517,11 +1531,13 @@ test('a page changed on disk is patched in place, keeping the caret, scroll and 
   assert.equal(after.text, disk);
   const shift = '\n\nAdded by another app.'.length;
   assert.equal(after.selection.head, before.head + shift, 'the caret stays after the typed mark');
-  const scroll = await page.evaluate(() => window.acdianEditor.scrollDOM.scrollTop);
-  assert.ok(Math.abs(scroll - before.scroll) < 80, `scroll stays near ${before.scroll}, got ${scroll}`);
+  const seen = await page.evaluate(() => (() => { const view = window.acdianEditor; for (let y = 200; y < 600; y += 4) { const pos = view.posAtCoords({ x: 500, y }); const line = pos === null ? null : view.state.doc.lineAt(pos); if (line && line.text) return { text: line.text, top: view.coordsAtPos(line.from).top }; } return null; })());
+  assert.ok(before.seen, 'a line of text is on screen');
+  assert.equal(seen?.text, before.seen.text, 'the same text is on screen');
+  assert.ok(Math.abs(seen.top - before.seen.top) <= 2, `the text on screen stays where it was: ${before.seen.top} → ${seen.top}`);
   assert.ok(!after.messages.some(m => m.type === 'change' && m.text === disk), 'the refresh is not echoed back as an edit');
   // Undo takes back the typed mark, not the other app's change.
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Meta+z');
   const undone = (await get()).text;
   assert.ok(undone.includes('Added by another app.') && undone.includes('Line 180 changed.'));
   assert.ok(!undone.includes('Line 150!'));
@@ -1562,6 +1578,7 @@ test('comment cards sit beside their text in a wide window and float below it in
   ] });
   const { page } = await editor(t, text, { documentID: 'doc', tabID: 'tab', pageTitle: '评论', comments, language: 'zh-Hans' });
   await page.setViewportSize({ width: 1500, height: 760 });
+  await page.waitForFunction(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))));
   const before = await page.evaluate(() => document.querySelector('.cm-content').getBoundingClientRect().left);
   await page.waitForFunction(() => document.querySelector('.cm-scroller').classList.contains('cm-comments-wide'));
   await page.waitForTimeout(250);
@@ -1596,4 +1613,230 @@ test('comment cards sit beside their text in a wide window and float below it in
   assert.equal(narrow.badges, 2);
   assert.equal(narrow.visible, 1, 'only the open comment shows in a narrow window');
   assert.ok(narrow.width <= 680, 'no sideways scrolling');
+});
+
+async function lineBoxes(page) {
+  return page.evaluate(() => {
+    const content = document.querySelector('.cm-content').getBoundingClientRect();
+    return [...document.querySelectorAll('.cm-content > .cm-line, .cm-content > .cm-live-block-wrap')]
+      .map(line => ({ line, box: line.getBoundingClientRect() }))
+      .filter(({ box }) => box.height > 0.5)
+      .map(({ line, box }) => ({ top: Math.round(box.top - content.top), height: Math.round(box.height), text: line.textContent }));
+  });
+}
+async function caretTop(page) {
+  return page.evaluate(() => Math.round(window.acdianEditor.coordsAtPos(window.acdianEditor.state.selection.main.head).top));
+}
+async function press(page, keys) {
+  for (const key of keys) {
+    if (key.length === 1) await page.keyboard.type(key);
+    else await page.keyboard.press(key);
+  }
+}
+
+test('spaces typed at the start of a page or a line stay visible after the caret moves on', async t => {
+  for (const [source, at, typed, moves] of [
+    ['Hello\n', 6, '  ', ['ArrowUp']],
+    ['Hello\n\nWorld\n', 6, ' ', ['ArrowUp']],
+    ['Hello\n\nWorld\n', 6, ' ', ['ArrowDown']],
+    ['\n', 0, ' ', ['ArrowDown', 'ArrowUp']],
+    ['Hello\n', 0, '  ', ['ArrowDown', 'ArrowUp', 'ArrowRight']]
+  ]) await t.test(JSON.stringify(source) + ' ' + moves.join(','), async sub => {
+    const r = await editor(sub, source);
+    await r.position(at);
+    await r.page.keyboard.type(typed);
+    const typedText = (await r.get()).text;
+    const before = await lineBoxes(r.page);
+    await press(r.page, moves);
+    await r.page.evaluate(() => window.acdianEditor.dispatch({ selection: { anchor: window.acdianEditor.state.doc.length }, userEvent: 'select' }));
+    await r.page.evaluate(() => window.acdianEditor.dispatch({ selection: { anchor: 0 }, userEvent: 'select' }));
+    assert.equal((await r.get()).text, typedText, 'the spaces stay in the source');
+    const after = await lineBoxes(r.page);
+    assert.ok(after.some(line => line.text.includes(typed)), 'the line holding the spaces is still drawn');
+    assert.deepEqual(after.map(line => line.top), before.map(line => line.top), 'no line moves when the caret leaves');
+  });
+});
+
+test('leaving a typed empty line, or emptying a line, keeps every line where it was', async t => {
+  for (const [source, at, keys] of [
+    ['Top\n\nHello\n\nWorld\n', 10, ['Enter', 'Enter']],
+    ['Top\n\nHello\n\nWorld\n', 10, ['Enter', 'Enter', 'Enter']],
+    ['Top\n\nHello\nWorld\n', 10, ['Enter', 'Enter']],
+    ['Top\n\n> q\n\nWorld\n', 8, ['ArrowDown', 'Enter', 'Enter']],
+    ['Top\n\n- a\n- b\n\nWorld\n', 12, ['Enter', 'Enter']],
+    ['Top\n\nHello\n\nx\n\nWorld\n', 13, ['Backspace']],
+    ['Top\n\nHello\n\nx\nWorld\n', 13, ['Backspace']],
+    ['Top\n\nHello\n\n\nx\n\nWorld\n', 14, ['Backspace']]
+  ]) await t.test(JSON.stringify(source) + ' ' + keys.join(','), async sub => {
+    const r = await editor(sub, source);
+    await r.position(at);
+    await press(r.page, keys);
+    const before = await lineBoxes(r.page);
+    await r.page.evaluate(() => window.acdianEditor.dispatch({ selection: { anchor: 1 }, userEvent: 'select' }));
+    const after = await lineBoxes(r.page);
+    assert.deepEqual(after.map(line => [line.top, line.height]), before.map(line => [line.top, line.height]), 'no line moves when the caret leaves');
+  });
+});
+
+test('typing the first character into an empty line, or deleting the last one, moves neither the caret nor the text below', async t => {
+  for (const [source, at, keys, edit] of [
+    ['Hello', 5, ['Enter'], 'x'],
+    ['Hello\nWorld', 5, ['Enter', 'Enter'], 'x'],
+    ['- a\n\nWorld', 3, ['Enter', 'Enter'], 'x'],
+    ['> q\n\nWorld', 3, ['Enter', 'Enter'], 'x'],
+    ['Hello\n\nx\n\nWorld', 8, [], 'Backspace'],
+    ['Hello\n\nx\nWorld', 8, [], 'Backspace'],
+    ['Hello\nx\nWorld', 7, [], 'Backspace']
+  ]) await t.test(JSON.stringify(source) + ' ' + [...keys, edit].join(','), async sub => {
+    const r = await editor(sub, source);
+    await r.position(at);
+    await press(r.page, keys);
+    const top = await caretTop(r.page), before = await lineBoxes(r.page);
+    await press(r.page, [edit]);
+    assert.equal(await caretTop(r.page), top, 'the caret stays on its line');
+    const after = await lineBoxes(r.page);
+    const below = lines => lines.filter(line => line.top > top + 2).map(line => line.top);
+    assert.deepEqual(below(after), below(before), 'the text below stays put');
+  });
+});
+
+test('an empty line is as tall as a line of text, and the caret matches the text height', async t => {
+  const r = await editor(t, 'Hello\n\n\nWorld\n', { fontSize: 16 });
+  await r.position(0);
+  const lines = await lineBoxes(r.page);
+  assert.equal(lines.length, 3);
+  assert.equal(lines[1].height, lines[0].height, 'the empty line takes the room of one paragraph line');
+  const caretHeight = async at => {
+    await r.position(at);
+    await r.page.waitForFunction(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))));
+    return r.page.locator('.cm-cursor').first().evaluate(element => element.getBoundingClientRect().height);
+  };
+  const caret = await caretHeight(6), textCaret = await caretHeight(2);
+  assert.ok(Math.abs(caret - textCaret) <= 1, 'the caret on an empty line is as tall as on text');
+});
+
+async function caretBox(page) {
+  return page.evaluate(async () => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const cursor = document.querySelector('.cm-cursor'), box = cursor?.getBoundingClientRect();
+    return { head: window.acdianEditor.state.selection.main.head, x: box ? Math.round(box.left) : null, y: box ? Math.round(box.top) : null, height: box ? box.height : 0 };
+  });
+}
+
+test('left and right arrows move one visible character per press past hidden syntax, with the caret always drawn', async t => {
+  const source = 'Top\n\n# Head **bold** end\n\nText `code` and [link](http://x) ok ==hi== *it* ~~s~~ [[Page]] **end**\n\n- a\n- b **c**\n\n> quote **q**\n\nWorld\n';
+  const r = await editor(t, source, { fontSize: 16 });
+  for (const [key, start] of [['ArrowRight', 0], ['ArrowLeft', source.length]]) {
+    await r.position(start);
+    let previous = await caretBox(r.page);
+    for (let step = 0; step < source.length + 10; step++) {
+      await r.page.keyboard.press(key);
+      const current = await caretBox(r.page);
+      if (current.head === previous.head) break;
+      assert.ok(current.height > 8, `${key}: the caret is drawn at ${current.head}`);
+      assert.ok(current.x !== previous.x || current.y !== previous.y, `${key}: ${previous.head} → ${current.head} moves the caret on screen`);
+      previous = current;
+    }
+    assert.equal((await r.get()).text, source);
+  }
+});
+
+test('up and down arrows stop on every visible line, tables included', async t => {
+  const source = 'Top\n\n# Head **bold**\n\nHello **bold**\n\n- a\n- b **c**\n\n```js\nlet a=1;\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nWorld\n';
+  const r = await editor(t, source, { fontSize: 16 });
+  const expected = ['Top', '# Head **bold**', 'Hello **bold**', '- a', '- b **c**', 'let a=1;', '| a | b |', '| 1 | 2 |', 'World'];
+  const line = () => r.page.evaluate(() => { const view = window.acdianEditor; return view.state.doc.lineAt(view.state.selection.main.head).text; });
+  await r.position(1);
+  const down = [await line()];
+  for (let step = 0; step < expected.length - 1; step++) { await r.page.keyboard.press('ArrowDown'); down.push(await line()); }
+  assert.deepEqual(down, expected);
+  const up = [await line()];
+  for (let step = 0; step < expected.length - 1; step++) { await r.page.keyboard.press('ArrowUp'); up.push(await line()); }
+  assert.deepEqual(up, [...expected].reverse());
+});
+
+test('Backspace and Delete next to a hidden separator join the two lines in one press', async t => {
+  for (const [source, at, key, expected] of [
+    ['A\n\nB\n', 3, 'Backspace', 'AB\n'],
+    ['A\n\nB\n', 1, 'Delete', 'AB\n'],
+    ['# H\n\nPara\n', 5, 'Backspace', '# HPara\n'],
+    ['A\n\n# B\n', 1, 'Delete', 'AB\n'],
+    ['A\n\n\nB\n', 4, 'Backspace', 'A\n\nB\n']
+  ]) await t.test(JSON.stringify(source) + ' ' + key, async sub => {
+    const r = await editor(sub, source);
+    await r.position(at);
+    await r.page.keyboard.press(key);
+    assert.equal((await r.get()).text, expected);
+    await r.page.keyboard.press('Meta+z');
+    assert.equal((await r.get()).text, source);
+  });
+});
+
+test('Enter at the start of a heading, list item or the page pushes the block down and keeps its kind', async t => {
+  for (const [source, at, expected, shown] of [
+    ['Top\n\n# Head\n', 7, 'Top\n\n\n# Head\n', 3],
+    ['Top\n# Head\n', 6, 'Top\n\n\n# Head\n', 3],
+    ['Top\n\n- item\n', 7, 'Top\n\n- \n- item\n', 3],
+    ['Top\n\n> q\n', 7, 'Top\n\n> \n> q\n', 3],
+    ['Top\nPara\n', 4, 'Top\n\n\nPara\n', 3],
+    ['Para text\n', 0, '\n\nPara text\n', 2]
+  ]) await t.test(JSON.stringify(source), async sub => {
+    const r = await editor(sub, source);
+    await r.position(at);
+    await r.page.keyboard.press('Enter');
+    assert.equal((await r.get()).text, expected);
+    await r.position(expected.length - 1);
+    assert.equal((await lineBoxes(r.page)).length, shown, 'one more line shows, and stays when the caret leaves');
+  });
+});
+
+test('Backspace and Delete at the edge of a code block never merge it with its fences', async t => {
+  for (const [source, at, key, expected] of [
+    ['Top\n\n```js\nlet a;\n```\n\nEnd\n', 11, 'Backspace', 'Top\n\n```js\nlet a;\n```\n\nEnd\n'],
+    ['Top\n\n```js\nlet a;\n```\n\nEnd\n', 17, 'Delete', 'Top\n\n```js\nlet a;\n```\n\nEnd\n'],
+    ['Top\n\n```js\n\n```\n\nEnd\n', 11, 'Backspace', 'Top\n\n\nEnd\n']
+  ]) await t.test(JSON.stringify(source) + ' ' + key, async sub => {
+    const r = await editor(sub, source);
+    await r.position(at);
+    await r.page.keyboard.press(key);
+    assert.equal((await r.get()).text, expected);
+  });
+});
+
+test('deleting up to hidden bold syntax keeps the caret drawn', async t => {
+  for (const [source, at, keys] of [['Hello **bold** x\n', 16, ['Backspace', 'Backspace']], ['# Head **bold** end\n', 16, ['Backspace']]]) {
+    const r = await editor(t, source);
+    await r.position(at);
+    for (const key of keys) await r.page.keyboard.press(key);
+    assert.ok((await caretBox(r.page)).height > 8, JSON.stringify(source));
+  }
+});
+
+test('a click on the lower edge of a line above a list stays on that line', async t => {
+  const r = await editor(t, 'Para one\n\n- a item\n- b item\n', { fontSize: 16 });
+  for (const index of [0, 1]) {
+    const box = await r.page.locator('.cm-content > .cm-line').filter({ hasNotText: /^$/ }).nth(index).boundingBox();
+    await r.page.mouse.click(box.x + 14, box.y + box.height - 2);
+    const line = await r.page.evaluate(() => { const view = window.acdianEditor; return view.state.doc.lineAt(view.state.selection.main.head).text; });
+    assert.equal(line, ['Para one', '- a item'][index]);
+  }
+});
+
+test('the caret keeps some room from the window edge while it moves', async t => {
+  const r = await editor(t, Array.from({ length: 60 }, (_, i) => 'Line ' + i).join('\n\n') + '\n', { fontSize: 16 });
+  await r.position(0);
+  for (let step = 0; step < 25; step++) await r.page.keyboard.press('ArrowDown');
+  const caret = await caretBox(r.page);
+  assert.ok(caret.y + caret.height <= 760 - 60, `caret bottom ${caret.y + caret.height}`);
+});
+
+test('the caret is drawn in an empty table cell', async t => {
+  const source = '| a |  |\n|---|---|\n|  | 2 |\n';
+  const r = await editor(t, source);
+  for (const at of [6, source.indexOf('|  | 2') + 2]) {
+    await r.position(at);
+    assert.ok((await caretBox(r.page)).height > 8, `cell at ${at}`);
+  }
+  await r.page.keyboard.type('Z');
+  assert.equal((await r.get()).text, '| a |  |\n|---|---|\n| Z | 2 |\n');
 });
