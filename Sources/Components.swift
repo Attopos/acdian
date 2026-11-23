@@ -14,7 +14,7 @@ enum ComponentKind: String, CaseIterable, Identifiable, Codable {
     var summary: String {
         switch self {
         case .cardIndex: return "把文件夹里的每个页面显示成卡片，带字母栏和搜索，适合单词表和术语表。"
-        case .roadmap: return "把文件夹里的页面连成一张知识地图：先学什么、学完能做什么、学到哪了。"
+        case .roadmap: return "把文件夹里的页面连成一张知识地图，看清概念之间的依赖、应用和相关。"
         }
     }
     var icon: String {

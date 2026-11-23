@@ -17,19 +17,19 @@ const sheet = () => !compact() && S.platform === 'ios' && (innerHeight || 0) > (
 const rasterOn = () => !compact() && !S.editing && !!window.SvgRaster && S.rasterize !== false;
 const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
-const KIND_NAMES = { requires: '先学', applies: '应用', related: '相关' };
+const KIND_NAMES = { requires: '依赖', applies: '用到', related: '相关' };
 const COLORS = ['pink', 'black', 'rose', 'plum', 'amber', 'teal', 'sky', 'graphite'];
 
 const STRINGS = {
-  en: { '入门': 'Intro', '基础': 'Basics', '进阶': 'Advanced', '实战': 'In practice', '先学': 'Learn first', '应用': 'Applied in', '相关': 'Related',
-    '%1 个节点 · %2 篇已写成页面': '%1 nodes · %2 with pages', '已写成页面': 'Has a page', '搜索节点': 'Search nodes', '图例': 'Legend', '先学 A 再学 B': 'Learn A before B', 'B 是 A 的实际应用': 'B applies A', '相关，聚焦时显示': 'Related, shown on focus', '待写': 'To write', '还没有页面': 'No page yet',
-    '要点': 'Key points', '页面': 'Pages', '学完可以继续': 'Next', '学习路径': 'Learning path', '关系': 'Connections', '原理图': 'Figure', '页面互链': 'Page links', '适合窗口': 'Fit window', '放大': 'Zoom in', '缩小': 'Zoom out', '编辑': 'Edit', '完成': 'Done',
-    '没有前置，可以从这里开始。': 'No prerequisites. Start here.', '这个节点还没有页面，摘要是通用常识。': 'This node has no page yet; the summary is general knowledge.', '页面不存在': 'Page not found', '用到的概念': 'Uses', '在这里用到': 'Used in',
+  en: { '入门': 'Intro', '基础': 'Basics', '进阶': 'Advanced', '实战': 'In practice', '依赖': 'Depends on', '被依赖': 'Depended on by', '用到': 'Uses', '用在': 'Used in', '相关': 'Related', '节点': 'Nodes', '要点里提到': 'In key points', '搜索节点、要点或页面': 'Search nodes, key points or pages',
+    
+    '要点': 'Key points', '页面': 'Pages', '关系': 'Connections', '原理图': 'Figure', '页面互链': 'Page links', '适合窗口': 'Fit window', '放大': 'Zoom in', '缩小': 'Zoom out', '编辑': 'Edit', '完成': 'Done',
+    '这个节点还没有页面，摘要是通用常识。': 'This node has no page yet; the summary is general knowledge.', '页面不存在': 'Page not found', 
     '这张路线图还是空的': 'This roadmap is empty', '打开「编辑」，双击空白处新建节点。': 'Turn on Edit and double-click the canvas to add a node.', '这样连会成环：%1 已经排在 %2 后面。': 'That would make a loop: %1 already comes after %2.', '未挂靠的页面': 'Unattached pages', '所有页面都已挂上': 'Every page is attached', '新节点': 'New node', '为什么有这条关系？一句话。': 'Why does this relation exist? One sentence.', '删除': 'Delete', '节点标题': 'Node title', '新建页面': 'New page', '已撤销': 'Undone', '没有可撤销的操作': 'Nothing to undo', '这两个节点之间已经有关系了。': 'These two nodes are already related.', '把页面拖到节点上挂靠': 'Drag a page onto a node to attach it', '目标': 'Goal', '移除节点': 'Remove node', '取消挂靠': 'Detach' },
-  es: { '入门': 'Inicio', '基础': 'Bases', '进阶': 'Avanzado', '实战': 'En práctica', '先学': 'Aprende antes', '应用': 'Se aplica en', '相关': 'Relacionado',
-    '%1 个节点 · %2 篇已写成页面': '%1 nodos · %2 con página', '已写成页面': 'Con página', '搜索节点': 'Buscar nodos', '图例': 'Leyenda', '先学 A 再学 B': 'Aprende A antes que B', 'B 是 A 的实际应用': 'B aplica A', '相关，聚焦时显示': 'Relacionado, visible al enfocar', '待写': 'Por escribir', '还没有页面': 'Aún sin página',
-    '要点': 'Puntos clave', '页面': 'Páginas', '学完可以继续': 'Después', '学习路径': 'Ruta de aprendizaje', '关系': 'Relaciones', '原理图': 'Figura', '页面互链': 'Enlaces entre páginas', '适合窗口': 'Ajustar a la ventana', '放大': 'Acercar', '缩小': 'Alejar', '编辑': 'Editar', '完成': 'Listo',
-    '没有前置，可以从这里开始。': 'Sin requisitos. Empieza aquí.', '这个节点还没有页面，摘要是通用常识。': 'Este nodo aún no tiene página; el resumen es conocimiento general.', '页面不存在': 'Página no encontrada', '用到的概念': 'Usa', '在这里用到': 'Se usa en',
+  es: { '入门': 'Inicio', '基础': 'Bases', '进阶': 'Avanzado', '实战': 'En práctica', '依赖': 'Depende de', '被依赖': 'Lo usan', '用到': 'Usa', '用在': 'Se usa en', '相关': 'Relacionado', '节点': 'Nodos', '要点里提到': 'En puntos clave', '搜索节点、要点或页面': 'Buscar nodos, puntos clave o páginas',
+    
+    '要点': 'Puntos clave', '页面': 'Páginas', '关系': 'Relaciones', '原理图': 'Figura', '页面互链': 'Enlaces entre páginas', '适合窗口': 'Ajustar a la ventana', '放大': 'Acercar', '缩小': 'Alejar', '编辑': 'Editar', '完成': 'Listo',
+    '这个节点还没有页面，摘要是通用常识。': 'Este nodo aún no tiene página; el resumen es conocimiento general.', '页面不存在': 'Página no encontrada', 
     '这张路线图还是空的': 'Este mapa está vacío', '打开「编辑」，双击空白处新建节点。': 'Activa Editar y haz doble clic en el lienzo para añadir un nodo.', '这样连会成环：%1 已经排在 %2 后面。': 'Eso crearía un ciclo: %1 ya va después de %2.', '未挂靠的页面': 'Páginas sin asignar', '所有页面都已挂上': 'Todas las páginas están asignadas', '新节点': 'Nodo nuevo', '为什么有这条关系？一句话。': '¿Por qué existe esta relación? Una frase.', '删除': 'Eliminar', '节点标题': 'Título del nodo', '新建页面': 'Página nueva', '已撤销': 'Deshecho', '没有可撤销的操作': 'Nada que deshacer', '这两个节点之间已经有关系了。': 'Estos dos nodos ya están relacionados.', '把页面拖到节点上挂靠': 'Arrastra una página a un nodo para asignarla', '目标': 'Meta', '移除节点': 'Quitar nodo', '取消挂靠': 'Desvincular' },
 };
 const T = kit.strings(STRINGS);
@@ -92,37 +92,10 @@ function index() {
   S.ins = new Map(S.nodes.map(n => [n.id, []])); S.outs = new Map(S.nodes.map(n => [n.id, []]));
   for (const edge of S.edges) { S.outs.get(edge.a.id).push(edge); S.ins.get(edge.b.id).push(edge); }
 }
-function ancestors(id) {
-  const seen = new Set(), stack = [id];
-  while (stack.length) for (const edge of S.ins.get(stack.pop()) || []) if (directed(edge.d.kind) && !seen.has(edge.a.id) && edge.a.id !== id) { seen.add(edge.a.id); stack.push(edge.a.id); }
-  return seen;
-}
 function reaches(from, to, kinds = ['requires']) {
   const seen = new Set([from]), stack = [from];
   while (stack.length) { const at = stack.pop(); if (at === to) return true; for (const edge of S.outs.get(at) || []) if (kinds.includes(edge.d.kind) && !seen.has(edge.b.id)) { seen.add(edge.b.id); stack.push(edge.b.id); } }
   return false;
-}
-function distances(id, within) {
-  const memo = new Map([[id, 0]]), visiting = new Set();
-  const walk = at => {
-    if (memo.has(at)) return memo.get(at);
-    if (visiting.has(at)) return 0;
-    visiting.add(at);
-    let best = 0;
-    for (const edge of S.outs.get(at) || []) if (directed(edge.d.kind) && (edge.b.id === id || within.has(edge.b.id))) best = Math.max(best, walk(edge.b.id) + 1);
-    visiting.delete(at); memo.set(at, best); return best;
-  };
-  for (const other of within) walk(other);
-  return memo;
-}
-function learningPath(id) {
-  const chain = ancestors(id), dist = distances(id, chain);
-  return [...chain].map(other => S.byId.get(other))
-    .sort((a, b) => dist.get(b.id) - dist.get(a.id) || a.i - b.i)
-    .map(node => {
-      const via = (S.outs.get(node.id) || []).filter(edge => directed(edge.d.kind) && (edge.b.id === id || chain.has(edge.b.id))).sort((a, b) => dist.get(a.b.id) - dist.get(b.b.id))[0];
-      return { id: node.id, why: via?.d.why || '', toward: via?.b.id };
-    });
 }
 
 // ---------- layout ----------
@@ -146,38 +119,50 @@ function layout() {
   const groups = S.domains.map(domain => ({ domain, nodes: S.nodes.filter(n => n.d.domain === domain.id) })).filter(g => g.nodes.length || S.editing);
   const flows = S.doc.flows || [];
   const lines = [...flows.map(flow => ({ flow, groups: groups.filter(g => g.domain.flow === flow.id) })), { flow: null, groups: groups.filter(g => !flows.some(f => f.id === g.domain.flow)) }].filter(line => line.groups.length);
-  const narrow = compact(), PER_ROW = narrow ? 1 : 4;
-  const columns = lines.length > 1 && !narrow ? [lines.slice(0, 1), lines.slice(1)] : [lines];
-  const bandW = PER_ROW * W + (PER_ROW - 1) * COL_GAP + 2 * PAD_X + (narrow ? ARC_ROOM : 0), regions = [], heads = [], spine = [];
-  columns.forEach((stack, col) => {
-    const x = col * (bandW + COLUMN_GAP); let y = 0;
-    stack.forEach((line, li) => {
+  const narrow = compact(), regions = [], heads = [], spine = [];
+  const order = group => {
+    const pending = new Set(group.nodes), ordered = [];
+    while (pending.size) {
+      const ready = [...pending].find(n => ![...(S.ins.get(n.id) || [])].some(e => directed(e.d.kind) && pending.has(e.a))) || [...pending][0];
+      ordered.push(ready); pending.delete(ready);
+    }
+    group.nodes = ordered;
+  };
+  if (narrow) {
+    const bandW = W + 2 * PAD_X + ARC_ROOM; let y = 0;
+    lines.forEach((line, li) => {
       if (li) y += BAND_GAP;
-      if (line.flow) { heads.push({ id: line.flow.id, flow: line.flow, x, y }); y += FLOW_HEAD; }
+      if (line.flow) { heads.push({ id: line.flow.id, flow: line.flow, x: 0, y }); y += FLOW_HEAD; }
       const arrows = line.flow?.arrows !== false && !!line.flow;
       line.groups.forEach((group, step) => {
-        const pending = new Set(group.nodes), ordered = [];
-        while (pending.size) {
-          const ready = [...pending].find(n => ![...(S.ins.get(n.id) || [])].some(e => directed(e.d.kind) && pending.has(e.a))) || [...pending][0];
-          ordered.push(ready); pending.delete(ready);
-        }
-        group.nodes = ordered;
-        const count = group.nodes.length, rows = Math.max(1, Math.ceil(count / PER_ROW));
-        const h = PAD_TOP + rows * NODE_H + (rows - 1) * IN_GAP + PAD_BOTTOM;
-        const region = { id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y, w: bandW, h, col, flow: line.flow?.id || '', step: arrows ? step + 1 : 0 };
+        order(group);
+        const count = group.nodes.length, h = PAD_TOP + count * NODE_H + Math.max(0, count - 1) * IN_GAP + PAD_BOTTOM;
+        const region = { id: group.domain.id, domain: group.domain, nodes: group.nodes, x: 0, y, w: bandW, h, col: 0, flow: line.flow?.id || '', step: arrows ? step + 1 : 0 };
         if (step && arrows) spine.push({ key: regions[regions.length - 1].id + '>' + region.id, from: regions[regions.length - 1], to: region });
         regions.push(region);
-        group.nodes.forEach((node, i) => {
-          const row = Math.floor(i / PER_ROW), k = i % PER_ROW;
-          node.w = W; node.col = k;
-          node.gx = x + PAD_X + k * (W + COL_GAP);
-          node.gy = y + PAD_TOP + row * (NODE_H + IN_GAP);
-        });
+        group.nodes.forEach((node, i) => { node.w = W; node.col = 0; node.gx = PAD_X; node.gy = y + PAD_TOP + i * (NODE_H + IN_GAP); });
         y += h + BAND_GAP;
       });
       y -= BAND_GAP;
     });
-  });
+  } else {
+    const colW = W + 2 * PAD_X, ROW = NODE_H + 12; let y = 0;
+    lines.forEach(line => {
+      if (line.flow) heads.push({ id: line.flow.id, flow: line.flow, x: 0, y });
+      const top = y + (line.flow ? FLOW_HEAD : 0);
+      const arrows = line.flow?.arrows !== false && !!line.flow;
+      let tallest = 0;
+      line.groups.forEach((group, step) => {
+        order(group);
+        const count = group.nodes.length, h = PAD_TOP + count * NODE_H + Math.max(0, count - 1) * 12 + PAD_BOTTOM;
+        const x = step * (colW + COL_GAP);
+        regions.push({ id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y: top, w: colW, h, col: step, flow: line.flow?.id || '', step: arrows ? step + 1 : 0 });
+        group.nodes.forEach((node, i) => { node.w = W; node.col = step; node.gx = x + PAD_X; node.gy = top + PAD_TOP + i * ROW; });
+        tallest = Math.max(tallest, h);
+      });
+      y = top + tallest + BAND_GAP;
+    });
+  }
   const summaryFont = `400 9px ${FONT}`;
   for (const node of S.nodes) {
     node.w ||= W; node.gx ??= 0; node.gy ??= 0;
@@ -196,6 +181,7 @@ function layout() {
   const bounds = { x: x0, y: y0, w: Math.max(1, ...regions.map(r => r.x + r.w)) - x0, h: Math.max(1, ...regions.map(r => r.y + r.h)) - y0 };
   S.layout = { regions, bounds, W, heads, spine };
   routeAll();
+  S.layout.links = [];
 }
 
 // ---------- edge routing ----------
@@ -331,7 +317,11 @@ function draw(animate = false) {
   region.select('.label .name').each(function (d) { d3.select(this).html(`${esc(d.domain.title)}${d.domain.subtitle ? `<tspan class="sub" dx="8">${esc(d.domain.subtitle)}</tspan>` : ''}`); });
 
   move(region.select('.far')).attr('transform', d => `translate(${d.x + d.w / 2},${d.y + d.h / 2 + 14})`);
-  region.select('.far .name').text(d => (d.step ? d.step + '  ' : '') + d.domain.title);
+  region.select('.far .name').text(d => (d.step ? d.step + '  ' : '') + d.domain.title).each(function (d) {
+    const room = d.w - 24, width = textWidth(this.textContent, `680 42px ${FONT}`);
+    if (width > room) d3.select(this).attr('textLength', room).attr('lengthAdjust', 'spacingAndGlyphs').style('font-size', `${Math.max(24, 42 * room / width)}px`);
+    else d3.select(this).attr('textLength', null).attr('lengthAdjust', null).style('font-size', null);
+  });
 
   const flowHead = d3.select('#regions').selectAll('g.flow').data(S.layout.heads || [], d => d.id).join(enter => {
     const g = enter.append('g').attr('class', 'flow');
@@ -403,9 +393,7 @@ function draw(animate = false) {
   if (!S.nodes.length) $('empty').innerHTML = `<div><b>${esc(T('这张路线图还是空的'))}</b>${S.editable ? esc(T('打开「编辑」，双击空白处新建节点。')) : ''}</div>`;
 }
 function drawHead() {
-  const pages = S.nodes.filter(n => !n.d.draft).length;
   $('head-title').textContent = S.doc?.title || S.title || '';
-  $('head-count').textContent = T('%1 个节点 · %2 篇已写成页面', S.nodes.length, pages);
 }
 function setZoomMode(mode) {
   if (mode === S.zoom) return;
@@ -418,28 +406,17 @@ function setZoomMode(mode) {
 }
 
 // ---------- state classes ----------
-let flowTimers = [];
-function applyState(flow = false) {
+function applyState() {
   const node = d3.selectAll('#nodes g.node'), edge = d3.selectAll('#edges g.edge');
-  flowTimers.forEach(clearTimeout); flowTimers = [];
   const focusNode = S.focus && S.byId.get(S.focus);
   S.chain = new Set(); S.highlighted = new Set(); S.matches = [];
   if (focusNode) {
-    S.chain = ancestors(S.focus);
-    S.highlighted = new Set([S.focus, ...S.chain]);
+    S.highlighted = new Set([S.focus]);
     for (const e of S.outs.get(S.focus)) S.highlighted.add(e.b.id);
     for (const e of S.ins.get(S.focus)) S.highlighted.add(e.a.id);
-    const dist = distances(S.focus, S.chain), far = Math.max(1, ...[...S.chain].map(id => dist.get(id) || 0));
-    const inChain = e => directed(e.d.kind) && S.chain.has(e.a.id) && (e.b.id === S.focus || S.chain.has(e.b.id));
     const touches = e => e.a.id === S.focus || e.b.id === S.focus;
     node.classed('selected', d => d.id === S.focus).classed('dim', d => !S.highlighted.has(d.id)).classed('match', false).classed('target', false);
-    edge.classed('dim', e => !inChain(e) && !touches(e)).classed('lit', e => touches(e) && !inChain(e));
-    edge.each(function (e) {
-      const on = inChain(e), el = d3.select(this);
-      if (!on || !flow || kit.reduced.matches || rasterOn()) { el.classed('flow', on); return; }
-      el.classed('flow', false);
-      flowTimers.push(setTimeout(() => el.classed('flow', true), (far - (dist.get(e.a.id) || 0)) / far * 380));
-    });
+    edge.classed('dim', e => !touches(e)).classed('lit', touches).classed('flow', false);
   } else {
     const query = fold(S.query.trim());
     if (query) {
@@ -450,7 +427,7 @@ function applyState(flow = false) {
     node.classed('selected', false).classed('target', false).classed('dim', d => !!query && !matched.has(d.id)).classed('match', d => matched.has(d.id));
     edge.classed('dim', !!query).classed('lit', false).classed('flow', false);
   }
-  $('search-count').textContent = S.query.trim() && !focusNode ? String(S.matches.length) : '';
+  renderResults();
   app.classList.toggle('show-mentions', S.showMentions);
   repaint();
 }
@@ -667,7 +644,7 @@ function hover(node) {
     if (node.dragging || !hoverable()) return;
     const figure = figuresOf(node)[0];
     card.className = 'float';
-    card.innerHTML = `<h4>${esc(node.d.title)}${node.d.subtitle ? `<small>${esc(node.d.subtitle)}</small>` : ''}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h4><p>${esc(node.d.summary || '')}</p>${figure ? `<img alt="" src="${esc(themed(figure))}">` : ''}`;
+    card.innerHTML = `<h4>${esc(node.d.title)}${node.d.subtitle ? `<small>${esc(node.d.subtitle)}</small>` : ''}</h4><p>${esc(node.d.summary || '')}</p>${figure ? `<img alt="" src="${esc(themed(figure))}">` : ''}`;
     const image = card.querySelector('img');
     const show = () => place(card, S.t.applyX(node.x), S.t.applyY(node.y) - 4, node.w * S.t.k);
     if (image) { image.addEventListener('load', show); image.addEventListener('error', () => { image.remove(); show(); }); }
@@ -691,9 +668,9 @@ function edgeHover(edge, event) {
   if (edge && edge === hoveredEdge && event) { follow(tip, event); return; }
   hoveredEdge = edge; mark();
   if (!edge) { tip.hidden = true; return; }
-  const arrow = edge.d.kind === 'related' ? '—' : '→';
+  const pair = edge.d.kind === 'related' ? [edge.a, edge.b] : [edge.b, edge.a];
   tip.className = 'float';
-  tip.innerHTML = `<b><em>${esc(edge.a.d.title)}</em> ${arrow} <em>${esc(edge.b.d.title)}</em> · ${esc(T(KIND_NAMES[edge.d.kind] || '相关'))}</b>${esc(edge.d.why || '')}`;
+  tip.innerHTML = `<b><em>${esc(pair[0].d.title)}</em> ${esc(T(KIND_NAMES[edge.d.kind] || '相关'))} <em>${esc(pair[1].d.title)}</em></b>${esc(edge.d.why || '')}`;
   if (event) follow(tip, event);
 }
 
@@ -704,7 +681,7 @@ function focus(id, options = {}) {
   closePopover();
   app.classList.toggle('panel-open', !!node);
   $('panel').setAttribute('aria-hidden', node ? 'false' : 'true');
-  applyState(true);
+  applyState();
   if (node) { renderPanel(); if (options.fly !== false) flyTo(node, options.scale); }
 }
 function relation(edge, other, label) {
@@ -713,15 +690,12 @@ function relation(edge, other, label) {
 function renderPanel() {
   const node = S.byId.get(S.focus); if (!node) return;
   const domain = S.domains.find(d => d.id === node.d.domain), figures = figuresOf(node);
-  const before = S.ins.get(node.id).filter(e => directed(e.d.kind)), after = S.outs.get(node.id).filter(e => directed(e.d.kind));
   const related = [...S.ins.get(node.id), ...S.outs.get(node.id)].filter(e => e.d.kind === 'related');
-  const path = learningPath(node.id);
   const pages = (node.d.pages || []).map(key => ({ key, info: S.pages.get(key) }));
   const pageIcon = ic('file-text'), goIcon = ic('chevron-right', 'go');
   const h3 = (name, text) => `<h3>${ic(name)}<span>${esc(T(text))}</span></h3>`;
-  const step = S.layout.regions.find(r => r.id === domain?.id)?.step;
-  const top = `<div class="top"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${step ? `${step} · ` : ''}${esc(domain?.title || '')}</span>${node.d.topic ? `<span class="topic">${esc(node.d.topic)}</span>` : ''}<button class="close" data-close aria-label="Close">${ic('x')}</button></div>`
-    + `<h2>${esc(node.d.title)}${node.d.draft ? `<span class="tag">${esc(T('待写'))}</span>` : ''}</h2>${node.d.subtitle ? `<p class="sub">${esc(node.d.subtitle)}</p>` : ''}<p class="lead">${esc(node.d.summary || '')}</p></div>`;
+  const top = `<div class="top"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${esc(domain?.title || '')}</span><button class="close" data-close aria-label="Close">${ic('x')}</button></div>`
+    + `<h2>${esc(node.d.title)}</h2>${node.d.subtitle ? `<p class="sub">${esc(node.d.subtitle)}</p>` : ''}<p class="lead">${esc(node.d.summary || '')}</p></div>`;
   let main = '', side = '';
   const block = (name, text, body, extra = '') => `<section class="block${extra}">${h3(name, text)}${body}</section>`;
   if (figures.length) main += `<button class="figure" data-figure="0"><img alt="${esc(T('原理图'))}" src="${esc(themed(figures[0]))}">${figures.length > 1 ? `<span>1 / ${figures.length}</span>` : ''}</button>`;
@@ -734,14 +708,16 @@ function renderPanel() {
   }
   side += block('file-text', '页面', pages.length ? `<ul>${pages.map(({ key, info }) => `<li><button class="page${info && info.exists === false ? ' missing' : ''}" data-page="${esc(key)}">${pageIcon}<span>${esc(info?.title || key.split('/').pop())}</span>${info && info.exists === false ? `<span class="tag">${esc(T('页面不存在'))}</span>` : goIcon}</button></li>`).join('')}</ul>`
     : `<p class="hint">${esc(node.d.note || T('这个节点还没有页面，摘要是通用常识。'))}</p>${S.editing ? `<button class="page" data-new-page>${pageIcon}<span>${esc(T('新建页面'))}</span></button>` : ''}`);
-  const groupOf = (label, items) => items.length ? `<div class="relgroup"><h4>${esc(T(label))}<span>${items.length}</span></h4><ul>${items.join('')}</ul></div>` : '';
-  const rels = groupOf('先学', before.map(e => relation(e, e.a, e.d.kind === 'applies' ? T('用到的概念') : '')))
-    + groupOf('学完可以继续', after.map(e => relation(e, e.b, e.d.kind === 'applies' ? T('在这里用到') : '')))
+  const groupOf = (label, items) => items.length ? `<div class="relgroup"><h4>${esc(T(label))}</h4><ul>${items.join('')}</ul></div>` : '';
+  const ins = S.ins.get(node.id), outs = S.outs.get(node.id);
+  const rels = groupOf('依赖', ins.filter(e => e.d.kind === 'requires').map(e => relation(e, e.a, '')))
+    + groupOf('被依赖', outs.filter(e => e.d.kind === 'requires').map(e => relation(e, e.b, '')))
+    + groupOf('用到', ins.filter(e => e.d.kind === 'applies').map(e => relation(e, e.a, '')))
+    + groupOf('用在', outs.filter(e => e.d.kind === 'applies').map(e => relation(e, e.b, '')))
     + groupOf('相关', related.map(e => relation(e, e.a.id === node.id ? e.b : e.a, '')));
-  if (rels) side += block('link-2', '关系', rels);
-  side += block('route', '学习路径', path.length ? `<ol class="path">${path.map(step => { const other = S.byId.get(step.id); return `<li><button class="chip${other.d.draft ? ' draft' : ''}" data-focus="${esc(other.id)}">${esc(other.d.title)}</button><p>${esc(step.why)}</p></li>`; }).join('')}<li class="goal"><button class="chip" data-focus="${esc(node.id)}">${esc(node.d.title)}</button></li></ol>` : `<p class="hint">${esc(T('没有前置，可以从这里开始。'))}</p>`);
+  side = (rels ? block('link-2', '关系', rels) : '') + side;
   if (S.editing) side += block('pencil', '编辑', `<ul><li><button class="page" data-edit-node>${esc(T('节点标题'))}…</button></li><li><button class="page" data-remove-node>${esc(T('移除节点'))}</button></li></ul>`);
-  const html = `<div class="scroll">${top}<div class="cols${main ? '' : ' solo'}">${main ? `<div class="main">${main}</div>` : ''}<div class="side">${side}</div></div></div>`;
+  const html = `<div class="scroll">${top}<div class="cols solo"><div class="side">${side}</div>${main ? `<div class="main">${main}</div>` : ''}</div></div>`;
   const panel = $('panel'), keep = panel.dataset.node === node.id ? panel.querySelector('.scroll')?.scrollTop : 0;
   panel.dataset.node = node.id; panel.innerHTML = html;
   if (keep) panel.querySelector('.scroll').scrollTop = keep;
@@ -781,14 +757,7 @@ function flush() {
 function drawChrome() {
   const canEdit = S.editable && S.platform !== 'ios';
   $('tools').innerHTML = `${canEdit ? `<div class="group"><button data-tool="edit" aria-pressed="${S.editing}" title="${esc(T(S.editing ? '完成' : '编辑'))}">${ic('pencil')}<span>${esc(T(S.editing ? '完成' : '编辑'))}</span></button></div>` : ''}<div class="group"><button data-tool="mentions" aria-pressed="${S.showMentions}" title="${esc(T('页面互链'))}">${ic('link-2')}</button></div><div class="group"><button data-tool="out" title="${esc(T('缩小'))}">${ic('minus')}</button><button data-tool="fit" title="${esc(T('适合窗口'))}"><span id="zoom-level">${Math.round(S.t.k * 100)}%</span></button><button data-tool="in" title="${esc(T('放大'))}">${ic('plus')}</button></div>`;
-  $('search-input').placeholder = T('搜索节点');
-  const line = (kind, arrow) => `<svg viewBox="0 0 34 14"><g class="edge" data-kind="${kind}" style="opacity:1"><path class="line" d="M1,7H${arrow ? 26 : 33}" style="stroke:var(--rm-line-strong)"/>${arrow ? '<path class="head" d="M33,7L25.5,3.4L25.5,10.6Z" style="fill:var(--rm-line-strong)"/>' : ''}</g></svg>`;
-  const card = draft => `<svg viewBox="0 0 34 14"><g class="node${draft ? ' draft' : ''}" style="--tint:var(--rm-muted)"><rect class="card" x=".75" y=".75" width="32.5" height="12.5" rx="4"/><path d="M7,7H27" stroke="var(--rm-muted)" stroke-width="1.6" stroke-linecap="round" opacity=".5"/></g></svg>`;
-  $('legend').className = 'float' + (S.legendClosed ? ' closed' : '');
-  $('legend').innerHTML = `<button class="toggle"><span>${esc(T('图例'))}</span><svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5"/></svg></button><div class="body">
-    <div class="row">${line('requires', true)}<span>${esc(T('先学 A 再学 B'))}</span></div><div class="row">${line('applies', true)}<span>${esc(T('B 是 A 的实际应用'))}</span></div><div class="row">${line('related', false)}<span>${esc(T('相关，聚焦时显示'))}</span></div><hr>
-    <div class="row">${card(false)}<span>${esc(T('已写成页面'))}</span></div><div class="row">${card(true)}<span>${esc(T('待写'))} · ${esc(T('还没有页面'))}</span></div><hr>
-    <div class="domains">${S.domains.map(d => `<span style="--tint:${tint(d.color)}"><i></i>${esc(d.title)}</span>`).join('')}</div></div>`;
+  $('search-input').placeholder = T('搜索节点、要点或页面');
 }
 $('legend').addEventListener('click', event => { if (event.target.closest('.toggle')) { S.legendClosed = !S.legendClosed; drawChrome(); } });
 $('tools').addEventListener('click', event => {
@@ -800,13 +769,32 @@ $('tools').addEventListener('click', event => {
   else if (tool === 'edit') setEditing(!S.editing);
 });
 const input = $('search-input');
+function renderResults() {
+  const box = $('results'), raw = S.query.trim(), query = fold(raw);
+  if (!query) { box.hidden = true; box.innerHTML = ''; return; }
+  const named = n => fold([n.d.title, n.d.subtitle].join(' ')).includes(query);
+  const inText = n => fold([n.d.summary, S.domains.find(d => d.id === n.d.domain)?.title, ...(n.d.keyPoints || []).map(k => k.text)].join(' ')).includes(query);
+  const nodes = S.nodes.filter(named), others = S.nodes.filter(n => !named(n) && inText(n));
+  const pages = [...S.pages.values()].filter(p => p.exists !== false && fold(p.title || p.key).includes(query)).slice(0, 8);
+  const mark = text => { const i = (text || '').toLowerCase().indexOf(raw.toLowerCase()); return i < 0 ? esc(text || '') : esc(text.slice(0, i)) + `<mark>${esc(text.slice(i, i + raw.length))}</mark>` + esc(text.slice(i + raw.length)); };
+  const nodeRow = n => `<button data-focus="${esc(n.id)}"${n.id === S.focus ? ' class="on"' : ''}>${mark(n.d.title)}${n.d.subtitle ? `<small>${mark(n.d.subtitle)}</small>` : ''}</button>`;
+  const group = (title, rows) => rows.length ? `<h5>${esc(T(title))}</h5>${rows.join('')}` : '';
+  const html = group('节点', nodes.map(nodeRow)) + group('要点里提到', others.slice(0, 8).map(nodeRow)) + group('页面', pages.map(p => `<button class="page" data-page="${esc(p.key)}">${mark(p.title || p.key.split('/').pop())}</button>`));
+  box.className = 'float'; box.hidden = !html; box.innerHTML = html;
+}
+$('results').addEventListener('click', event => {
+  const target = event.target.closest('button'); if (!target) return;
+  if (target.dataset.focus) { focus(target.dataset.focus, { scale: 1 }); $('results').hidden = true; }
+  else if (target.dataset.page) openPage(target.dataset.page, true);
+});
 function openSearch() { app.classList.add('searching'); input.focus(); input.select(); }
-function closeSearch() { input.value = ''; S.query = ''; app.classList.remove('searching'); input.blur(); applyState(); }
+function closeSearch() { input.value = ''; S.query = ''; app.classList.remove('searching'); input.blur(); applyState(); renderResults(); }
 input.addEventListener('input', () => { S.query = input.value; if (S.focus) focus(null); else applyState(); });
+input.addEventListener('focus', () => renderResults());
 input.addEventListener('blur', () => { if (!input.value.trim()) app.classList.remove('searching'); });
 input.addEventListener('keydown', event => {
   event.stopPropagation();
-  if (event.key === 'Enter' && S.matches.length) { const id = S.matches[0]; closeSearch(); focus(id, { scale: 1 }); }
+  if (event.key === 'Enter') { const first = $('results').querySelector('button'); if (first?.dataset.focus) { focus(first.dataset.focus, { scale: 1 }); renderResults(); } else if (first?.dataset.page) openPage(first.dataset.page, true); }
   if (event.key === 'Escape') closeSearch();
 });
 function toast(text) { const el = $('toast'); el.className = 'float'; el.textContent = text; el.hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => { el.hidden = true; }, 2600); }
@@ -1040,7 +1028,7 @@ kit.mount('roadmap', {
   attach: message => attach(nodeAtClient(message.x, message.y)?.id, message.key),
   flush,
 }, {
-  state: () => (frame && (cancelAnimationFrame(frame), paint()), { focus: S.focus, zoom: S.zoom, k: S.t.k, highlighted: [...S.highlighted].sort(), chain: [...S.chain].sort(), path: S.focus ? learningPath(S.focus).map(step => step.id) : [], matches: [...S.matches], editing: S.editing, nodes: S.nodes.map(n => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: NODE_H, draft: !!n.d.draft })), bounds: S.layout?.bounds }),
+  state: () => (frame && (cancelAnimationFrame(frame), paint()), { focus: S.focus, zoom: S.zoom, k: S.t.k, highlighted: [...S.highlighted].sort(), chain: [...S.chain].sort(), matches: [...S.matches], editing: S.editing, nodes: S.nodes.map(n => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: NODE_H, draft: !!n.d.draft })), bounds: S.layout?.bounds }),
   focus, fit: () => compact() ? settle(fitTransform().k, false) : svg.call(zoom.transform, toZoom(fitTransform())), setZoom: k => { const { w, h } = viewport(); svg.call(zoom.scaleTo, k, [w / 2 + margin(), h / 2 + margin()]); }, search: text => { input.value = text; S.query = text; app.classList.toggle('searching', !!text); applyState(); }, flush, undo, setEditing, connect: (a, b, kind) => !!connect(S.byId.get(a), S.byId.get(b), kind), attach,
 });
 svg.attr('data-zoom', 'mid');

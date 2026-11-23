@@ -349,3 +349,26 @@ svg text { font-family: var(--acd-font); }
 .compact.wide.panel-open #panel { transform: none; }
 .compact.wide.panel-open #tools { right: calc(min(50%, 480px) + 24px); }
 .compact #world * { transition: none !important; }
+.edge:not(.lit):not(.hover) { opacity: 0 !important; visibility: hidden; pointer-events: none; }
+.editing .edge:not(.lit):not(.hover) { opacity: .35 !important; visibility: visible; pointer-events: auto; }
+.edge.lit path.line { stroke: var(--tint-line, var(--rm-line-strong)); stroke-width: 1.6; }
+.edge.lit .head { fill: var(--rm-line-strong); }
+#legend, #head-progress, #minimap { display: none !important; }
+#app:not(.touch) #search, #app.searching:not(.touch) #search { opacity: 1; visibility: visible; transform: none; left: 50%; margin-left: -150px; top: 14px; width: 300px; background: var(--rm-faint); box-shadow: none; }
+#app:not(.touch) #search:focus-within { background: var(--rm-float); box-shadow: 0 0 0 1.5px var(--rm-accent), var(--rm-shadow); }
+#app.panel-open:not(.compact):not(.sheet):not(.touch) #search { top: 14px; left: calc((100% - var(--panel-w) - 24px) / 2); }
+#search-count { display: none; }
+#results { position: absolute; left: 50%; margin-left: -150px; top: 52px; width: 300px; max-height: calc(100% - 110px); overflow-y: auto; padding: 6px; z-index: 3; scrollbar-width: none; }
+#app.compact #results, #app.touch #results { left: 12px; right: 12px; width: auto; }
+#results h5 { margin: 8px 8px 4px; color: var(--rm-muted); font-size: 11px; font-weight: 600; }
+#app #results button { display: block; width: 100%; text-align: left; padding: 6px 8px; border-radius: 7px; color: var(--rm-ink); font-size: 13px; line-height: 1.3; }
+#app #results button:hover, #app #results button.on { background: var(--rm-faint); }
+#results button small { display: block; color: var(--rm-muted); font-size: 11px; }
+#results button.page { color: var(--rm-accent-ink); }
+#results mark { background: color-mix(in srgb, var(--rm-accent) 22%, transparent); color: inherit; border-radius: 2px; }
+#app:not(.touch):not(.compact) { --panel-w: 380px; }
+#panel .cols { display: block; }
+#panel .relgroup h4 span { display: none; }
+
+#app.panel-open:not(.compact):not(.sheet):not(.touch) #results { left: calc((100% - var(--panel-w) - 24px) / 2); }
+#app.compact #results, #app.touch #results { margin-left: 0; top: 56px; }

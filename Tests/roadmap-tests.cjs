@@ -32,9 +32,9 @@ const roadmap = {
   const boxes = Object.fromEntries(s.nodes.map(n => [n.id, n]));
   const before = (a, b) => a.y < b.y - 1 || (Math.abs(a.y - b.y) < 1 && a.x < b.x);
   check(before(boxes.http, boxes.proxy) && before(boxes.proxy, boxes.gfw) && before(boxes.key, boxes.switch) && before(boxes.switch, boxes.gateway), 'Inside a stage, prerequisites come first in reading order');
-  check(Math.min(boxes.key.y, boxes.switch.y) > Math.max(boxes.http.y, boxes.gfw.y), 'Stages of one flow stack top to bottom in order');
-  check(boxes.alb.x > Math.max(...s.nodes.filter(n => n.id !== 'alb').map(n => n.x + n.w)), 'A second flow gets its own column');
-  check(await page.evaluate(() => document.querySelectorAll('g.spine').length) === 1 && await page.evaluate(() => document.querySelectorAll('g.flow').length) === 2, 'Consecutive stages get one flow arrow and each flow a heading');
+  check(Math.min(boxes.key.x, boxes.switch.x) > Math.max(boxes.http.x + boxes.http.w, boxes.gfw.x + boxes.gfw.w), 'Stages of one flow run left to right in order');
+  check(boxes.alb.y > Math.max(...s.nodes.filter(n => n.id !== 'alb').map(n => n.y + n.h)), 'A second flow gets its own row');
+  check(await page.evaluate(() => document.querySelectorAll('g.spine').length) === 0 && await page.evaluate(() => document.querySelectorAll('g.flow').length) === 2, 'Consecutive stages get one flow arrow and each flow a heading');
   for (const a of s.nodes) for (const b of s.nodes) if (a.id < b.id) check(a.x + a.w + 24 <= b.x || b.x + b.w + 24 <= a.x || a.y + a.h + 24 <= b.y || b.y + b.h + 24 <= a.y, `${a.id} and ${b.id} keep 24pt apart`);
   const again = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await again.goto('file://' + path.resolve(__dirname, '../Resources/roadmap/roadmap.html'));
@@ -50,16 +50,14 @@ const roadmap = {
 
   await page.evaluate(() => window.acdianRoadmap.focus('gateway'));
   s = await state();
-  same(s.chain, ['http', 'key', 'proxy', 'switch'], 'Focusing lights every prerequisite, however far back');
-  same(s.highlighted, ['alb', 'gateway', 'http', 'key', 'proxy', 'switch'], 'Direct successors light too, unrelated nodes do not');
-  same(s.path, ['http', 'key', 'proxy', 'switch'], 'The learning path lists every prerequisite, earliest first');
-  same(await page.$$eval('g.node.dim', nodes => nodes.map(n => n.dataset.id).sort()), ['chain', 'gfw', 'lonely', 'nat'], 'Everything else dims');
+  same(s.highlighted, ['alb', 'gateway', 'key', 'proxy', 'switch'], 'Focusing lights only the node and its direct relations');
+  same(await page.$$eval('g.node.dim', nodes => nodes.map(n => n.dataset.id).sort()), ['chain', 'gfw', 'http', 'lonely', 'nat'], 'Everything else dims');
+  check(await page.$eval('#panel', panel => !/先学|学完|学习路径/.test(panel.textContent)), 'The panel lists relations without study guidance');
   check(await page.$eval('#panel', panel => panel.textContent.includes('proxy before gateway')), 'The panel gives the reason for each relation');
 
   await page.evaluate(() => window.acdianRoadmap.focus('proxy'));
   s = await state();
   same(s.highlighted, ['chain', 'gateway', 'gfw', 'http', 'proxy'], 'Related nodes light on focus');
-  same(s.path, ['http'], 'The path of a node lists its own prerequisites');
   await page.waitForTimeout(400);
   check(await page.$eval('g.edge[data-id="proxy~chain"]', e => getComputedStyle(e).opacity === '1'), 'A related edge shows while one of its ends is focused');
 
@@ -67,10 +65,9 @@ const roadmap = {
   await page.waitForTimeout(600);
   check((await posted('save')).length === 0, 'Number keys no longer change anything');
   check(!(await page.$('#panel .segment')) && !(await page.$('g.node .dot')), 'No learning status is shown on nodes or in the panel');
-  check((await page.$eval('#head-count', e => e.textContent)).includes('10 个节点'), 'The header counts nodes instead of progress');
 
-  check(await page.evaluate(() => Math.abs(document.getElementById('panel').getBoundingClientRect().width / document.getElementById('app').getBoundingClientRect().width - 2 / 3) < 0.02), 'The detail panel takes two thirds of the view');
-  check(await page.$$eval('#links g.link', links => links.length > 0 && links.every(l => l.querySelector('.line').getAttribute('d'))), 'Domains are joined by routed links');
+  check(await page.evaluate(() => Math.abs(document.getElementById('panel').getBoundingClientRect().width - 380) < 2), 'The detail panel is a narrow side column');
+  check(await page.$$eval('#links g.link', links => links.length === 0), 'No aggregated lines between stages');
   check(await page.$$eval('g.edge.cross:not(.lit):not(.flow)', edges => edges.every(e => getComputedStyle(e).opacity === '0')), 'Edges between domains stay hidden until they are lit');
   await page.keyboard.press('Escape');
   check((await state()).focus === null, 'Esc leaves focus');
