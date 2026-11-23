@@ -266,7 +266,7 @@ struct ChromeTab: View {
         HStack(spacing:8) {
             Image(systemName:symbol).font(.system(size:12)).frame(width:16,height:16)
                 .foregroundStyle(active && !dimmed ? Color.acPink : Color.secondary.opacity(0.8))
-            Text(title).font(.system(size:12.5)).lineLimit(1).truncationMode(.tail).frame(maxWidth:.infinity,alignment:.leading)
+            TaggedTitle(name:title,size:12.5).truncationMode(.tail).frame(maxWidth:.infinity,alignment:.leading)
             if showClose {
                 Button(action:close) { Image(systemName:"xmark").font(.system(size:9,weight:.bold)).frame(width:18,height:18).background(closeHovering ? Color.primary.opacity(0.12) : .clear,in:Circle()).contentShape(Circle()) }
                     .buttonStyle(.plain).onHover { closeHovering = $0 }.accessibilityLabel(closeLabel)
@@ -605,7 +605,7 @@ struct FileRow: View {
     }
     private var row: some View {
         Button { model.openInFocusedColumn(entry) } label: {
-            HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { Text(AppModel.editableName(entry)).font(.system(size:13)).lineLimit(1); if showPath { Text(entry.relativePath).font(.system(size:11)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,6).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
+            HStack(spacing:8) { Image(systemName:symbol).font(.system(size:12)).frame(width:14).foregroundStyle(isCurrentPage ? Color.acPink : Color.secondary.opacity(0.65)); VStack(alignment:.leading,spacing:3) { TaggedTitle(name:AppModel.editableName(entry)); if showPath { Text(entry.relativePath).font(.system(size:11)).foregroundStyle(.tertiary).lineLimit(1) } }; Spacer(minLength:0) }.foregroundStyle(isCurrentPage ? Color.primary : Color.secondary).padding(.leading,CGFloat(indent)*13+23).padding(.trailing,10).padding(.vertical,6).contentShape(Rectangle()).background(isCurrentPage ? Color.acPink.opacity(0.12) : .clear,in:RoundedRectangle(cornerRadius:6))
         }.buttonStyle(.plain).help(entry.relativePath)
         .simultaneousGesture(TapGesture(count:2).onEnded { model.startRenaming(entry) })
         .contextMenu {

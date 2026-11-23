@@ -101,7 +101,10 @@ private struct JumpRow: View {
         HStack(alignment:.top,spacing:12) {
             Image(systemName:FileRow.symbol(ext:entry.ext)).font(.system(size:14)).foregroundStyle(Color.acPink).frame(width:16).padding(.top,2)
             VStack(alignment:.leading,spacing:7) {
-                highlighted(name).font(.system(size:14,weight:chain ? .semibold : .regular)).lineLimit(1)
+                HStack(spacing:5) {
+                    ForEach(AppModel.titleTags(name).tags,id:\.self) { tag in TaggedTitle(name:"【\(tag)】",size:14) }
+                    highlighted(AppModel.titleTags(name).tags.isEmpty ? name : AppModel.titleTags(name).title).font(.system(size:14,weight:chain ? .semibold : .regular)).lineLimit(1)
+                }
                 if chain, facts?.from != nil || facts?.to != nil {
                     HStack(spacing:6) {
                         if let from = facts?.from { pill(from,main:false); arrow }
@@ -118,8 +121,9 @@ private struct JumpRow: View {
         .contentShape(Rectangle())
     }
     private var arrow: some View { Image(systemName:"arrow.right").font(.system(size:10,weight:.semibold)).foregroundStyle(.tertiary) }
-    private func pill(_ title: String, main: Bool) -> some View {
-        Text(title.count > 22 ? title.prefix(21) + "…" : title).font(.system(size:11.5,weight:main ? .semibold : .regular)).lineLimit(1).fixedSize()
+    private func pill(_ name: String, main: Bool) -> some View {
+        let stripped = AppModel.titleTags(name).title, title = stripped.isEmpty ? name : stripped
+        return Text(title.count > 22 ? title.prefix(21) + "…" : title).font(.system(size:11.5,weight:main ? .semibold : .regular)).lineLimit(1).fixedSize()
             .foregroundStyle(main ? Color(white:0.09) : Color.secondary)
             .padding(.horizontal,8).frame(height:22)
             .background(main ? Color.acPink : Color.wash,in:RoundedRectangle(cornerRadius:6,style:.continuous))

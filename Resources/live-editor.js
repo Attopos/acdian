@@ -31,8 +31,18 @@ const localization = new Compartment();
 const titleBlock=document.createElement('h1');
 titleBlock.className='cm-page-title';titleBlock.spellcheck=false;
 const typedTitle=()=>titleBlock.textContent.replace(/\s+/g,' ').trim();
+function titleParts(title){
+  const tags=[];
+  const rest=title.replace(/【([^【】]*)】/g,(match,inner)=>{const tag=inner.trim();if(!tag)return match;if(!tags.includes(tag))tags.push(tag);return ' ';}).replace(/\s+/g,' ').trim();
+  return {tags,rest};
+}
+function paintTitle(){
+  const {tags,rest}=titleParts(metadata.pageTitle);
+  if(!tags.length){titleBlock.textContent=metadata.pageTitle;return;}
+  titleBlock.replaceChildren(...tags.map(tag=>{const chip=document.createElement('span');chip.className='cm-title-tag';chip.contentEditable='false';chip.textContent=tag;return chip;}),document.createTextNode(rest));
+}
 function showTitle(force){
-  if(force||document.activeElement!==titleBlock)titleBlock.textContent=metadata.pageTitle;
+  if(force||document.activeElement!==titleBlock)paintTitle();
   titleBlock.hidden=!metadata.pageTitle;
   titleBlock.contentEditable=metadata.editable?'plaintext-only':'false';
 }
@@ -51,7 +61,8 @@ titleBlock.addEventListener('keydown',event=>{
   else if(event.key==='ArrowDown'){const caret=getSelection();if(caret.isCollapsed&&caret.anchorOffset===(caret.anchorNode?.textContent.length??0)&&!event.shiftKey){event.preventDefault();intoText();}}
 });
 titleBlock.addEventListener('input',()=>post({type:'titleTyped',title:typedTitle(),currentPath:metadata.currentPath}));
-titleBlock.addEventListener('blur',()=>{if(!typedTitle())titleBlock.textContent=metadata.pageTitle;post({type:'titleEnded',currentPath:metadata.currentPath});});
+titleBlock.addEventListener('focus',()=>{if(titleBlock.querySelector('.cm-title-tag')){titleBlock.textContent=metadata.pageTitle;const caret=getSelection();caret.selectAllChildren(titleBlock);caret.collapseToEnd();}});
+titleBlock.addEventListener('blur',()=>{if(!typedTitle()||typedTitle()===metadata.pageTitle)paintTitle();post({type:'titleEnded',currentPath:metadata.currentPath});});
 const localeExtensions=()=>{
   const strings=messagesForLanguage(metadata.language);
   return [editorLanguage.of(metadata.language),placeholder(strings.placeholder),EditorView.contentAttributes.of({lang:metadata.language,'aria-label':strings.editorLabel})];

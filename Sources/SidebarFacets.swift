@@ -51,6 +51,24 @@ struct TagChip: View {
     }
 }
 
+struct TaggedTitle: View {
+    let name: String
+    var size: CGFloat = 13
+    var weight: Font.Weight = .regular
+    var body: some View {
+        let parts = AppModel.titleTags(name)
+        HStack(spacing:5) {
+            ForEach(parts.tags,id:\.self) { tag in
+                Text(tag).font(.system(size:size*0.78,weight:.medium)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                    .padding(.horizontal,5).frame(height:size+3)
+                    .background(Color.wash,in:Capsule())
+                    .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.18),lineWidth:0.5))
+            }
+            if !parts.title.isEmpty || parts.tags.isEmpty { Text(parts.tags.isEmpty ? name : parts.title).font(.system(size:size,weight:weight)).lineLimit(1) }
+        }
+    }
+}
+
 struct FacetGroup<Rows: View>: View {
     let title: String
     let key: String

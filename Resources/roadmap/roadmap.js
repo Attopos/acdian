@@ -385,7 +385,7 @@ function draw(animate = false) {
   node.select('.icon').html(d => ICONS[d.d.draft ? 'circle-dashed' : 'file-text']);
   const fit = (text, room) => { const font = `600 14px ${FONT}`; if (textWidth(text, font) <= room) return text; let s = text; while (s.length > 1 && textWidth(s + '…', font) > room) s = s.slice(0, -1); return s.trimEnd() + '…'; };
   node.select('.sub').text(d => d.d.subtitle || '');
-  node.select('.title').attr('y', d => d.d.subtitle ? NODE_H / 2 - 6.5 : NODE_H / 2 + 0.5).text(d => fit(d.d.title, d.w - 45)).each(function (d) { d3.select(this).selectAll('title').data([d.d.subtitle ? `${d.d.title} · ${d.d.subtitle}` : d.d.title]).join('title').text(t => t); });
+  node.select('.title').attr('y', d => d.d.subtitle ? NODE_H / 2 - 6.5 : NODE_H / 2 + 0.5).html(d => { const { tags, rest } = titleParts(d.d.title); const lead = tags.map(tag => `<tspan class="ttag">${esc(tag)}</tspan><tspan> </tspan>`).join(''); return lead + esc(fit(rest, d.w - 45 - tags.reduce((w, tag) => w + textWidth(tag + '  ', `500 11px ${FONT}`), 0))); }).each(function (d) { d3.select(this).selectAll('title').data([d.d.subtitle ? `${d.d.title} · ${d.d.subtitle}` : d.d.title]).join('title').text(t => t); });
   node.select('.summary').each(function (d) { d3.select(this).selectAll('tspan').data(d.lines).join('tspan').attr('x', 12).attr('y', (_, i) => NODE_H + 7 + i * 12.5).text(line => line); });
   drawHandles(); drawMinimap(); drawHead(); applyState();
   $('empty').hidden = S.nodes.length > 0;
@@ -602,6 +602,12 @@ $('minimap').addEventListener('pointerdown', event => { event.preventDefault(); 
 
 // ---------- figures ----------
 const themed = url => /\.svg(\?|$)/i.test(url.split('#')[0]) && url.startsWith('acdian-resource:') ? `${url.split('#')[0]}${url.includes('?') ? '&' : '?'}appearance=${S.theme}#acdian-${S.theme}` : url;
+function titleParts(title) {
+  const tags = [];
+  const rest = String(title || '').replace(/【([^【】]*)】/g, (match, inner) => { const tag = inner.trim(); if (!tag) return match; if (!tags.includes(tag)) tags.push(tag); return ' '; }).replace(/\s+/g, ' ').trim();
+  return { tags, rest: tags.length ? rest : String(title || '') };
+}
+const tagged = title => { const { tags, rest } = titleParts(title); return tags.map(tag => `<span class="ttag">${esc(tag)}</span>`).join('') + esc(rest); };
 const figuresOf = node => (node.d.pages || []).flatMap(key => S.pages.get(key)?.figures || []);
 function place(el, x, y, anchorWidth = 0) {
   el.hidden = false;
@@ -678,7 +684,7 @@ function renderPanel() {
   const pageIcon = ic('file-text'), goIcon = ic('chevron-right', 'go');
   const h3 = (name, text) => `<h3>${ic(name)}<span>${esc(T(text))}</span></h3>`;
   const top = `<div class="top"><div class="crumb" style="--tint:${tint(domain?.color)}">${glyphSVG(domain?.glyph)}<span>${esc(domain?.title || '')}</span><button class="close" data-close aria-label="Close">${ic('x')}</button></div>`
-    + `<h2>${esc(node.d.title)}</h2>${node.d.subtitle ? `<p class="sub">${esc(node.d.subtitle)}</p>` : ''}<p class="lead">${esc(node.d.summary || '')}</p></div>`;
+    + `<h2>${tagged(node.d.title)}</h2>${node.d.subtitle ? `<p class="sub">${esc(node.d.subtitle)}</p>` : ''}<p class="lead">${esc(node.d.summary || '')}</p></div>`;
   let main = '', side = '';
   const block = (name, text, body, extra = '') => `<section class="block${extra}">${h3(name, text)}${body}</section>`;
   if (figures.length) main += `<button class="figure" data-figure="0"><img alt="${esc(T('原理图'))}" src="${esc(themed(figures[0]))}">${figures.length > 1 ? `<span>1 / ${figures.length}</span>` : ''}</button>`;
@@ -687,9 +693,9 @@ function renderPanel() {
     const groups = [];
     points.forEach((k, i) => { const last = groups[groups.length - 1]; if (last && last.page === (k.page || '')) last.items.push([k, i]); else groups.push({ page: k.page || '', items: [[k, i]] }); });
     const pageTitle = key => S.pages.get(key)?.title || key.split('/').pop();
-    main += `<section class="points">${h3('list-checks', '要点')}${groups.map(g => `${g.page && groups.length > 1 ? `<button class="source" data-page="${esc(g.page)}">${pageIcon}<span>${esc(pageTitle(g.page))}</span>${goIcon}</button>` : ''}<ol>${g.items.map(([k, i]) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}${k.heading ? `<small>§ ${esc(k.heading)}</small>` : ''}</span></button></li>`).join('')}</ol>`).join('')}</section>`;
+    main += `<section class="points">${h3('list-checks', '要点')}${groups.map(g => `${g.page && groups.length > 1 ? `<button class="source" data-page="${esc(g.page)}">${pageIcon}<span>${tagged(pageTitle(g.page))}</span>${goIcon}</button>` : ''}<ol>${g.items.map(([k, i]) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}${k.heading ? `<small>§ ${esc(k.heading)}</small>` : ''}</span></button></li>`).join('')}</ol>`).join('')}</section>`;
   }
-  side += block('file-text', '页面', pages.length ? `<ul>${pages.map(({ key, info }) => `<li><button class="page${info && info.exists === false ? ' missing' : ''}" data-page="${esc(key)}">${pageIcon}<span>${esc(info?.title || key.split('/').pop())}</span>${info && info.exists === false ? `<span class="tag">${esc(T('页面不存在'))}</span>` : goIcon}</button></li>`).join('')}</ul>`
+  side += block('file-text', '页面', pages.length ? `<ul>${pages.map(({ key, info }) => `<li><button class="page${info && info.exists === false ? ' missing' : ''}" data-page="${esc(key)}">${pageIcon}<span>${tagged(info?.title || key.split('/').pop())}</span>${info && info.exists === false ? `<span class="tag">${esc(T('页面不存在'))}</span>` : goIcon}</button></li>`).join('')}</ul>`
     : `<p class="hint">${esc(node.d.note || T('这个节点还没有页面，摘要是通用常识。'))}</p>${S.editing ? `<button class="page" data-new-page>${pageIcon}<span>${esc(T('新建页面'))}</span></button>` : ''}`);
   const groupOf = (label, items) => items.length ? `<div class="relgroup"><h4>${esc(T(label))}</h4><ul>${items.join('')}</ul></div>` : '';
   const ins = S.ins.get(node.id), outs = S.outs.get(node.id);
@@ -973,7 +979,7 @@ function unattached() {
 function drawDrawer() {
   const el = $('drawer'); el.hidden = !S.editing; if (!S.editing) return;
   const pages = unattached(); el.className = 'float';
-  el.innerHTML = `<h5>${esc(T('未挂靠的页面'))}</h5>${pages.length ? pages.map(page => `<span class="item" draggable="true" data-key="${esc(page.key)}">${esc(page.title)}</span>`).join('') + `<div class="none">${esc(T('把页面拖到节点上挂靠'))}</div>` : `<div class="none">${esc(T('所有页面都已挂上'))}</div>`}`;
+  el.innerHTML = `<h5>${esc(T('未挂靠的页面'))}</h5>${pages.length ? pages.map(page => `<span class="item" draggable="true" data-key="${esc(page.key)}">${tagged(page.title)}</span>`).join('') + `<div class="none">${esc(T('把页面拖到节点上挂靠'))}</div>` : `<div class="none">${esc(T('所有页面都已挂上'))}</div>`}`;
 }
 $('drawer').addEventListener('dragstart', event => { const key = event.target.dataset?.key; if (key) { event.dataTransfer.setData('text/plain', 'acdian-roadmap-page:' + key); event.dataTransfer.effectAllowed = 'link'; } });
 function nodeAtClient(x, y) { const [wx, wy] = S.t.invert([x - $('scroller').getBoundingClientRect().left, y - $('scroller').getBoundingClientRect().top]); return S.nodes.find(n => wx > n.x && wx < n.x + n.w && wy > n.y && wy < n.y + (S.zoom === 'near' ? n.hNear : NODE_H)) || null; }

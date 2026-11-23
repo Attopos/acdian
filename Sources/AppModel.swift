@@ -1573,11 +1573,20 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         if entry.ext == "pdf" { return .pdf }
         return MediaKinds.isMedia(entry.ext) ? .media : nil
     }
-    static func tag(of entry: VaultEntry) -> String? {
-        guard entry.name.hasPrefix("【"), let end = entry.name.firstIndex(of:"】") else { return nil }
-        let tag = entry.name[entry.name.index(after:entry.name.startIndex)..<end].trimmingCharacters(in:.whitespaces)
-        return tag.isEmpty ? nil : tag
+    static func titleTags(_ name: String) -> (tags: [String], title: String) {
+        var tags: [String] = [], title = "", rest = Substring(name)
+        while let open = rest.firstIndex(of:"【"), let close = rest[open...].firstIndex(of:"】") {
+            let inner = rest[rest.index(after:open)..<close].trimmingCharacters(in:.whitespaces)
+            if inner.isEmpty || inner.contains("【") { title += rest[...close]; rest = rest[rest.index(after:close)...]; continue }
+            title += rest[..<open] + " "
+            if !tags.contains(inner) { tags.append(inner) }
+            rest = rest[rest.index(after:close)...]
+        }
+        title += rest
+        let cleaned = title.split(separator:" ",omittingEmptySubsequences:true).joined(separator:" ")
+        return (tags, cleaned)
     }
+    static func tags(of entry: VaultEntry) -> [String] { entry.isDirectory ? [] : titleTags(editableName(entry)).tags }
     var scopedFiles: [VaultEntry] {
         guard let index else { return [] }
         let scope = activeModule.map { $0.folder + "/" }, hidden = hiddenFolders, covered = componentHiddenFolders
@@ -1593,7 +1602,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let files = scopedFiles
         return memo("tags:\(activeModuleID ?? "")|\(files.count)") {
             var counts: [String:Int] = [:]
-            for file in files { if let tag = Self.tag(of:file) { counts[tag,default:0] += 1 } }
+            for file in files { for tag in Self.tags(of:file) { counts[tag,default:0] += 1 } }
             return counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map(\.key)
         }
     }
@@ -1602,7 +1611,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         let now = Date()
         return base.filter { file in
             if !facetKinds.isEmpty { guard let kind = Self.kind(of:file), facetKinds.contains(kind) else { return false } }
-            if !facetTags.isEmpty { guard let tag = Self.tag(of:file), facetTags.contains(tag) else { return false } }
+            if !facetTags.isEmpty { guard Self.tags(of:file).contains(where:facetTags.contains) else { return false } }
             if let age = facetAge { guard let modified = file.modified, now.timeIntervalSince(modified) < Double(age.rawValue) * 86400 else { return false } }
             return true
         }.sorted { ($0.modified ?? .distantPast) > ($1.modified ?? .distantPast) }
