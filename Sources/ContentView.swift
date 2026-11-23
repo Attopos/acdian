@@ -149,7 +149,7 @@ struct ContentView: View {
                                 LiveMarkdownEditor(model:model,centerShift:layout.shift,leftEdge:layout.edge).frame(maxWidth:.infinity,maxHeight:.infinity)
                             }
                             if model.showOutline {
-                                OutlineRail(model:model,title:title,textLeft:model.commentTextLeft ?? Self.pageLeft(width,shift:layout.shift) + Self.pageSide(width),top:width > 700 ? 49 : 30,height:geometry.size.height)
+                                OutlineLayer(model:model,title:title,textLeft:model.commentTextLeft ?? Self.pageLeft(width,shift:layout.shift) + Self.pageSide(width),top:width > 700 ? 49 : 30,height:geometry.size.height)
                             }
                         }
                     }
@@ -915,6 +915,42 @@ struct LanguageMenu: View {
 // The outline: one short line per heading in the margin just left of the text,
 // longer for higher levels and pink for the part being read. Pointing at it opens
 // a list of the headings over the page; leaving closes it. The text never moves.
+final class PassThroughHost<Content: View>: NSHostingView<Content> {
+    var hits: (NSPoint) -> Bool = { _ in false }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let superview else { return nil }
+        return hits(convert(point,from:superview)) ? super.hitTest(point) : nil
+    }
+}
+struct OutlineLayer: NSViewRepresentable {
+    @ObservedObject var model: AppModel
+    let title: String
+    let textLeft: CGFloat
+    let top: CGFloat
+    let height: CGFloat
+    final class Coordinator { var open = false }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    private func rail(_ coordinator: Coordinator) -> OutlineRail { OutlineRail(model:model,title:title,textLeft:textLeft,top:top,height:height,onOpen:{ coordinator.open = $0 }) }
+    func makeNSView(context: Context) -> PassThroughHost<OutlineRail> {
+        let host = PassThroughHost(rootView:rail(context.coordinator))
+        update(host,context.coordinator)
+        return host
+    }
+    func updateNSView(_ host: PassThroughHost<OutlineRail>, context: Context) {
+        host.rootView = rail(context.coordinator)
+        update(host,context.coordinator)
+    }
+    private func update(_ host: PassThroughHost<OutlineRail>, _ coordinator: Coordinator) {
+        let left = OutlineRail.railLeft(textLeft), drop = OutlineRail.railDrop, count = CGFloat(model.headings.count + 1), shown = min(count,48)
+        let rail = CGRect(x:left - 6,y:top + drop - 6,width:OutlineRail.railWidth + 12,height:shown * 2.5 + max(0,shown - 1) * 8 + 12)
+        let y = max(4,top + drop - 14), panel = CGRect(x:max(4,left - 14),y:y,width:260,height:max(120,min(height - y - 12,count * 32 + 14)))
+        let flipped = host.isFlipped
+        host.hits = { [weak host] point in
+            let p = flipped ? point : CGPoint(x:point.x,y:(host?.bounds.height ?? 0) - point.y)
+            return rail.contains(p) || (coordinator.open && panel.contains(p))
+        }
+    }
+}
 struct OutlineRail: View {
     @ObservedObject var model: AppModel
     let title: String
@@ -925,6 +961,7 @@ struct OutlineRail: View {
     let height: CGFloat
     /// Opens the list at once, for pictures of it in tests.
     var startsOpen = false
+    var onOpen: ((Bool) -> Void)? = nil
     @State private var open = false
     @State private var hovered: Int?
     @State private var closing: Task<Void,Never>?
@@ -984,8 +1021,8 @@ struct OutlineRail: View {
     // back, so a close waits a moment for the pointer to arrive.
     private func hover(_ inside: Bool) {
         closing?.cancel()
-        if inside { if !open { withAnimation(.easeOut(duration:0.12)) { open = true } } }
-        else { closing = Task { @MainActor in try? await Task.sleep(nanoseconds:220_000_000); guard !Task.isCancelled else { return }; withAnimation(.easeIn(duration:0.12)) { open = false; hovered = nil } } }
+        if inside { onOpen?(true); if !open { withAnimation(.easeOut(duration:0.12)) { open = true } } }
+        else { closing = Task { @MainActor in try? await Task.sleep(nanoseconds:220_000_000); guard !Task.isCancelled else { return }; onOpen?(false); withAnimation(.easeIn(duration:0.12)) { open = false; hovered = nil } } }
     }
 }
 

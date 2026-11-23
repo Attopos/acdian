@@ -569,16 +569,20 @@ test('the Toggle command inserts a folding block with a title and a body line',(
  assert.ok(r.w.document.querySelector('.cm-callout-toggle'),'it is drawn as a toggle');
  assert.ok(r.w.document.querySelector('.cm-callout-toggle .cm-fold-toggle'),'it has a fold arrow');r.close();
 });
-test('an image caption can be added and edited under the picture',async()=>{
- const r=setup('Intro\n\n![[Attachments/a.png|300]]\n\nEnd\n');r.view.focus();await tick(20);
- const caption=r.w.document.querySelector('.cm-image-caption');assert.ok(caption,'an empty caption is offered');
- assert.ok(caption.classList.contains('cm-image-caption-empty'));
- caption.click();assert.equal(caption.isContentEditable||caption.contentEditable==='true',true);
- caption.textContent='示意图';caption.dispatchEvent(new r.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
- assert.equal(r.get().text,'Intro\n\n![[Attachments/a.png|300|示意图]]\n\nEnd\n');
- await tick(20);
- const next=r.w.document.querySelector('.cm-image-caption');assert.equal(next.textContent,'示意图');r.close();
- const md=setup('![old|200](pic.png)\n');await tick(20);
- const c=md.w.document.querySelector('.cm-image-caption');c.click();c.textContent='new';c.dispatchEvent(new md.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
- assert.equal(md.get().text,'![new|200](pic.png)\n');md.close();
+test('images show no caption and keep the alt text in the file untouched',async()=>{
+ const r=setup('Intro\n\n![[Attachments/a.png|300|示意图]]\n\nEnd\n');await tick(20);
+ assert.equal(r.w.document.querySelector('.cm-image-caption'),null);
+ assert.equal(r.get().text,'Intro\n\n![[Attachments/a.png|300|示意图]]\n\nEnd\n');r.close();
+});
+test('Enter at the start of a bold line keeps the bold intact instead of exposing its stars',()=>{
+ const enter=(text,head)=>{const r=setup(text);r.view.dispatch({selection:{anchor:head}});r.view.focus();r.view.contentDOM.dispatchEvent(new r.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));const out=r.get().text;r.close();return out;};
+ assert.equal(enter('前文\n**开着代理时别信**：系统',5),'前文\n\n\n**开着代理时别信**：系统');
+ assert.equal(enter('开头**粗体字**后',5),'开头**粗**\n**体字**后');
+ assert.equal(enter('开头**粗体**后',6),'开头**粗体**\n后');
+ assert.equal(enter('开头**粗体**后',4),'开头\n**粗体**后');
+});
+test('rendered images and footnotes stay rendered while the caret is next to them',async()=>{
+ const r=setup('文字 [^1] 后\n\n[^1]: 注\n');await tick(20);
+ const at=r.get().text.indexOf('[^1]');r.view.dispatch({selection:{anchor:at+1}});await tick(20);
+ assert.ok(r.w.document.querySelector('.cm-footnote-mark'),'the footnote mark stays a number');r.close();
 });

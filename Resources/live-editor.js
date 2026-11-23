@@ -13,7 +13,7 @@ import { comments, loadComments, commentsTest } from './comments.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter, tableWidthField, tableColumnResize, tableAddControls } from './rich-table.js';
 import { blockHandles, blockDragTest } from './block-drag.js';
 import { editorExtras, findInPage } from './editor-extras.js';
-import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges, imageCaption } from './rich-text.js';
+import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -229,11 +229,7 @@ function fragment(source,state,kind='') {
     if(!image.dataset.liveResource)image.dataset.liveResource=target;
     if (url) {
       image.src = url; image.loading = 'lazy';
-      // Text given with a picture is its caption.
-      const caption=kind==='image'?imageCaption(image,state):image.alt&&!html?document.createElement('span'):null;
       if (kind==='image') frameImage(image,state);
-      else if (caption) { caption.className='cm-image-caption'; caption.textContent=image.alt; }
-      if (caption) (image.closest('.cm-image-frame')||image).after(caption);
     }
     else image.replaceWith(document.createTextNode(image.alt));
   });
@@ -804,12 +800,11 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       if(metadata.editable&&state.selection.ranges.some(range=>range.to>=from&&range.from<=to))continue;
       list.push(Decoration.replace({widget:new InlineMathWidget(match[1])}).range(from,to));
     }
-    const touching=(from,to)=>metadata.editable&&state.selection.ranges.some(range=>range.to>=from&&range.from<=to);
     const inCodeSpan=(from,to)=>inlineCodeRanges.some(([a,b])=>from<b&&to>a);
-    inlineHTML(line.text,line.from,(from,to)=>metadata.editable&&state.selection.ranges.some(range=>range.empty&&range.head>=from&&range.head<=to),inCodeSpan,list);
+    inlineHTML(line.text,line.from,()=>false,inCodeSpan,list);
     for(const embed of line.text.matchAll(/!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\s]+)\)/g)) {
       const from=line.from+embed.index,to=from+embed[0].length,parsed=embed[1]?parseEmbed(embed[1]):{target:embed[3],width:/\|(\d+)$/.exec(embed[2])?.[1]},url=isImageTarget(parsed.target)&&resourceURL(parsed.target);
-      if(!url||inCodeSpan(from,to)||touching(from,to))continue;
+      if(!url||inCodeSpan(from,to))continue;
       list.push(Decoration.replace({widget:new InlineImageWidget(url,parsed.target,parsed.width?Number(parsed.width):null)}).range(from,to));
     }
     if(!tableRanges.some(([a,b])=>line.from>=a&&line.from<b))keepWords(line.text,line.from,inCodeSpan,list);
@@ -819,7 +814,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
       if(note)list.push(Decoration.line({class:'cm-footnote-note'}).range(line.from));
       for(const mark of line.text.matchAll(/\[\^([^\]\s]+)\]/g)) {
         const from=line.from+mark.index,to=from+mark[0].length;
-        if(inCodeSpan(from,to)||touching(from,to)||(note&&mark.index===0))continue;
+        if(inCodeSpan(from,to)||(note&&mark.index===0))continue;
         list.push(Decoration.replace({widget:new FootnoteWidget(mark[1])}).range(from,to));
       }
     }
@@ -1152,12 +1147,42 @@ function enterAbove(view) {
   const line=state.doc.lineAt(range.head);
   if(!plainTextLine(state,line)||inCode(state,range.head)||calloutHeader.test(line.text))return false;
   const start=visiblePrefixEnd(state,line.from)??line.from;
-  if(range.head!==start||!line.text.slice(start-line.from).trim())return false;
+  if((range.head!==start&&range.head!==syntaxAfter(state,start))||!line.text.slice(start-line.from).trim())return false;
   const item=/^(\s*)([-+*]|\d+[.)])\s+(\[[ xX]\]\s*)?/.exec(line.text),quote=/^ {0,3}(?:>[ \t]+)+/.exec(line.text);
   let k=0;while(line.number-k>1&&voidLine(state.doc.line(line.number-k-1)))k++;
   const insert=item?item[1]+item[2]+' '+(item[3]!==undefined?'[ ] ':'')+'\n':quote?quote[0]+'\n':'\n'.repeat(k?1:2);
-  if(!item&&!quote&&k&&start===line.from)return false;
+  if(!item&&!quote&&k&&start===line.from) {
+    if(range.head===line.from)return false;
+    view.dispatch({changes:{from:line.from,insert:'\n'},selection:{anchor:range.head+1},scrollIntoView:true,userEvent:'input'});
+    return true;
+  }
   view.dispatch({changes:{from:line.from,insert},selection:{anchor:range.head+insert.length},scrollIntoView:true,userEvent:'input'});
+  return true;
+}
+function formatSpans(state,pos) {
+  const spans=[];
+  const line=state.doc.lineAt(pos);
+  state.field(boldDelimiterField).between(line.from,line.to,(from,to,decoration)=>{const spec=decoration.spec;if(spec.bodyFrom!==undefined&&spec.boldFrom<=pos&&spec.boldTo>=pos&&!spans.some(span=>span.boldFrom===spec.boldFrom))spans.push(spec);});
+  return spans.sort((a,b)=>a.boldFrom-b.boldFrom||b.boldTo-a.boldTo);
+}
+function splitFormatting(view) {
+  const {state}=view,range=state.selection.main;
+  if(state.readOnly||state.selection.ranges.length!==1||!range.empty||view.composing||inCode(state,range.head))return false;
+  const line=state.doc.lineAt(range.head);
+  if(/^\s*(?:[-+*]|\d+[.)])\s/.test(line.text)||/^ {0,3}>/.test(line.text))return false;
+  const spans=formatSpans(state,range.head).filter(span=>span.boldFrom>=line.from&&span.boldTo<=line.to);
+  if(!spans.length)return false;
+  const visible=(from,to)=>/[^*_~`=\s]/.test(state.sliceDoc(from,to));
+  let pos=range.head;
+  for(const span of [...spans].reverse()) {
+    if(pos<span.boldFrom||pos>span.boldTo)continue;
+    if(!visible(span.bodyFrom,pos))pos=span.boldFrom;
+    else if(!visible(pos,span.bodyTo))pos=span.boldTo;
+  }
+  const open=spans.filter(span=>pos>span.boldFrom&&pos<span.boldTo);
+  const close=[...open].reverse().map(span=>state.sliceDoc(span.bodyTo,span.boldTo)).join(''),reopen=open.map(span=>state.sliceDoc(span.boldFrom,span.bodyFrom)).join('');
+  const insert=close+'\n'+reopen,anchor=pos<range.head&&!open.length?range.head+1:pos+insert.length;
+  view.dispatch({changes:{from:pos,insert},selection:{anchor},scrollIntoView:true,userEvent:'input'});
   return true;
 }
 function simpleListBackspace(view) {
@@ -1170,7 +1195,7 @@ function simpleListBackspace(view) {
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
   boundaryCaretFilter,EditorView.scrollMargins.of(view=>{const height=view.scrollDOM.clientHeight;return {top:Math.min(56,height*.08),bottom:Math.min(96,height*.12)};}),history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,listClickFilter,leftBlankFilter,emptiedLineFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
-  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),Prec.highest(keymap.of([{key:'Enter',run:enterAbove}])),markdownInput(),comments({post,path:()=>metadata.currentPath}),
+  slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),Prec.highest(keymap.of([{key:'Enter',run:view=>enterAbove(view)||splitFormatting(view)}])),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
   keymap.of([...tableKeymap,{key:'ArrowLeft',run:view=>beforeBlockPrefix(view)||stepCaret(view,false,false),shift:view=>stepCaret(view,false,true)},{key:'ArrowRight',run:view=>stepCaret(view,true,false),shift:view=>stepCaret(view,true,true)},{key:'ArrowUp',run:view=>intoTitle(view)||verticalStep(view,false,false),shift:view=>verticalStep(view,false,true)},{key:'ArrowDown',run:view=>verticalStep(view,true,false),shift:view=>verticalStep(view,true,true)},{key:'Enter',run:view=>simpleListEnter(view)||separatorEnter(view)},{key:'Backspace',run:simpleListBackspace},...markdownKeymap,...defaultKeymap.filter(binding=>binding.key!=='Mod-['&&binding.key!=='Mod-]'),...historyKeymap,indentWithTab]),
