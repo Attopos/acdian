@@ -1,6 +1,7 @@
 // What the editor draws beyond plain Markdown: coloured text and other inline
 // HTML, code highlighting, Mermaid diagrams and folding.
 import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
+import { StateField, StateEffect } from '@codemirror/state';
 import { LanguageDescription, HighlightStyle, syntaxHighlighting, syntaxTree, foldable, foldedRanges, foldEffect, unfoldEffect, codeFolding } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { javascript } from '@codemirror/lang-javascript';
@@ -42,29 +43,99 @@ export const codeHighlight=syntaxHighlighting(HighlightStyle.define([
   token([tags.tagName,tags.angleBracket],'tag'),token([tags.attributeValue],'string'),token([tags.operator,tags.punctuation,tags.bracket,tags.separator],'plain'),
   token([tags.variableName,tags.definition(tags.variableName),tags.meta,tags.processingInstruction],'plain')
 ]));
-class CodeToolsWidget extends WidgetType {
-  constructor(name) { super(); this.name=name; }
-  eq(other) { return this.name===other.name; }
+export const codePrefEffect=StateEffect.define();
+export const codePrefs=StateField.define({
+  create:()=>new Map(),
+  update(value,tr){
+    let next=value;
+    if(tr.docChanged&&value.size){next=new Map();for(const [pos,pref] of value){const mapped=tr.changes.mapPos(pos,1);next.set(mapped,pref);}}
+    for(const effect of tr.effects)if(effect.is(codePrefEffect)){if(next===value)next=new Map(value);next.set(effect.value.pos,{...(next.get(effect.value.pos)||{}),...effect.value.pref});}
+    return next;
+  }
+});
+const codeIcons={
+  chevron:'<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  caret:'<svg viewBox="0 0 16 16"><path d="M4.5 6.5L8 10l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  wrap:'<svg viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h9a2 2 0 010 4H8m1.5-1.5L8 12l1.5 1.5M2.5 12h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  copy:'<svg viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 3.5v-.5a1 1 0 00-1-1h-6a1 1 0 00-1 1v6a1 1 0 001 1h.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  check:'<svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+const extraLanguages=['Bash','Shell','Markdown','Swift','Kotlin','Ruby','Dockerfile','Diff','Text'];
+const languageNames=()=>[...new Set([...codeLanguages.map(l=>l.name),...extraLanguages])].sort((a,b)=>a.localeCompare(b));
+const languageLabel=(name,state)=>{
+  if(!name)return host.uiText(state,'plainText');
+  const known=codeLanguages.find(l=>l.name.toLowerCase()===name.toLowerCase()||l.alias.includes(name.toLowerCase()));
+  return known?known.name:extraLanguages.find(l=>l.toLowerCase()===name.toLowerCase())||name;
+};
+function fenceAt(view,dom) {
+  const pos=view.posAtDOM(dom),line=view.state.doc.lineAt(Math.max(0,pos-1));
+  for(let node=syntaxTree(view.state).resolveInner(line.from,1);node;node=node.parent)if(node.name==='FencedCode')return node;
+  for(let node=syntaxTree(view.state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode')return node;
+  return null;
+}
+function openLanguageMenu(view,button,dom) {
+  document.querySelector('.cm-code-menu')?.remove();
+  const menu=document.createElement('div');menu.className='cm-code-menu';
+  const search=document.createElement('input');search.type='text';search.placeholder=host.uiText(view.state,'searchLanguage');search.spellcheck=false;
+  const list=document.createElement('div');list.className='cm-code-menu-list';
+  const node=fenceAt(view,dom);if(!node)return;
+  const fence=view.state.doc.lineAt(node.from),match=/^(\s*(?:`{3,}|~{3,}))\s*([^\s`]*)/.exec(fence.text),current=match?match[2]:'';
+  const currentLabel=languageLabel(current,view.state);
+  const choices=[{label:host.uiText(view.state,'plainText'),value:''},...languageNames().filter(n=>n!=='Text').map(n=>({label:n,value:n.toLowerCase()}))];
+  const close=()=>{menu.remove();window.removeEventListener('mousedown',outside,true);window.removeEventListener('keydown',key,true);};
+  const outside=event=>{if(!menu.contains(event.target)&&event.target!==button)close();};
+  const key=event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}};
+  const choose=value=>{
+    const fresh=view.state.doc.lineAt(node.from),m=/^(\s*(?:`{3,}|~{3,}))(\s*)([^\s`]*)/.exec(fresh.text);
+    if(m)view.dispatch({changes:{from:fresh.from+m[1].length,to:fresh.from+m[0].length,insert:value},userEvent:'input'});
+    close();view.focus();
+  };
+  const render=()=>{
+    const q=search.value.trim().toLowerCase();list.textContent='';
+    for(const choice of choices.filter(c=>!q||c.label.toLowerCase().includes(q))) {
+      const item=document.createElement('button');item.type='button';item.className='cm-code-menu-item';
+      const on=choice.label===currentLabel;item.innerHTML=`<span></span>${on?codeIcons.check:''}`;item.firstChild.textContent=choice.label;if(on)item.classList.add('cm-code-menu-on');
+      item.addEventListener('mousedown',event=>event.preventDefault());item.addEventListener('click',()=>choose(choice.value));
+      list.append(item);
+    }
+  };
+  search.addEventListener('input',render);
+  search.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();list.querySelector('button')?.click();}});
+  menu.append(search,list);render();document.body.append(menu);
+  const rect=button.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(innerWidth-menu.offsetWidth-8,rect.right-menu.offsetWidth))+'px';menu.style.top=rect.bottom+4+'px';
+  setTimeout(()=>{window.addEventListener('mousedown',outside,true);window.addEventListener('keydown',key,true);search.focus();});
+}
+class CodeHeadWidget extends WidgetType {
+  constructor(name,pos,wrap,folded) { super(); this.name=name; this.pos=pos; this.wrap=wrap; this.folded=folded; }
+  eq(other) { return this.name===other.name&&this.pos===other.pos&&this.wrap===other.wrap&&this.folded===other.folded; }
   toDOM(view) {
-    const tools=document.createElement('span'); tools.className='cm-code-tools'; tools.contentEditable='false';
-    if(this.name) { const label=document.createElement('span'); label.textContent=this.name; tools.append(label); }
-    const copy=document.createElement('button'); copy.type='button'; copy.textContent=host.uiText(view.state,'copy');
-    copy.addEventListener('mousedown',event=>event.preventDefault());
-    copy.addEventListener('click',event=>{
-      event.preventDefault();
-      for(let node=syntaxTree(view.state).resolveInner(view.posAtDOM(tools),1);node;node=node.parent) if(node.name==='FencedCode') {
-        const text=node.getChild('CodeText');
-        host.post({type:'copy',text:text?view.state.sliceDoc(text.from,text.to):''});
-        copy.textContent=host.uiText(view.state,'copied');
-        setTimeout(()=>{copy.textContent=host.uiText(view.state,'copy');},1200);
-        return;
-      }
+    const state=view.state,head=document.createElement('div');head.className='cm-code-head'+(this.folded?' cm-code-head-folded':'');head.contentEditable='false';
+    const button=(cls,html,text)=>{const b=document.createElement('button');b.type='button';b.className=cls;b.innerHTML=html;if(text!==undefined){const t=document.createElement('span');t.textContent=text;b.append(t);}b.addEventListener('mousedown',event=>event.preventDefault());return b;};
+    const fold=button('cm-code-fold',codeIcons.chevron,host.uiText(state,'codeBlock'));
+    fold.addEventListener('click',()=>view.dispatch({effects:codePrefEffect.of({pos:this.pos,pref:{folded:!this.folded}})}));
+    const lang=button('cm-code-lang','',languageLabel(this.name,state));lang.insertAdjacentHTML('beforeend',codeIcons.caret);
+    lang.addEventListener('click',()=>{if(view.state.facet(EditorView.editable))openLanguageMenu(view,lang,head);});
+    const wrap=button('cm-code-wrapper',codeIcons.wrap,host.uiText(state,this.wrap?'codeUnwrap':'codeWrap'));
+    wrap.addEventListener('click',()=>view.dispatch({effects:codePrefEffect.of({pos:this.pos,pref:{wrap:!this.wrap}})}));
+    const copy=button('cm-code-copy',codeIcons.copy,host.uiText(state,'copy'));
+    copy.addEventListener('click',()=>{
+      const node=fenceAt(view,head);if(!node)return;
+      const text=node.getChild('CodeText');host.post({type:'copy',text:text?view.state.sliceDoc(text.from,text.to):''});
+      copy.lastChild.textContent=host.uiText(view.state,'copied');setTimeout(()=>{copy.lastChild.textContent=host.uiText(view.state,'copy');},1200);
     });
-    tools.append(copy); return tools;
+    const sep=()=>{const s=document.createElement('span');s.className='cm-code-sep';return s;};
+    const tools=document.createElement('div');tools.className='cm-code-actions';tools.append(lang,sep(),wrap,sep(),copy);
+    head.append(fold,tools);return head;
   }
   ignoreEvent() { return true; }
 }
-export const codeTools=name=>Decoration.widget({widget:new CodeToolsWidget(name),side:-1});
+class CodeFoldWidget extends WidgetType {
+  eq() { return true; }
+  toDOM() { const d=document.createElement('div');d.className='cm-code-folded-body';return d; }
+  ignoreEvent() { return true; }
+}
+export const codeHead=(name,pos,wrap,folded)=>Decoration.widget({widget:new CodeHeadWidget(name,pos,wrap,folded),block:true,side:1});
+export const codeFolded=()=>Decoration.replace({widget:new CodeFoldWidget(),block:true});
 
 // Inline HTML: coloured text, underline, sub- and superscript and so on. Only
 // plain colours and text styling get through; the tags hide unless the caret

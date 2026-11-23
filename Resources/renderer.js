@@ -248,9 +248,14 @@
     content.querySelectorAll('pre').forEach(pre => {
       const code = pre.querySelector('code');
       if (!code) return;
+      const zh = /^zh/i.test(document.documentElement.lang || navigator.language || '');
+      const words = zh ? { block: '代码块', copy: '复制', copied: '已复制', fail: '请选中复制', plain: 'Plain Text' } : { block: 'Code block', copy: 'Copy', copied: 'Copied', fail: 'Select to copy', plain: 'Plain Text' };
       const bar = document.createElement('div'); bar.className = 'code-bar';
-      const label = document.createElement('span'); label.textContent = code.className.replace(/^language-/, '') || '文本';
-      const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'copy-button'; copy.textContent = '复制'; copy.setAttribute('aria-label', '复制代码');
+      const title = document.createElement('span'); title.className = 'code-title'; title.textContent = words.block;
+      const tools = document.createElement('span'); tools.className = 'code-tools';
+      const label = document.createElement('span'); label.className = 'code-lang'; label.textContent = code.className.replace(/^language-/, '') || words.plain;
+      const sep = document.createElement('span'); sep.className = 'code-sep';
+      const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'copy-button'; copy.textContent = words.copy; copy.setAttribute('aria-label', words.copy);
       copy.addEventListener('click', async () => {
         try {
           if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(code.textContent);
@@ -258,11 +263,16 @@
             const input = document.createElement('textarea'); input.value = code.textContent; document.body.append(input); input.select();
             const copied = document.execCommand('copy'); input.remove(); if (!copied) throw new Error('copy');
           }
-          copy.textContent = '已复制';
-        } catch { copy.textContent = '请选中复制'; }
-        window.setTimeout(() => { copy.textContent = '复制'; }, 1800);
+          copy.textContent = words.copied;
+        } catch { copy.textContent = words.fail; }
+        window.setTimeout(() => { copy.textContent = words.copy; }, 1800);
       });
-      bar.append(label, copy); pre.prepend(bar);
+      tools.append(label, sep, copy); bar.append(title, tools); pre.prepend(bar);
+      const count = code.textContent.replace(/\n$/, '').split('\n').length;
+      const body = document.createElement('div'); body.className = 'code-body';
+      const gutter = document.createElement('div'); gutter.className = 'code-gutter'; gutter.setAttribute('aria-hidden', 'true');
+      gutter.textContent = Array.from({ length: count }, (_, i) => i + 1).join('\n');
+      code.replaceWith(body); body.append(gutter, code);
     });
   }
 

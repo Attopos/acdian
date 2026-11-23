@@ -186,3 +186,11 @@ div.math-placeholder { margin: 24px 0; overflow: auto; padding: 5px 0; }
 @media (max-width: 700px) { #reader { padding: 30px 28px 80px; } h1 { font-size: 1.875em; } .pdf-action { font-size: 10px; } }
 @media (max-width: 450px) { #reader { padding: 24px 19px 70px; } body { font-size: 15px; } h1 { font-size: 1.8em; } .pdf-header { flex-wrap: wrap; } .pdf-action { margin-left: 42px; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+
+.code-bar { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; font-size: 12.5px; padding: 6px 12px 6px 14px; min-height: 0; border-bottom: 0; }
+.code-tools { display: inline-flex; align-items: center; gap: 4px; }
+.code-sep { width: 1px; height: 13px; margin: 0 6px; background: var(--border); }
+.code-bar .copy-button { font: inherit; padding: 2px 6px; }
+.code-body { display: flex; align-items: flex-start; }
+.code-gutter { flex: none; padding: 4px 10px 21px 0; min-width: 36px; text-align: right; white-space: pre; color: #85808c; opacity: .7; font-family: var(--code-font); font-size: 13px; line-height: 1.75; user-select: none; -webkit-user-select: none; }
+pre .code-body code { flex: 1; min-width: 0; padding: 4px 20px 21px 0; }

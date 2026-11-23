@@ -13,7 +13,7 @@ import { comments, loadComments, commentsTest } from './comments.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter, tableWidthField, tableColumnResize, tableAddControls } from './rich-table.js';
 import { blockHandles, blockDragTest } from './block-drag.js';
 import { editorExtras, findInPage } from './editor-extras.js';
-import { configureRichText, codeLanguages, codeHighlight, codeTools, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
+import { configureRichText, codeLanguages, codeHighlight, codeHead, codeFolded, codePrefs, codePrefEffect, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
 // Every message names the document it came from, so the native side can drop
@@ -751,8 +751,10 @@ function decorations(state,reuse=new Map(),blocks=[]) {
     if(name==='FencedCode') {
       const first=state.doc.lineAt(node.from).number,last=state.doc.lineAt(node.to).number;
       const closed=node.node.lastChild?.name==='CodeMark'&&state.doc.lineAt(node.node.lastChild.from).number===last&&last>first;
-      for(let n=first;n<=last;n++)list.push(Decoration.line({class:n===first||closed&&n===last?'cm-code-fence':'cm-code-line'+(n===first+1?' cm-code-first':'')+(n===(closed?last-1:last)?' cm-code-last':'')}).range(state.doc.line(n).from));
-      if(first+1<=(closed?last-1:last))list.push(codeTools(/^\s*(?:`{3,}|~{3,})\s*([^\s`]*)/.exec(state.doc.line(first).text)?.[1]||'').range(state.doc.line(first+1).from));
+      const fence=state.doc.line(first),pref=state.field(codePrefs).get(fence.from)||{},wrap=!!pref.wrap,folded=!!pref.folded,bodyLast=closed?last-1:last;
+      for(let n=first;n<=last;n++)list.push(Decoration.line({class:n===first||closed&&n===last?'cm-code-fence':'cm-code-line'+(wrap?' cm-code-wrap':'')+(n===first+1?' cm-code-first':'')+(n===bodyLast?' cm-code-last':'')}).range(state.doc.line(n).from));
+      list.push(codeHead(/^\s*(?:`{3,}|~{3,})\s*([^\s`]*)/.exec(fence.text)?.[1]||'',fence.from,wrap,folded).range(fence.to));
+      if(folded&&first+1<=bodyLast)list.push(codeFolded().range(state.doc.line(first+1).from,state.doc.line(bodyLast).to));
       return false;
     }
   }});
@@ -850,7 +852,7 @@ function decorations(state,reuse=new Map(),blocks=[]) {
   }
   const set=Decoration.set(list,true);blockWidgets.set(set,blocks);return set;
 }
-const liveField=StateField.define({create:state=>decorations(state),update(value,tr){if(composing(tr))return value.map(tr.changes);return tr.docChanged||tr.selection||tr.startState.field(windowField)!==tr.state.field(windowField)||tr.startState.field(inputBlankField)!==tr.state.field(inputBlankField)||tr.startState.facet(editorLanguage)!==tr.state.facet(editorLanguage)||tr.startState.field(tableWidthField)!==tr.state.field(tableWidthField)||syntaxTree(tr.startState)!==syntaxTree(tr.state)?decorations(tr.state,reusableBlocks(value,tr)):value;},provide:field=>[EditorView.decorations.from(field),EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>value.spec.block===true}))]});
+const liveField=StateField.define({create:state=>decorations(state),update(value,tr){if(composing(tr))return value.map(tr.changes);return tr.docChanged||tr.selection||tr.effects.some(effect=>effect.is(codePrefEffect))||tr.startState.field(windowField)!==tr.state.field(windowField)||tr.startState.field(inputBlankField)!==tr.state.field(inputBlankField)||tr.startState.facet(editorLanguage)!==tr.state.facet(editorLanguage)||tr.startState.field(tableWidthField)!==tr.state.field(tableWidthField)||syntaxTree(tr.startState)!==syntaxTree(tr.state)?decorations(tr.state,reusableBlocks(value,tr)):value;},provide:field=>[EditorView.decorations.from(field),EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>value.spec.block===true}))]});
 // The caret is hidden while the selection rests on a divider, which shows as selected instead.
 const dividerCaret=EditorView.editorAttributes.compute(['selection',liveField],state=>{
   if(!state.selection.ranges.every(range=>range.empty))return {};
@@ -1194,7 +1196,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  boundaryCaretFilter,EditorView.scrollMargins.of(view=>{const height=view.scrollDOM.clientHeight;return {top:Math.min(56,height*.08),bottom:Math.min(96,height*.12)};}),history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,listClickFilter,leftBlankFilter,emptiedLineFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  boundaryCaretFilter,EditorView.scrollMargins.of(view=>{const height=view.scrollDOM.clientHeight;return {top:Math.min(56,height*.08),bottom:Math.min(96,height*.12)};}),history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,codePrefs,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,listClickFilter,leftBlankFilter,emptiedLineFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),Prec.highest(keymap.of([{key:'Enter',run:view=>enterAbove(view)||splitFormatting(view)}])),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),
@@ -1215,7 +1217,7 @@ view.contentDOM.addEventListener('scroll',event=>{
   const left=line.scrollLeft,group=[line];
   for(let el=line.previousElementSibling;el?.classList.contains('cm-code-line');el=el.previousElementSibling)group.push(el);
   for(let el=line.nextElementSibling;el?.classList.contains('cm-code-line');el=el.nextElementSibling)group.push(el);
-  for(const el of group){if(el!==line&&el.scrollLeft!==left){el.cmSyncing=true;el.scrollLeft=left;requestAnimationFrame(()=>{el.cmSyncing=false;});}const tools=el.querySelector('.cm-code-tools');if(tools)tools.style.transform=`translateX(${el.scrollLeft}px)`;}
+  for(const el of group){if(el!==line&&el.scrollLeft!==left){el.cmSyncing=true;el.scrollLeft=left;requestAnimationFrame(()=>{el.cmSyncing=false;});}}
 },true);
 view.scrollDOM.insertBefore(titleBlock,view.contentDOM);
 configureRichText({post,uiText,currentPath:()=>metadata.currentPath,headings:headingStarts});

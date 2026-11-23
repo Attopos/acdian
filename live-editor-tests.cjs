@@ -586,3 +586,14 @@ test('rendered images and footnotes stay rendered while the caret is next to the
  const at=r.get().text.indexOf('[^1]');r.view.dispatch({selection:{anchor:at+1}});await tick(20);
  assert.ok(r.w.document.querySelector('.cm-footnote-mark'),'the footnote mark stays a number');r.close();
 });
+test('code blocks get a header with language, wrap and copy, line numbers, and no wrapping by default',async()=>{
+ const source='前\n\n```bash\necho 一\necho 二\n```\n\n后\n',r=setup(source);await tick(20);
+ const head=r.w.document.querySelector('.cm-code-head');assert.ok(head,'the block has a header');
+ assert.equal(head.querySelector('.cm-code-lang').textContent.trim(),'Bash');
+ const lines=[...r.w.document.querySelectorAll('.cm-code-line')];assert.equal(lines.length,2);assert.ok(lines.every(line=>!line.classList.contains('cm-code-wrap')));
+ head.querySelector('.cm-code-wrapper').click();await tick(10);
+ assert.ok([...r.w.document.querySelectorAll('.cm-code-line')].every(line=>line.classList.contains('cm-code-wrap')),'the wrap switch wraps this block');
+ r.w.document.querySelector('.cm-code-head .cm-code-fold').click();await tick(10);
+ assert.equal(r.w.document.querySelectorAll('.cm-code-line').length,0,'folding hides the code');
+ assert.equal(r.get().text,source,'switches do not touch the file');r.close();
+});
