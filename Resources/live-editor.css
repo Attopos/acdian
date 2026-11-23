@@ -409,3 +409,12 @@ body.cm-block-dragging,body.cm-block-dragging * { cursor:grabbing !important; us
 /* The selection toolbar keeps a little air between itself and the text. */
 .cm-editor .cm-tooltip.cm-format-toolbar.cm-tooltip-above { margin-top:-8px; }
 .cm-editor .cm-tooltip.cm-format-toolbar.cm-tooltip-below { margin-top:8px; }
+
+.cm-editor .cm-code-line { white-space:pre; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; word-break:normal; overflow-wrap:normal; }
+.cm-editor .cm-code-line::-webkit-scrollbar { display:none; }
+.cm-editor .cm-code-first { padding-top:30px; }
+.cm-editor .cm-code-tools { top:6px; right:10px; }
+.cm-editor .cm-image-frame img { cursor:zoom-in; }
+.cm-image-large { overflow:hidden; cursor:default; }
+.cm-image-large img { transition:transform .12s ease-out; cursor:zoom-in; max-width:calc(100vw - 48px); max-height:calc(100vh - 48px); }
+.cm-image-large.cm-image-zoomed img { cursor:grab; transition:none; }

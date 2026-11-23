@@ -317,10 +317,24 @@ function resize(event,image,side) {
 }
 function showLarge(image) {
   const cover=document.createElement('div');cover.className='cm-image-large';
-  const large=document.createElement('img');large.src=image.src;large.alt=image.alt;cover.append(large);
+  const large=document.createElement('img');large.src=image.src;large.alt=image.alt;large.draggable=false;cover.append(large);
+  let scale=1,x=0,y=0;
+  const apply=()=>{large.style.transform=`translate(${x}px,${y}px) scale(${scale})`;cover.classList.toggle('cm-image-zoomed',scale>1);};
+  const zoomAt=(factor,cx,cy)=>{
+    const next=Math.min(8,Math.max(1,scale*factor));if(next===scale)return;
+    const rect=cover.getBoundingClientRect(),ox=cx-rect.left-rect.width/2,oy=cy-rect.top-rect.height/2;
+    x=ox-(ox-x)*next/scale;y=oy-(oy-y)*next/scale;scale=next;if(scale===1){x=0;y=0;}apply();
+  };
   const close=()=>{cover.remove();window.removeEventListener('keydown',key,true);};
   const key=event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}};
-  cover.addEventListener('mousedown',event=>{event.preventDefault();close();});
+  cover.addEventListener('wheel',event=>{event.preventDefault();if(event.ctrlKey||scale===1)zoomAt(Math.exp(-event.deltaY*(event.ctrlKey?0.01:0.002)),event.clientX,event.clientY);else{x-=event.deltaX;y-=event.deltaY;apply();}},{passive:false});
+  cover.addEventListener('mousedown',event=>{
+    event.preventDefault();
+    const sx=event.clientX,sy=event.clientY,bx=x,by=y;let moved=false;
+    const move=e=>{if(Math.hypot(e.clientX-sx,e.clientY-sy)>4)moved=true;if(moved&&scale>1){x=bx+e.clientX-sx;y=by+e.clientY-sy;apply();}};
+    const up=e=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);if(moved)return;if(e.target===large)zoomAt(scale>1?1/scale:2.5,e.clientX,e.clientY);else close();};
+    window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
+  });
   window.addEventListener('keydown',key,true);document.body.append(cover);
 }
 // Dragging a picture moves its line in the page. Tables, code, quotes and lists
@@ -358,7 +372,7 @@ function moveImage(event,image) {
     bar.style.top=place.y-1+'px';bar.style.left=content.left+parseFloat(style.paddingLeft)+'px';bar.style.width=content.width-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)+'px';
   };
   const begin=()=>{
-    holder.classList.add('cm-image-moving');document.documentElement.classList.add('cm-image-dragging');
+    image.cmDragged=true;holder.classList.add('cm-image-moving');document.documentElement.classList.add('cm-image-dragging');
     ghost=document.createElement('img');ghost.className='cm-image-ghost';ghost.src=image.src;ghost.style.width=Math.min(220,image.getBoundingClientRect().width)+'px';
     bar=document.createElement('div');bar.className='cm-image-drop';
     document.body.append(ghost,bar);
@@ -397,7 +411,7 @@ export function frameImage(image,state) {
     handle.addEventListener('mousedown',event=>resize(event,image,side));
     frame.append(handle);
   }
-  image.addEventListener('dblclick',event=>{event.preventDefault();showLarge(image);});
+  image.addEventListener('click',event=>{if(image.cmDragged){image.cmDragged=false;return;}if(event.button===0){event.preventDefault();showLarge(image);}});
 }
 const parseEmbed=value=>{
   const [target,...rest]=value.split('|');

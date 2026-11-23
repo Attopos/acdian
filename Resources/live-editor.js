@@ -1185,6 +1185,13 @@ function extensions() {return [
   EditorView.domEventHandlers({click(event,view){const link=event.target.closest?.('[data-live-target]');if(link&&(view.state.selection.main.empty||event.metaKey||event.ctrlKey||!metadata.editable)){event.preventDefault();navigate(link.dataset.liveTarget);return true;}return false;}})
 ];}
 const view=new EditorView({state:EditorState.create({doc:'',extensions:extensions()}),parent:document.getElementById('editor')});
+view.contentDOM.addEventListener('scroll',event=>{
+  const line=event.target;if(!line.classList?.contains('cm-code-line')||line.cmSyncing)return;
+  const left=line.scrollLeft,group=[line];
+  for(let el=line.previousElementSibling;el?.classList.contains('cm-code-line');el=el.previousElementSibling)group.push(el);
+  for(let el=line.nextElementSibling;el?.classList.contains('cm-code-line');el=el.nextElementSibling)group.push(el);
+  for(const el of group){if(el!==line&&el.scrollLeft!==left){el.cmSyncing=true;el.scrollLeft=left;requestAnimationFrame(()=>{el.cmSyncing=false;});}const tools=el.querySelector('.cm-code-tools');if(tools)tools.style.transform=`translateX(${el.scrollLeft}px)`;}
+},true);
 view.scrollDOM.insertBefore(titleBlock,view.contentDOM);
 configureRichText({post,uiText,currentPath:()=>metadata.currentPath,headings:headingStarts});
 // The text fills what the title leaves of the window, so a short page does not scroll.
