@@ -374,3 +374,4 @@ svg text { font-family: var(--acd-font); }
 
 #app.panel-open:not(.compact):not(.sheet):not(.touch) #results { left: calc((100% - var(--panel-w) - 24px) / 2); }
 #app.compact #results, #app.touch #results { margin-left: 0; top: 56px; }
+#search { display: none !important; }
