@@ -374,8 +374,7 @@ function draw(animate = false) {
     g.append('text').attr('class', 'title').attr('x', 33).attr('y', NODE_H / 2 + 0.5);
     g.append('text').attr('class', 'summary');
     g.on('click', (event, d) => { event.stopPropagation(); if (!d.moved) focus(d.id); })
-      .on('dblclick', (event, d) => { event.stopPropagation(); if (S.editing) editNode(d); else openPage(d.d.pages?.[0], false); })
-      .on('pointerenter', (event, d) => { if (event.pointerType !== 'touch') hover(d); }).on('pointerleave', () => hover(null));
+      .on('dblclick', (event, d) => { event.stopPropagation(); if (S.editing) editNode(d); else openPage(d.d.pages?.[0], false); });
     return g;
   });
   node.attr('data-id', d => d.id).style('--tint', d => tint(S.domains.find(x => x.id === d.d.domain)?.color)).classed('draft', d => !!d.d.draft);
@@ -635,22 +634,6 @@ function hideHover() {
   clearTimeout(hoverTimer); hoveredNode = hoveredLink = hoveredEdge = null;
   $('hover').hidden = true; $('edge-tip').hidden = true; mark();
 }
-function hover(node) {
-  clearTimeout(hoverTimer);
-  const card = $('hover');
-  if (!node || S.zoom === 'far' || !hoverable()) { if (hoveredNode) { hoveredNode = null; mark(); } card.hidden = true; return; }
-  hoveredNode = node; mark();
-  hoverTimer = setTimeout(() => {
-    if (node.dragging || !hoverable()) return;
-    const figure = figuresOf(node)[0];
-    card.className = 'float';
-    card.innerHTML = `<h4>${esc(node.d.title)}${node.d.subtitle ? `<small>${esc(node.d.subtitle)}</small>` : ''}</h4><p>${esc(node.d.summary || '')}</p>${figure ? `<img alt="" src="${esc(themed(figure))}">` : ''}`;
-    const image = card.querySelector('img');
-    const show = () => place(card, S.t.applyX(node.x), S.t.applyY(node.y) - 4, node.w * S.t.k);
-    if (image) { image.addEventListener('load', show); image.addEventListener('error', () => { image.remove(); show(); }); }
-    show();
-  }, 240);
-}
 function follow(tip, event) { place(tip, ...d3.pointer(event, app).map((v, i) => v + (i ? 14 : 4))); }
 function linkHover(link, event) {
   const tip = $('edge-tip');
@@ -664,7 +647,7 @@ function linkHover(link, event) {
 }
 function edgeHover(edge, event) {
   const tip = $('edge-tip');
-  if (edge && (!hoverable() || S.zoom === 'far')) edge = null;
+  if (edge && (!hoverable() || S.zoom === 'far' || (!S.editing && !(S.focus && (edge.a.id === S.focus || edge.b.id === S.focus))))) edge = null;
   if (edge && edge === hoveredEdge && event) { follow(tip, event); return; }
   hoveredEdge = edge; mark();
   if (!edge) { tip.hidden = true; return; }

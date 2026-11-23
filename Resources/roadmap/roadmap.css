@@ -349,8 +349,10 @@ svg text { font-family: var(--acd-font); }
 .compact.wide.panel-open #panel { transform: none; }
 .compact.wide.panel-open #tools { right: calc(min(50%, 480px) + 24px); }
 .compact #world * { transition: none !important; }
-.edge:not(.lit):not(.hover) { opacity: 0 !important; visibility: hidden; pointer-events: none; }
-.editing .edge:not(.lit):not(.hover) { opacity: .35 !important; visibility: visible; pointer-events: auto; }
+.edge:not(.lit) { opacity: 0 !important; visibility: hidden; pointer-events: none; }
+.edge:not(.lit) path.hit { pointer-events: none; }
+.editing .edge:not(.lit) { opacity: .35 !important; visibility: visible; pointer-events: auto; }
+.editing .edge:not(.lit) path.hit { pointer-events: stroke; }
 .edge.lit path.line { stroke: var(--tint-line, var(--rm-line-strong)); stroke-width: 1.6; }
 .edge.lit .head { fill: var(--rm-line-strong); }
 #legend, #head-progress, #minimap { display: none !important; }
