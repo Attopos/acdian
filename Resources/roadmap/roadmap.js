@@ -15,7 +15,8 @@ const compact = () => (innerWidth || 1024) < 700 || (S.platform === 'ios' && Mat
 const wide = () => compact() && (innerWidth || 0) > (innerHeight || 0) * 1.3;
 const sheet = () => !compact() && S.platform === 'ios' && (innerHeight || 0) > (innerWidth || 0) * 1.05;
 const rasterOn = () => !compact() && !S.editing && !!window.SvgRaster && S.rasterize !== false;
-const panelSpace = () => $('panel').getBoundingClientRect().width + 12;
+const docked = () => !compact() && !sheet();
+const panelSpace = () => docked() ? 0 : $('panel').getBoundingClientRect().width + 12;
 const LEVELS = ['入门', '基础', '进阶', '实战'];
 const KIND_NAMES = { requires: '依赖', applies: '用到', related: '相关' };
 const COLORS = ['pink', 'black', 'rose', 'plum', 'amber', 'teal', 'sky', 'graphite'];
@@ -552,10 +553,10 @@ function flyTo(node, scale) {
     return;
   }
   const below = sheet() && app.classList.contains('panel-open') ? $('panel').getBoundingClientRect().height + 16 : 0;
-  const left = 40, right = 40 + (open ? panelSpace() : 0), top = open ? 172 : 96, bottom = 56 + below;
+  const left = 40, right = 40 + (open ? panelSpace() : 0), top = 84, bottom = 56 + below;
   const group = scale ? [node] : S.nodes.filter(n => n === node || S.highlighted.has(n.id));
   const x0 = Math.min(...group.map(n => n.x)), y0 = Math.min(...group.map(n => n.y)), x1 = Math.max(...group.map(n => n.x + n.w)), y1 = Math.max(...group.map(n => n.y + NODE_H));
-  const k = scale || Math.max(0.6, Math.min(1.1, (w - left - right) / (x1 - x0), (h - top - bottom) / (y1 - y0)));
+  const k = scale || Math.max(0.5, Math.min(1.1, (w - left - right) / (x1 - x0), (h - top - bottom) / (y1 - y0)));
   let tx = left + (w - left - right - (x1 - x0) * k) / 2 - x0 * k, ty = top + (h - top - bottom - (y1 - y0) * k) / 2 - y0 * k;
   const sx = tx + (node.x + node.w / 2) * k, sy = ty + (node.y + NODE_H / 2) * k;
   tx += Math.min(0, w - right - 40 - node.w * k / 2 - sx) + Math.max(0, left + node.w * k / 2 - sx); ty += Math.min(0, h - bottom - sy) + Math.max(0, top - sy);
@@ -799,7 +800,22 @@ document.addEventListener('keydown', event => {
   else if (S.editing && S.focus && (event.key === 'Backspace' || event.key === 'Delete')) removeNode(S.byId.get(S.focus));
 });
 let wasCompact = compact();
+function sizePanel() {
+  const fraction = Math.min(0.75, Math.max(0.25, S.panel || 0.5));
+  if (docked()) app.style.setProperty('--panel-w', Math.round(app.clientWidth * fraction) + 'px'); else app.style.removeProperty('--panel-w');
+}
+$('panel-grip').addEventListener('pointerdown', event => {
+  if (event.button) return;
+  event.preventDefault();
+  const grip = $('panel-grip'); grip.setPointerCapture(event.pointerId); app.classList.add('resizing');
+  const move = e => { const rect = app.getBoundingClientRect(); S.panel = Math.min(0.75, Math.max(0.25, (rect.right - e.clientX) / rect.width)); sizePanel(); };
+  const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); app.classList.remove('resizing'); post({ type: 'panelWidth', fraction: S.panel }); };
+  grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up);
+});
+$('panel-grip').addEventListener('dblclick', () => { S.panel = 0.5; sizePanel(); post({ type: 'panelWidth', fraction: S.panel }); });
+new ResizeObserver(() => { if (S.loaded) { syncRaster(); drawViewport(); repaint(); } }).observe($('scroller'));
 addEventListener('resize', () => {
+  sizePanel();
   app.classList.toggle('compact', compact()); app.classList.toggle('sheet', sheet()); app.classList.toggle('wide', wide());
   if (!S.loaded) return;
   if (S.loaded && compact() !== wasCompact) { wasCompact = compact(); layout(); zoomLimits(); draw(); if (compact()) settle(fitTransform().k, false); else { unsettle(); svg.call(zoom.transform, toZoom(fitTransform())); } }
@@ -1011,6 +1027,8 @@ function load(message, update) {
   app.classList.toggle('touch', S.platform === 'ios'); app.classList.toggle('compact', compact()); app.classList.toggle('sheet', sheet()); app.classList.toggle('wide', wide()); wasCompact = compact();
   S.doc = message.roadmap || { nodes: [], edges: [], domains: [] }; S.doc.nodes ||= []; S.doc.edges ||= []; S.doc.domains ||= [];
   S.pages = new Map((message.pages || []).map(page => [page.key, page])); S.mentions = message.mentions || [];
+  if (Number.isFinite(message.panel)) S.panel = message.panel;
+  sizePanel();
   if (!S.editable) S.editing = false;
   index(); layout(); zoomLimits(); drawChrome(); draw(update && !first); drawDrawer(); syncRaster();
   if (S.focus && !S.byId.has(S.focus)) focus(null); else if (S.focus) { renderPanel(); applyState(); }

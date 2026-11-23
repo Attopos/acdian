@@ -327,6 +327,8 @@ extension AppModel {
         guard let index else { return nil }
         var payload = RoadmapPayload.make(file,index:index,language:language.rawValue,editable:!isReadOnly(file.relativePath),appearance:appearance,platform:platform)
         if let node = RoadmapFocus.pending.removeValue(forKey:file.relativePath) { payload?["focus"] = node }
+        let panel = UserDefaults.standard.double(forKey:"roadmapPanel")
+        if panel > 0 { payload?["panel"] = panel }
         return payload
     }
     /// Opens the roadmap a page belongs to, with that page's node in focus.
@@ -414,6 +416,7 @@ extension AppModel {
             return saveRoadmap(file,nodes:change.nodes,edges:change.edges,removed:change.removed) != nil
         }
         if type == "newPage", let id = value["id"] as? String { return newRoadmapPage(file,node:id,title:value["title"] as? String ?? "") != nil }
+        if type == "panelWidth", let fraction = value["fraction"] as? Double { UserDefaults.standard.set(fraction,forKey:"roadmapPanel") }
         if type == "viewChanged", let x = value["x"] as? Double, let y = value["y"] as? Double, let k = value["k"] as? Double {
             UserDefaults.standard.set([x,y,k],forKey:"roadmapView:" + file.relativePath)
         }

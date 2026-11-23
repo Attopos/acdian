@@ -371,7 +371,6 @@ svg text { font-family: var(--acd-font); }
 #results button small { display: block; color: var(--rm-muted); font-size: 11px; }
 #results button.page { color: var(--rm-accent-ink); }
 #results mark { background: color-mix(in srgb, var(--rm-accent) 22%, transparent); color: inherit; border-radius: 2px; }
-#app:not(.touch):not(.compact) { --panel-w: 380px; }
 #panel .cols { display: block; }
 #panel .relgroup h4 span { display: none; }
 
@@ -381,3 +380,18 @@ svg text { font-family: var(--acd-font); }
 .ttag { display: inline-block; margin-right: 5px; padding: 0 6px; border-radius: 999px; font-size: .78em; font-weight: 500; line-height: 1.6; vertical-align: .08em; color: var(--rm-muted); background: var(--rm-faint); }
 tspan.ttag { font-size: 11px; font-weight: 500; fill: var(--rm-muted); }
 #panel h2 .ttag { font-size: 12px; vertical-align: .3em; }
+
+#app:not(.compact):not(.sheet) { --panel-w: 50%; }
+#app:not(.compact):not(.sheet) #panel { top: 0; right: 0; bottom: 0; border-radius: 0; box-shadow: none; border-left: 1px solid var(--rm-hair); transform: translateX(100%); }
+#app.panel-open:not(.compact):not(.sheet) #panel { transform: none; }
+#app.panel-open:not(.compact):not(.sheet) #scroller { right: var(--panel-w); }
+#app.panel-open:not(.compact):not(.sheet) #tools { right: calc(var(--panel-w) + 16px); }
+#app.panel-open:not(.compact):not(.sheet)::before { height: 96px; right: var(--panel-w); }
+#panel-grip { display: none; position: absolute; top: 0; bottom: 0; right: var(--panel-w); width: 10px; margin-right: -5px; cursor: col-resize; z-index: 5; }
+#app.panel-open:not(.compact):not(.sheet) #panel-grip { display: block; }
+#panel-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background .15s ease-out; }
+#panel-grip:hover::after, .resizing #panel-grip::after { background: var(--rm-accent); }
+.resizing, .resizing * { cursor: col-resize !important; user-select: none !important; }
+.resizing #panel { transition: none; }
+#app #panel .chip { height: auto; min-height: 24px; max-width: 100%; white-space: normal; text-align: left; line-height: 1.35; padding: 3px 9px 3px 7px; }
+#panel .scroll { padding-right: 28px; }

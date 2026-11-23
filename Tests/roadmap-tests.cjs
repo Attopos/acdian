@@ -77,7 +77,7 @@ const roadmap = {
   check((await posted('save')).length === 0, 'Number keys no longer change anything');
   check(!(await page.$('#panel .segment')) && !(await page.$('g.node .dot')), 'No learning status is shown on nodes or in the panel');
 
-  check(await page.evaluate(() => Math.abs(document.getElementById('panel').getBoundingClientRect().width - 380) < 2), 'The detail panel is a narrow side column');
+  check(await page.evaluate(() => Math.abs(document.getElementById('panel').getBoundingClientRect().width - document.getElementById('app').getBoundingClientRect().width / 2) < 2), 'The detail panel sits beside the canvas at half the width by default');
   check(await page.$$eval('#links g.link', links => links.length === 0), 'No aggregated lines between stages');
   check(await page.$$eval('g.edge.cross:not(.lit):not(.flow)', edges => edges.every(e => getComputedStyle(e).opacity === '0')), 'Edges between domains stay hidden until they are lit');
   await page.keyboard.press('Escape');
