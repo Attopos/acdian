@@ -782,7 +782,6 @@ function drawChrome() {
   const canEdit = S.editable && S.platform !== 'ios';
   $('tools').innerHTML = `${canEdit ? `<div class="group"><button data-tool="edit" aria-pressed="${S.editing}" title="${esc(T(S.editing ? '完成' : '编辑'))}">${ic('pencil')}<span>${esc(T(S.editing ? '完成' : '编辑'))}</span></button></div>` : ''}<div class="group"><button data-tool="mentions" aria-pressed="${S.showMentions}" title="${esc(T('页面互链'))}">${ic('link-2')}</button></div><div class="group"><button data-tool="out" title="${esc(T('缩小'))}">${ic('minus')}</button><button data-tool="fit" title="${esc(T('适合窗口'))}"><span id="zoom-level">${Math.round(S.t.k * 100)}%</span></button><button data-tool="in" title="${esc(T('放大'))}">${ic('plus')}</button></div>`;
   $('search-input').placeholder = T('搜索节点');
-  if (!$('search-kbd') && S.platform !== 'ios') $('search-count').insertAdjacentHTML('afterend', '<kbd id="search-kbd">⌘F</kbd>');
   const line = (kind, arrow) => `<svg viewBox="0 0 34 14"><g class="edge" data-kind="${kind}" style="opacity:1"><path class="line" d="M1,7H${arrow ? 26 : 33}" style="stroke:var(--rm-line-strong)"/>${arrow ? '<path class="head" d="M33,7L25.5,3.4L25.5,10.6Z" style="fill:var(--rm-line-strong)"/>' : ''}</g></svg>`;
   const card = draft => `<svg viewBox="0 0 34 14"><g class="node${draft ? ' draft' : ''}" style="--tint:var(--rm-muted)"><rect class="card" x=".75" y=".75" width="32.5" height="12.5" rx="4"/><path d="M7,7H27" stroke="var(--rm-muted)" stroke-width="1.6" stroke-linecap="round" opacity=".5"/></g></svg>`;
   $('legend').className = 'float' + (S.legendClosed ? ' closed' : '');
@@ -801,22 +800,25 @@ $('tools').addEventListener('click', event => {
   else if (tool === 'edit') setEditing(!S.editing);
 });
 const input = $('search-input');
+function openSearch() { app.classList.add('searching'); input.focus(); input.select(); }
+function closeSearch() { input.value = ''; S.query = ''; app.classList.remove('searching'); input.blur(); applyState(); }
 input.addEventListener('input', () => { S.query = input.value; if (S.focus) focus(null); else applyState(); });
+input.addEventListener('blur', () => { if (!input.value.trim()) app.classList.remove('searching'); });
 input.addEventListener('keydown', event => {
   event.stopPropagation();
-  if (event.key === 'Enter' && S.matches.length) { const id = S.matches[0]; input.blur(); S.query = ''; input.value = ''; focus(id, { scale: 1 }); }
-  if (event.key === 'Escape') { input.value = ''; S.query = ''; input.blur(); applyState(); }
+  if (event.key === 'Enter' && S.matches.length) { const id = S.matches[0]; closeSearch(); focus(id, { scale: 1 }); }
+  if (event.key === 'Escape') closeSearch();
 });
 function toast(text) { const el = $('toast'); el.className = 'float'; el.textContent = text; el.hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => { el.hidden = true; }, 2600); }
 document.addEventListener('keydown', event => {
   if (event.target.closest?.('input, textarea')) return;
   const command = event.metaKey || event.ctrlKey;
-  if (command && event.key.toLowerCase() === 'f') { event.preventDefault(); input.focus(); input.select(); }
+  if (command && event.key.toLowerCase() === 'f') { event.preventDefault(); openSearch(); }
   else if (command && (event.key === '=' || event.key === '+')) { event.preventDefault(); zoomBy(1.3); }
   else if (command && event.key === '-') { event.preventDefault(); zoomBy(1 / 1.3); }
   else if (command && event.key === '0') { event.preventDefault(); go(fitTransform()); }
   else if (command && event.key.toLowerCase() === 'z' && S.editing) { event.preventDefault(); undo(); }
-  else if (event.key === 'Escape') { if (!$('lightbox').hidden) $('lightbox').hidden = true; else if (popoverOpen()) closePopover(); else if (S.focus) focus(null); }
+  else if (event.key === 'Escape') { if (app.classList.contains('searching')) closeSearch(); else if (!$('lightbox').hidden) $('lightbox').hidden = true; else if (popoverOpen()) closePopover(); else if (S.focus) focus(null); }
   else if (S.editing && S.focus && (event.key === 'Backspace' || event.key === 'Delete')) removeNode(S.byId.get(S.focus));
 });
 let wasCompact = compact();
@@ -1039,7 +1041,7 @@ kit.mount('roadmap', {
   flush,
 }, {
   state: () => (frame && (cancelAnimationFrame(frame), paint()), { focus: S.focus, zoom: S.zoom, k: S.t.k, highlighted: [...S.highlighted].sort(), chain: [...S.chain].sort(), path: S.focus ? learningPath(S.focus).map(step => step.id) : [], matches: [...S.matches], editing: S.editing, nodes: S.nodes.map(n => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: NODE_H, draft: !!n.d.draft })), bounds: S.layout?.bounds }),
-  focus, fit: () => compact() ? settle(fitTransform().k, false) : svg.call(zoom.transform, toZoom(fitTransform())), setZoom: k => { const { w, h } = viewport(); svg.call(zoom.scaleTo, k, [w / 2 + margin(), h / 2 + margin()]); }, search: text => { input.value = text; S.query = text; applyState(); }, flush, undo, setEditing, connect: (a, b, kind) => !!connect(S.byId.get(a), S.byId.get(b), kind), attach,
+  focus, fit: () => compact() ? settle(fitTransform().k, false) : svg.call(zoom.transform, toZoom(fitTransform())), setZoom: k => { const { w, h } = viewport(); svg.call(zoom.scaleTo, k, [w / 2 + margin(), h / 2 + margin()]); }, search: text => { input.value = text; S.query = text; app.classList.toggle('searching', !!text); applyState(); }, flush, undo, setEditing, connect: (a, b, kind) => !!connect(S.byId.get(a), S.byId.get(b), kind), attach,
 });
 svg.attr('data-zoom', 'mid');
 kit.ready();

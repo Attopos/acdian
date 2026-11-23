@@ -86,6 +86,8 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "模块": ("Modules", "Módulos"),
         "每个模块是一个文件夹，打开后侧栏只显示其中的页面。": ("Each module is a folder. Open one and the sidebar shows only its pages.", "Cada módulo es una carpeta. Al abrirlo, la barra lateral muestra solo sus páginas."),
         "新建模块": ("New module", "Nuevo módulo"),
+        "收起模块": ("Collapse modules", "Contraer módulos"),
+        "展开模块": ("Expand modules", "Expandir módulos"),
         "收起已隐藏的模块": ("Hide hidden modules", "Ocultar los módulos ocultos"),
         "显示已隐藏的模块 (%@)": ("Show hidden modules (%@)", "Mostrar módulos ocultos (%@)"),
         "打开": ("Open", "Abrir"),

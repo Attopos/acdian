@@ -388,18 +388,23 @@ struct SidebarView: View {
         // On the home screen the sidebar shows only the module icons.
         let home = model.activeModule == nil && model.query.isEmpty
         VStack(spacing:0) {
-            HStack(spacing:10) { BrandMark(size:30,style:model.iconStyle); Text("ACdian").font(.system(size:21,weight:.semibold,design:.rounded)).tracking(-0.6); Spacer(); SidebarToggle() }.padding(.horizontal,20).frame(height:68)
-            ModuleDock { editingModule = $0 }.padding(.horizontal,14).padding(.bottom,14)
+            HStack(spacing:9) { BrandMark(size:26,style:model.iconStyle); Text("ACdian").font(.system(size:18,weight:.semibold,design:.rounded)).tracking(-0.4); Spacer(); SidebarToggle() }.padding(.leading,18).padding(.trailing,14).frame(height:52)
             if searching || !model.query.isEmpty {
-                HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused).onExitCommand { model.query = ""; searching = false }; Button { model.query = ""; searching = false } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) }.foregroundStyle(.secondary).padding(10).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,14).padding(.bottom,20)
-            } else { Color.clear.frame(height:8) }
+                HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused).onExitCommand { model.query = ""; searching = false }; Button { model.query = ""; searching = false } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) }.foregroundStyle(.secondary).padding(.horizontal,10).frame(height:32).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,10).padding(.bottom,12)
+            }
+            ModuleDock { editingModule = $0 }.padding(.horizontal,10).padding(.bottom,home ? 0 : 16)
             if !home {
-            HStack { Text(!model.query.isEmpty ? model.localized("搜索结果") : model.activeModule?.name ?? model.localized("页面")).font(.system(size:11,weight:.semibold)).tracking(0.6).lineLimit(1).foregroundStyle(rootDropTargeted ? Color.acPink : Color.secondary.opacity(0.6)).onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
-                // Dropping on the Pages header puts an item at the top of the open module.
-                let target = PageDropTarget(folder:model.activeModule?.folder ?? "")
-                model.endSidebarDrop()
-                return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }
-            }; Spacer(); Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面")); Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹")); Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N")) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal,22).padding(.bottom,10)
+                SidebarSectionHeader(title:!model.query.isEmpty ? model.localized("搜索结果") : model.activeModule?.name ?? model.localized("页面"),highlighted:rootDropTargeted) {
+                    Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面"))
+                    Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹"))
+                    Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N"))
+                }
+                .onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
+                    let target = PageDropTarget(folder:model.activeModule?.folder ?? "")
+                    model.endSidebarDrop()
+                    return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }
+                }
+                .padding(.horizontal,10).padding(.bottom,2)
             }
             ScrollView {
                 ThinScrollBar().frame(width:0,height:0)
@@ -412,22 +417,16 @@ struct SidebarView: View {
                 }
             }.scrollIndicators(.never)
             Spacer(minLength:0)
-            Button { model.showMarket() } label: {
-                HStack(spacing:10) { Image(systemName:"puzzlepiece.extension").frame(width:16); Text(model.localized("组件")); Spacer() }
-                    .font(.system(size:12,weight:.medium)).foregroundStyle(model.showingMarket ? Color.acPink : Color.secondary)
-                    .padding(.horizontal,12).padding(.vertical,9)
-                    .background(model.showingMarket ? Color.acPink.opacity(0.09) : .clear,in:RoundedRectangle(cornerRadius:7))
-            }.buttonStyle(.plain).padding(.horizontal,10).accessibilityIdentifier("componentsButton")
-            Button { model.showTrash() } label: {
-                HStack(spacing:10) { Image(systemName:"trash").frame(width:16); Text(model.localized("垃圾桶")); Spacer() }
-                    .font(.system(size:12,weight:.medium)).foregroundStyle(model.showingTrash ? Color.acPink : Color.secondary)
-                    .padding(.horizontal,12).padding(.vertical,9)
-                    .background(model.showingTrash ? Color.acPink.opacity(0.09) : .clear,in:RoundedRectangle(cornerRadius:7))
-            }.buttonStyle(.plain).padding(.horizontal,10).padding(.bottom,12)
-                .accessibilityIdentifier("trashButton")
-                .contextMenu { Button(role:.destructive) { model.confirmEmptyTrash() } label: { Label(model.localized("清空垃圾桶…"),systemImage:"trash.slash") }.disabled(model.trashEntries.isEmpty) }
-            Rectangle().fill(Color.faint).frame(height:1).padding(.horizontal,16)
-            HStack(spacing:14) { SettingsButton(); Spacer() }.padding(.horizontal,20).padding(.vertical,14)
+            Rectangle().fill(Color.faint).frame(height:1)
+            HStack(spacing:2) {
+                SettingsButton().frame(width:30,height:28)
+                Spacer()
+                SidebarFooterButton(symbol:"puzzlepiece.extension",title:model.localized("组件"),active:model.showingMarket) { model.showMarket() }
+                    .accessibilityIdentifier("componentsButton")
+                SidebarFooterButton(symbol:"trash",title:model.localized("垃圾桶"),active:model.showingTrash) { model.showTrash() }
+                    .accessibilityIdentifier("trashButton")
+                    .contextMenu { Button(role:.destructive) { model.confirmEmptyTrash() } label: { Label(model.localized("清空垃圾桶…"),systemImage:"trash.slash") }.disabled(model.trashEntries.isEmpty) }
+            }.padding(.horizontal,12).padding(.vertical,9)
         }.background(Color.rail)
         .sheet(item:$editingModule) { target in ModuleEditor(target:target).environmentObject(model) }
         .onChange(of:searchFocused) { _,focused in if !focused && model.query.isEmpty { searching = false } }
@@ -783,6 +782,24 @@ struct TrashView: View {
 
 /// Kept outside the document identity so a language change never reloads edits.
 // The gear at the foot of the sidebar opens icon, language and appearance settings.
+struct SidebarFooterButton: View {
+    let symbol: String
+    let title: String
+    let active: Bool
+    let action: () -> Void
+    @State private var hovering = false
+    var body: some View {
+        Button(action:action) {
+            Image(systemName:symbol).font(.system(size:14,weight:.medium))
+                .frame(width:30,height:28)
+                .foregroundStyle(active ? Color.acPink : hovering ? Color.primary : Color.secondary)
+                .background(active ? Color.acPink.opacity(0.11) : hovering ? Color.wash : .clear,in:RoundedRectangle(cornerRadius:7,style:.continuous))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help(title).accessibilityLabel(title)
+        .onHover { hovering = $0 }
+    }
+}
 struct SettingsButton: View {
     @EnvironmentObject var model: AppModel
     @State private var open = false

@@ -198,27 +198,43 @@ struct ModuleEditor: View {
     }
 }
 
-/// The modules pinned at the top of the sidebar, like pinned sites in a browser:
-/// icon tiles without names, always there, the open module's tile lit up.
-/// Clicking the open module's tile again goes back to all modules.
 struct ModuleDock: View {
     @EnvironmentObject var model: AppModel
     let edit: (ModuleEditorTarget) -> Void
     @State private var dragging: String?
-    private let columns = [GridItem(.adaptive(minimum:62),spacing:8)]
+    @AppStorage("sidebarModulesCollapsed") private var collapsed = false
     var body: some View {
-        LazyVGrid(columns:columns,spacing:8) {
-            ForEach(model.presentModules.filter { !$0.hidden }) { module in
+        let modules = model.presentModules.filter { !$0.hidden }
+        let folded = collapsed && model.activeModuleID != nil
+        VStack(alignment:.leading,spacing:1) {
+            SidebarSectionHeader(title:model.localized("模块")) {
+                if model.activeModuleID != nil {
+                    Button { withAnimation(.easeInOut(duration:0.18)) { collapsed.toggle() } } label: { Image(systemName:"chevron.down").rotationEffect(.degrees(folded ? -90 : 0)) }
+                        .help(model.localized(folded ? "展开模块" : "收起模块"))
+                }
+                Button { edit(.new) } label: { Image(systemName:"plus") }.help(model.localized("新建模块")).accessibilityIdentifier("newModule")
+            }
+            ForEach(modules.filter { !folded || $0.id == model.activeModuleID }) { module in
                 ModuleDockTile(module:module,edit:edit)
                     .onDrag { dragging = module.id; return NSItemProvider(object:(SidebarDrops.modulePrefix + module.id) as NSString) }
             }
-            Button { edit(.new) } label: {
-                RoundedRectangle(cornerRadius:11,style:.continuous).strokeBorder(Color.secondary.opacity(0.3),style:StrokeStyle(lineWidth:1,dash:[4,3]))
-                    .overlay { Image(systemName:"plus").font(.system(size:14,weight:.light)).foregroundStyle(.secondary) }
-                    .frame(height:46).contentShape(Rectangle())
-            }.buttonStyle(.plain).help(model.localized("新建模块")).accessibilityIdentifier("newModule")
         }
         .environment(\.moduleDockDragging,$dragging)
+    }
+}
+
+struct SidebarSectionHeader<Actions: View>: View {
+    let title: String
+    var highlighted = false
+    @ViewBuilder var actions: Actions
+    var body: some View {
+        HStack(spacing:12) {
+            Text(title).font(.system(size:11,weight:.semibold)).tracking(0.4).lineLimit(1)
+                .foregroundStyle(highlighted ? Color.acPink : Color.secondary.opacity(0.7))
+            Spacer(minLength:8)
+            HStack(spacing:12) { actions }.font(.system(size:11.5,weight:.medium)).foregroundStyle(Color.secondary.opacity(0.8)).buttonStyle(.plain)
+        }
+        .padding(.horizontal,8).frame(height:26)
     }
 }
 
@@ -237,14 +253,19 @@ struct ModuleDockTile: View {
     var body: some View {
         let active = model.activeModuleID == module.id
         Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(active ? nil : module.id) } } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius:11,style:.continuous).fill(active ? ModuleStyle.lit : dropTargeted ? Color.acPink.opacity(0.18) : hovering ? ModuleStyle.frost.opacity(0.75) : ModuleStyle.frost)
-                RoundedRectangle(cornerRadius:11,style:.continuous).strokeBorder(active ? ModuleStyle.litEdge : dropTargeted || hovering ? Color.acPink.opacity(0.45) : ModuleStyle.frostEdge,lineWidth:active ? 1.5 : 1)
-                Image(systemName:ModuleStyle.symbol(module.icon)).font(.system(size:18,weight:.medium)).foregroundStyle(ModuleStyle.glyph(module.color,active:false))
+            HStack(spacing:9) {
+                ZStack {
+                    RoundedRectangle(cornerRadius:6,style:.continuous).fill(ModuleStyle.tile(module.color).opacity(active ? 0.2 : 0.12))
+                    Image(systemName:ModuleStyle.symbol(module.icon)).font(.system(size:11,weight:.semibold)).foregroundStyle(ModuleStyle.glyph(module.color,active:false))
+                }
+                .frame(width:22,height:22)
+                Text(module.name).font(.system(size:13,weight:active ? .semibold : .regular)).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength:0)
             }
-            .frame(height:46).contentShape(Rectangle())
-            .shadow(color:Color.acPink.opacity(active ? 0.28 : 0),radius:7)
-            .shadow(color:.black.opacity(active ? 0.10 : 0),radius:2,y:1)
+            .foregroundStyle(active ? Color.primary : Color.secondary)
+            .padding(.horizontal,8).frame(height:30)
+            .background(RoundedRectangle(cornerRadius:7,style:.continuous).fill(active ? Color.acPink.opacity(0.11) : dropTargeted ? Color.acPink.opacity(0.18) : hovering ? Color.wash : .clear))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain).help(module.name)
         .accessibilityLabel(module.name)
