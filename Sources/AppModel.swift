@@ -1559,7 +1559,6 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     var allPagesSearched: Bool { (index?.files.filter { $0.ext == "md" && $0.size < 2_000_000 }.count ?? 0) <= searchCache.count }
     var searchedPageCount: Int { searchCache.count }
 
-    // MARK: Facets and links
     enum FileKind: String, CaseIterable { case page, component, pdf, media }
     enum FileAge: Int, CaseIterable { case today = 1, week = 7, month = 30 }
     @Published var facetKinds: Set<FileKind> = []
