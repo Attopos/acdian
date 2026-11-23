@@ -1566,6 +1566,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     @Published var facetTags: Set<String> = []
     @Published var facetAge: FileAge?
     @Published var showingJump = false
+    @Published var showingSearch = false
     var facetsActive: Bool { !facetKinds.isEmpty || !facetTags.isEmpty || facetAge != nil }
     func clearFacets() { facetKinds = []; facetTags = []; facetAge = nil }
     static func kind(of entry: VaultEntry) -> FileKind? {
@@ -1649,6 +1650,39 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
         }
         linkMemo = (key,facts)
         return facts
+    }
+    struct SearchHit: Identifiable { let entry: VaultEntry; let snippet: String; var id: String { entry.relativePath } }
+    func searchVault(_ text: String) -> [SearchHit] {
+        guard let index else { return [] }
+        let raw = text.trimmingCharacters(in:.whitespacesAndNewlines), needle = Self.searchFold(raw)
+        guard !needle.isEmpty else { return [] }
+        let facts = linkFacts
+        func snippet(_ path: String) -> String {
+            guard let body = searchCache[path] as NSString? else { return "" }
+            let hit = body.range(of:raw,options:[.caseInsensitive,.diacriticInsensitive])
+            guard hit.location != NSNotFound else { return "" }
+            let start = max(0,hit.location - 30), length = min(body.length - start,hit.length + 90)
+            let part = body.substring(with:NSRange(location:start,length:length)).replacingOccurrences(of:"\n",with:" ")
+            return (start > 0 ? "…" : "") + part.trimmingCharacters(in:.whitespaces)
+        }
+        let files = index.files.filter { $0.ext == "md" }
+        let named = files.filter { Self.searchFold(Self.editableName($0)).contains(needle) }
+        let names = Set(named.map(\.relativePath))
+        let inText = files.filter { !names.contains($0.relativePath) && (searchFolded[$0.relativePath].map { $0.range(of:needle,options:.literal).location != NSNotFound } ?? false) }
+        let rank: (VaultEntry, VaultEntry) -> Bool = { (facts[$0.relativePath]?.incoming ?? 0) > (facts[$1.relativePath]?.incoming ?? 0) }
+        return (named.sorted(by:rank) + inText.sorted(by:rank)).prefix(60).map { SearchHit(entry:$0,snippet:snippet($0.relativePath)) }
+    }
+    func openHit(_ entry: VaultEntry, text: String) {
+        showingSearch = false
+        open(entry)
+        let query = text.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        for delay in [0.5,1.2] {
+            DispatchQueue.main.asyncAfter(deadline:.now() + delay) { [weak self] in
+                guard self?.currentPagePath == entry.relativePath else { return }
+                NotificationCenter.default.post(name:Notification.Name("acdianFindText"),object:nil,userInfo:["text":query])
+            }
+        }
     }
     func jumpResults(_ text: String, everywhere: Bool) -> (titles: [VaultEntry], body: [VaultEntry]) {
         guard let index else { return ([],[]) }

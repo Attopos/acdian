@@ -1043,7 +1043,7 @@ kit.mount('roadmap', {
   load: message => load(message, false),
   update: message => { if (S.dirtyNodes.size || S.dirtyEdges.size || popoverOpen()) return; load(message, true); },
   focus: message => { const node = S.byId.get(message.id); if (node) focus(node.id, { scale: 1 }); },
-  find: () => { input.focus(); input.select(); },
+  find: () => openSearch(),
   attach: message => attach(nodeAtClient(message.x, message.y)?.id, message.key),
   flush,
 }, {

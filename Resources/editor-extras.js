@@ -85,6 +85,13 @@ class FindPanel {
     this.dom.classList.toggle('cm-find-empty',!total);
   }
 }
+export function findText(view,text) {
+  openSearchPanel(view);
+  view.dispatch({effects:setSearchQuery.of(new SearchQuery({search:text}))});
+  const panel=panels.get(view);if(panel){panel.search.value=text;panel.commit();}
+  view.dispatch({selection:{anchor:0}});findNext(view);
+  return true;
+}
 export function findInPage(view,replace) {
   openSearchPanel(view);
   const panel=panels.get(view);

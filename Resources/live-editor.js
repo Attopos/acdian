@@ -12,7 +12,7 @@ import { editorLanguage, normalizeLanguage, messagesForLanguage, uiText } from '
 import { comments, loadComments, commentsTest } from './comments.js';
 import { tableDecorations, tableKeymap, tableSelectionFilter, tableWidthField, tableColumnResize, tableAddControls } from './rich-table.js';
 import { blockHandles, blockDragTest } from './block-drag.js';
-import { editorExtras, findInPage } from './editor-extras.js';
+import { editorExtras, findInPage, findText } from './editor-extras.js';
 import { configureRichText, codeLanguages, codeHighlight, codeHead, codeFolded, codePrefs, codePrefEffect, inlineHTML, safeBlockStyle, MermaidWidget, folding, startFolded, frameImage, parseEmbed, imageWidthless, InlineImageWidget, CalloutIconWidget, calloutHeader, TocWidget, keepWords, wordRanges } from './rich-text.js';
 
 const metadata = { currentPath: '', documentID: '', tabID: '', title: '', pageTitle: '', editable: true, resetToken: null, language:'en' };
@@ -1225,6 +1225,7 @@ configureRichText({post,uiText,currentPath:()=>metadata.currentPath,headings:hea
 new ResizeObserver(()=>document.documentElement.style.setProperty('--page-title-height',titleBlock.offsetHeight+'px')).observe(titleBlock);
 window.acdianEditor=view;
 window.acdianFind=replace=>findInPage(view,!!replace);
+window.acdianFindText=text=>findText(view,String(text||''));
 document.addEventListener('contextmenu',event=>event.preventDefault());
 view.contentDOM.addEventListener('mousedown',()=>document.documentElement.classList.add('cm-mouse-selecting'));
 window.addEventListener('mouseup',()=>document.documentElement.classList.remove('cm-mouse-selecting'),true);

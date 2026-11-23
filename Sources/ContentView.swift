@@ -85,7 +85,7 @@ struct ContentView: View {
             // with no blank band above them.
             .ignoresSafeArea(.container,edges:.top)
         }
-        .overlay { if model.showingJump { QuickJumpView() } }
+        .overlay { if model.showingJump { QuickJumpView() } else if model.showingSearch { VaultSearchView() } }
         .background(Color.canvas).tint(.acPink)
         .environment(\.locale,model.language.locale)
         .frame(minWidth:920,minHeight:620)

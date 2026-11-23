@@ -64,6 +64,12 @@ struct LiveMarkdownEditor: NSViewRepresentable {
         super.init()
         schemes.host = self; view.host = self
         config.userContentController.add(MessageRelay(self),name:"acdian")
+        NotificationCenter.default.addObserver(forName:Notification.Name("acdianFindText"),object:nil,queue:.main) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let text = note.userInfo?["text"] as? String, let data = try? JSONSerialization.data(withJSONObject:[text]), let json = String(data:data,encoding:.utf8) else { return }
+                self.view.evaluateJavaScript("window.acdianFindText&&window.acdianFindText(\(json)[0])",completionHandler:nil)
+            }
+        }
         NotificationCenter.default.addObserver(forName:Notification.Name("acdianFindInPage"),object:nil,queue:.main) { [weak self] note in
             MainActor.assumeIsolated {
                 guard let self, note.userInfo?["split"] as? Bool != true else { return }

@@ -87,6 +87,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         "每个模块是一个文件夹，打开后侧栏只显示其中的页面。": ("Each module is a folder. Open one and the sidebar shows only its pages.", "Cada módulo es una carpeta. Al abrirlo, la barra lateral muestra solo sus páginas."),
         "新建模块": ("New module", "Nuevo módulo"),
         "跳转到页面": ("Jump to page", "Ir a una página"),
+        "搜索全部页面": ("Search All Pages", "Buscar en todas las páginas"),
         "跳转到页面…": ("Jump to Page…", "Ir a una página…"),
         "筛选": ("Filter", "Filtrar"),
         "全部页面": ("All pages", "Todas las páginas"),

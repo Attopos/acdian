@@ -137,3 +137,79 @@ private struct JumpRow: View {
         return Text(value)
     }
 }
+
+struct VaultSearchView: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.colorScheme) private var scheme
+    @State private var text = ""
+    @State private var selection = 0
+    @FocusState private var focused: Bool
+    var body: some View {
+        let hits = model.searchVault(text)
+        ZStack(alignment:.top) {
+            Color.black.opacity(scheme == .dark ? 0.45 : 0.16).ignoresSafeArea().onTapGesture { model.showingSearch = false }
+            VStack(spacing:0) {
+                HStack(spacing:10) {
+                    Image(systemName:"magnifyingglass").font(.system(size:16)).foregroundStyle(.secondary)
+                    TextField(model.localized("搜索全部页面"),text:$text).textFieldStyle(.plain).font(.system(size:18)).focused($focused)
+                        .onExitCommand { model.showingSearch = false }
+                }.padding(.horizontal,18).frame(height:58)
+                if !text.trimmingCharacters(in:.whitespaces).isEmpty {
+                    Rectangle().fill(Color.faint).frame(height:1)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment:.leading,spacing:0) {
+                                ForEach(Array(hits.enumerated()),id:\.element.id) { i,hit in
+                                    SearchHitRow(hit:hit,query:text,selected:i == selection).id(i).onTapGesture { model.openHit(hit.entry,text:text) }
+                                }
+                                if hits.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.system(size:12)).foregroundStyle(.tertiary).padding(18) }
+                            }.padding(.vertical,6)
+                        }
+                        .frame(maxHeight:520).fixedSize(horizontal:false,vertical:true)
+                        .onChange(of:selection) { _,value in proxy.scrollTo(value) }
+                    }
+                }
+            }
+            .frame(width:680)
+            .background(Color.rail,in:RoundedRectangle(cornerRadius:16,style:.continuous))
+            .overlay(RoundedRectangle(cornerRadius:16,style:.continuous).strokeBorder(Color.acPink,lineWidth:1))
+            .padding(.top,84)
+        }
+        .onAppear { focused = true }
+        .onChange(of:text) { _,_ in selection = 0 }
+        .onKeyPress(.downArrow) { selection = min(selection + 1,max(hits.count - 1,0)); return .handled }
+        .onKeyPress(.upArrow) { selection = max(selection - 1,0); return .handled }
+        .onKeyPress(.return) { if hits.indices.contains(selection) { model.openHit(hits[selection].entry,text:text) }; return .handled }
+        .onExitCommand { model.showingSearch = false }
+    }
+}
+
+private struct SearchHitRow: View {
+    let hit: AppModel.SearchHit
+    let query: String
+    let selected: Bool
+    var body: some View {
+        let name = AppModel.editableName(hit.entry), folder = (hit.entry.relativePath as NSString).deletingLastPathComponent
+        HStack(alignment:.top,spacing:12) {
+            Image(systemName:"doc.text").font(.system(size:14)).foregroundStyle(Color.acPink).frame(width:16).padding(.top,2)
+            VStack(alignment:.leading,spacing:3) {
+                HStack(spacing:8) {
+                    marked(name).font(.system(size:14,weight:.semibold)).lineLimit(1)
+                    Text(folder).font(.system(size:11)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+                }
+                if !hit.snippet.isEmpty { marked(hit.snippet).font(.system(size:12)).foregroundStyle(.secondary).lineLimit(2) }
+            }
+            Spacer(minLength:0)
+        }
+        .padding(.horizontal,18).padding(.vertical,8)
+        .frame(maxWidth:.infinity,alignment:.leading)
+        .background(selected ? Color.acPink.opacity(0.14) : .clear)
+        .contentShape(Rectangle())
+    }
+    private func marked(_ text: String) -> Text {
+        var value = AttributedString(text)
+        let needle = query.trimmingCharacters(in:.whitespacesAndNewlines)
+        if !needle.isEmpty, let range = value.range(of:needle,options:[.caseInsensitive,.diacriticInsensitive]) { value[range].backgroundColor = Color.acPink.opacity(0.28) }
+        return Text(value)
+    }
+}
