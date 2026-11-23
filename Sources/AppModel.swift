@@ -218,6 +218,7 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     private let attachmentCleanupDelay: TimeInterval
     private var draftFolder = ""
     @Published var showOutline = true
+    @Published var imageViewerOpen = false
     @Published var showSidebar = true
     /// The sidebar's width, dragged at its edge and kept between launches.
     static let sidebarWidths: ClosedRange<Double> = 200...420

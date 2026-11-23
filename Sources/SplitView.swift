@@ -207,6 +207,7 @@ struct SplitMarkdownEditor: NSViewRepresentable {
         if type == "external", let target = value["target"] as? String { model.external(target) }
         if type == "copyImage", let target = value["target"] as? String { model.copyImage(target,from:model.splitPath ?? "") }
         if type == "revealImage", let target = value["target"] as? String { model.revealImage(target,from:model.splitPath ?? "") }
+        if type == "imageViewer" { model.imageViewerOpen = value["open"] as? Bool ?? false }
         if type == "copy", let text = value["text"] as? String { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text,forType:.string) }
         if type == "titleTyped", let title = value["title"] as? String { model.splitTitleTyped(title) }
         if type == "titleEnded", !model.splitTitleEditEnded() { view.evaluateJavaScript("window.acdianRefreshTitle()",completionHandler:nil) }

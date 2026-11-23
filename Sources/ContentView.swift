@@ -148,8 +148,8 @@ struct ContentView: View {
                                 if model.isDraft { DraftTitleView(model:model,side:Self.pageSide(width),left:Self.pageLeft(width,shift:layout.shift)).id(model.editorDocumentID) }
                                 LiveMarkdownEditor(model:model,centerShift:layout.shift,leftEdge:layout.edge).frame(maxWidth:.infinity,maxHeight:.infinity)
                             }
-                            if model.showOutline {
-                                OutlineLayer(model:model,title:title,textLeft:model.commentTextLeft ?? Self.pageLeft(width,shift:layout.shift) + Self.pageSide(width),top:width > 700 ? 49 : 30,height:geometry.size.height)
+                            if model.showOutline && !model.imageViewerOpen && Self.pageLeft(width,shift:layout.shift) + Self.pageSide(width) > 64 {
+                                FloatingOutline(model:model,title:title,onLeft:model.commentTextLeft != nil,height:geometry.size.height)
                             }
                         }
                     }
@@ -915,40 +915,85 @@ struct LanguageMenu: View {
 // The outline: one short line per heading in the margin just left of the text,
 // longer for higher levels and pink for the part being read. Pointing at it opens
 // a list of the headings over the page; leaving closes it. The text never moves.
-final class PassThroughHost<Content: View>: NSHostingView<Content> {
-    var hits: (NSPoint) -> Bool = { _ in false }
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let superview else { return nil }
-        return hits(convert(point,from:superview)) ? super.hitTest(point) : nil
-    }
-}
-struct OutlineLayer: NSViewRepresentable {
+struct FloatingOutline: View {
     @ObservedObject var model: AppModel
     let title: String
-    let textLeft: CGFloat
-    let top: CGFloat
+    let onLeft: Bool
     let height: CGFloat
-    final class Coordinator { var open = false }
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    private func rail(_ coordinator: Coordinator) -> OutlineRail { OutlineRail(model:model,title:title,textLeft:textLeft,top:top,height:height,onOpen:{ coordinator.open = $0 }) }
-    func makeNSView(context: Context) -> PassThroughHost<OutlineRail> {
-        let host = PassThroughHost(rootView:rail(context.coordinator))
-        update(host,context.coordinator)
-        return host
+    @State private var open = false
+    private var rows: Int { model.headings.count + 1 }
+    var body: some View {
+        let railHeight = CGFloat(min(rows,48)) * 10.5 + 18
+        let panelHeight = min(max(120,height - 96),CGFloat(rows) * 32 + 14)
+        OutlineHost(model:model,title:title,onLeft:onLeft,maxHeight:panelHeight,open:$open)
+            .frame(width:open ? 276 : 36,height:open ? panelHeight : railHeight)
+            .padding(onLeft ? .leading : .trailing,12).padding(.top,72)
+            .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:onLeft ? .topLeading : .topTrailing)
+            .allowsHitTesting(true)
     }
-    func updateNSView(_ host: PassThroughHost<OutlineRail>, context: Context) {
-        host.rootView = rail(context.coordinator)
-        update(host,context.coordinator)
+}
+struct OutlineHost: NSViewRepresentable {
+    @ObservedObject var model: AppModel
+    let title: String
+    let onLeft: Bool
+    let maxHeight: CGFloat
+    @Binding var open: Bool
+    private var content: OutlineFloat { OutlineFloat(model:model,title:title,onLeft:onLeft,maxHeight:maxHeight,open:$open) }
+    func makeNSView(context: Context) -> NSHostingView<OutlineFloat> { NSHostingView(rootView:content) }
+    func updateNSView(_ view: NSHostingView<OutlineFloat>, context: Context) { view.rootView = content }
+}
+struct OutlineFloat: View {
+    @ObservedObject var model: AppModel
+    let title: String
+    let onLeft: Bool
+    let maxHeight: CGFloat
+    @Binding var open: Bool
+    @State private var hovered: Int?
+    @State private var closing: Task<Void,Never>?
+    private struct Row { let index: Int; let title: String; let level: Int }
+    private var rows: [Row] { [Row(index:-1,title:title.isEmpty ? "New Page" : title,level:1)] + model.headings.enumerated().map { Row(index:$0.offset,title:$0.element.title,level:$0.element.level + 1) } }
+    var body: some View {
+        Group { if open { panel } else { rail } }
+            .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:onLeft ? .topLeading : .topTrailing)
+            .onHover(perform:hover)
     }
-    private func update(_ host: PassThroughHost<OutlineRail>, _ coordinator: Coordinator) {
-        let left = OutlineRail.railLeft(textLeft), drop = OutlineRail.railDrop, count = CGFloat(model.headings.count + 1), shown = min(count,48)
-        let rail = CGRect(x:left - 6,y:top + drop - 6,width:OutlineRail.railWidth + 12,height:shown * 2.5 + max(0,shown - 1) * 8 + 12)
-        let y = max(4,top + drop - 14), panel = CGRect(x:max(4,left - 14),y:y,width:260,height:max(120,min(height - y - 12,count * 32 + 14)))
-        let flipped = host.isFlipped
-        host.hits = { [weak host] point in
-            let p = flipped ? point : CGPoint(x:point.x,y:(host?.bounds.height ?? 0) - point.y)
-            return rail.contains(p) || (coordinator.open && panel.contains(p))
+    private var rail: some View {
+        VStack(alignment:onLeft ? .leading : .trailing,spacing:8) {
+            ForEach(Array(rows.prefix(48).enumerated()),id:\.offset) { _,row in
+                Capsule().fill(row.index == model.activeHeading ? Color.acPink : Color.secondary.opacity(0.45))
+                    .frame(width:row.level <= 1 ? 20 : row.level == 2 ? 15 : row.level == 3 ? 11 : 8,height:2.5)
+            }
         }
+        .padding(8).contentShape(Rectangle())
+        .accessibilityElement(children:.ignore).accessibilityLabel(model.localized("文章目录"))
+    }
+    private var panel: some View {
+        ScrollView {
+            VStack(alignment:.leading,spacing:2) {
+                ForEach(rows,id:\.index) { row in
+                    let active = row.index == model.activeHeading
+                    Button { model.anchor = row.index < 0 ? "#" : row.title; model.activeHeading = row.index } label: {
+                        HStack(spacing:12) {
+                            Capsule().fill(active ? Color.acPink : Color.secondary.opacity(0.6)).frame(width:14,height:2.5)
+                            Text(row.title).font(.system(size:14,weight:active ? .semibold : .regular)).foregroundStyle(active ? Color.primary : Color.primary.opacity(0.85)).lineLimit(1).truncationMode(.tail)
+                        }
+                        .padding(.leading,8 + CGFloat(max(0,row.level - 2)) * 14).padding(.trailing,12).padding(.vertical,6)
+                        .frame(maxWidth:.infinity,alignment:.leading)
+                        .background(RoundedRectangle(cornerRadius:7).fill(hovered == row.index ? Color.primary.opacity(0.08) : .clear))
+                        .contentShape(Rectangle())
+                    }.buttonStyle(.plain).onHover { hovered = $0 ? row.index : (hovered == row.index ? nil : hovered) }
+                }
+            }.padding(6)
+        }
+        .scrollIndicators(.never)
+        .frame(width:260).frame(maxHeight:maxHeight)
+        .background(RoundedRectangle(cornerRadius:12).fill(Color.rail).overlay(RoundedRectangle(cornerRadius:12).strokeBorder(Color.faint,lineWidth:1)))
+        .padding(.horizontal,8)
+    }
+    private func hover(_ inside: Bool) {
+        closing?.cancel()
+        if inside { if !open { withAnimation(.easeOut(duration:0.12)) { open = true } } }
+        else { closing = Task { @MainActor in try? await Task.sleep(nanoseconds:220_000_000); guard !Task.isCancelled else { return }; withAnimation(.easeIn(duration:0.12)) { open = false; hovered = nil } } }
     }
 }
 struct OutlineRail: View {
@@ -961,7 +1006,6 @@ struct OutlineRail: View {
     let height: CGFloat
     /// Opens the list at once, for pictures of it in tests.
     var startsOpen = false
-    var onOpen: ((Bool) -> Void)? = nil
     @State private var open = false
     @State private var hovered: Int?
     @State private var closing: Task<Void,Never>?
@@ -1021,8 +1065,8 @@ struct OutlineRail: View {
     // back, so a close waits a moment for the pointer to arrive.
     private func hover(_ inside: Bool) {
         closing?.cancel()
-        if inside { onOpen?(true); if !open { withAnimation(.easeOut(duration:0.12)) { open = true } } }
-        else { closing = Task { @MainActor in try? await Task.sleep(nanoseconds:220_000_000); guard !Task.isCancelled else { return }; onOpen?(false); withAnimation(.easeIn(duration:0.12)) { open = false; hovered = nil } } }
+        if inside { if !open { withAnimation(.easeOut(duration:0.12)) { open = true } } }
+        else { closing = Task { @MainActor in try? await Task.sleep(nanoseconds:220_000_000); guard !Task.isCancelled else { return }; withAnimation(.easeIn(duration:0.12)) { open = false; hovered = nil } } }
     }
 }
 

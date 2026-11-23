@@ -366,8 +366,9 @@ function showLarge(image) {
     const rect=cover.getBoundingClientRect(),ox=cx-rect.left-rect.width/2,oy=cy-rect.top-rect.height/2;
     x=ox-(ox-x)*next/scale;y=oy-(oy-y)*next/scale;scale=next;if(scale===1){x=0;y=0;}apply();
   };
-  const close=()=>{cover.remove();window.removeEventListener('keydown',key,true);};
+  const close=()=>{cover.remove();window.removeEventListener('keydown',key,true);host.post({type:'imageViewer',open:false});};
   const key=event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}};
+  host.post({type:'imageViewer',open:true});
   cover.addEventListener('wheel',event=>{event.preventDefault();if(event.ctrlKey||scale===1)zoomAt(Math.exp(-event.deltaY*(event.ctrlKey?0.01:0.002)),event.clientX,event.clientY);else{x-=event.deltaX;y-=event.deltaY;apply();}},{passive:false});
   cover.addEventListener('mousedown',event=>{
     event.preventDefault();
