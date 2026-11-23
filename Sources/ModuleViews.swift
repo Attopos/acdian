@@ -207,7 +207,7 @@ struct ModuleDock: View {
         let modules = model.presentModules.filter { !$0.hidden }
         let folded = collapsed && model.activeModuleID != nil
         VStack(alignment:.leading,spacing:1) {
-            SidebarSectionHeader(title:model.localized("模块")) {
+            SidebarSectionHeader(title:model.localized("模块"),highlighted:model.activeModuleID != nil) {
                 if model.activeModuleID != nil {
                     Button { withAnimation(.easeInOut(duration:0.18)) { collapsed.toggle() } } label: { Image(systemName:"chevron.down").rotationEffect(.degrees(folded ? -90 : 0)) }
                         .help(model.localized(folded ? "展开模块" : "收起模块"))
@@ -253,18 +253,13 @@ struct ModuleDockTile: View {
     var body: some View {
         let active = model.activeModuleID == module.id
         Button { withAnimation(.easeInOut(duration:0.15)) { model.enterModule(active ? nil : module.id) } } label: {
-            HStack(spacing:9) {
-                ZStack {
-                    RoundedRectangle(cornerRadius:6,style:.continuous).fill(ModuleStyle.tile(module.color).opacity(active ? 0.2 : 0.12))
-                    Image(systemName:ModuleStyle.symbol(module.icon)).font(.system(size:11,weight:.semibold)).foregroundStyle(ModuleStyle.glyph(module.color,active:false))
-                }
-                .frame(width:22,height:22)
-                Text(module.name).font(.system(size:13,weight:active ? .semibold : .regular)).lineLimit(1).truncationMode(.tail)
+            HStack(spacing:8) {
+                Rectangle().fill(ModuleStyle.tile(module.color)).frame(width:9,height:9)
+                Text(module.name).font(.system(size:12.5,weight:active ? .semibold : .regular)).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength:0)
             }
             .foregroundStyle(active ? Color.primary : Color.secondary)
-            .padding(.horizontal,8).frame(height:30)
-            .background(RoundedRectangle(cornerRadius:7,style:.continuous).fill(active ? Color.acPink.opacity(0.11) : dropTargeted ? Color.acPink.opacity(0.18) : hovering ? Color.wash : .clear))
+            .modifier(FacetRowBackground(selected:active,hovering:hovering || dropTargeted))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain).help(module.name)

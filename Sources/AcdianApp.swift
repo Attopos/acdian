@@ -10,6 +10,7 @@ import AppKit
         }.defaultSize(width:1260,height:840).windowStyle(.hiddenTitleBar).commands {
             CommandGroup(replacing:.newItem) {
                 Button(model.localized("新建页面")) { model.newPageFromEditor() }.keyboardShortcut("n")
+                Button(model.localized("跳转到页面…")) { model.showingJump = true }.keyboardShortcut("o")
             }
             CommandGroup(replacing:.saveItem) { Button(model.localized("关闭标签页")) { model.closeCurrentTab() }.keyboardShortcut("w"); Button(model.localized("保存页面")) { model.saveFromEditor() }.keyboardShortcut("s").disabled(model.selected?.ext != "md"); Button(model.localized("重新载入文件")) { model.reload() }.disabled(model.persistedPage == nil) }
             CommandGroup(after:.textEditing) { Button(model.localized("在页面中查找")) { model.findInPage(replace:false) }.keyboardShortcut("f").disabled(model.selected?.ext != "md"); Button(model.localized("查找并替换")) { model.findInPage(replace:true) }.keyboardShortcut("f",modifiers:[.command,.option]).disabled(model.selected?.ext != "md"); Button(model.localized("搜索页面")) { NotificationCenter.default.post(name:Notification.Name("acdianSearch"),object:nil) }.keyboardShortcut("f",modifiers:[.command,.shift]); Button(model.localized("插入附件…")) { model.importAttachment() }.keyboardShortcut("i",modifiers:[.command,.shift]).disabled(model.selected?.ext != "md") }

@@ -85,6 +85,7 @@ struct ContentView: View {
             // with no blank band above them.
             .ignoresSafeArea(.container,edges:.top)
         }
+        .overlay { if model.showingJump { QuickJumpView() } }
         .background(Color.canvas).tint(.acPink)
         .environment(\.locale,model.language.locale)
         .frame(minWidth:920,minHeight:620)
@@ -380,41 +381,21 @@ struct DraftTitleView: View {
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @FocusState private var searchFocused: Bool
-    /// The search field shows only once ⌘F asks for it, or while a search is on.
-    @State private var searching = false
     @State private var rootDropTargeted = false
     @State private var editingModule: ModuleEditorTarget?
+    @AppStorage("sidebarListMode") private var listMode = false
     var body: some View {
-        // On the home screen the sidebar shows only the module icons.
-        let home = model.activeModule == nil && model.query.isEmpty
+        let filtering = !model.query.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || model.facetsActive
         VStack(spacing:0) {
             HStack(spacing:9) { BrandMark(size:26,style:model.iconStyle); Text("ACdian").font(.system(size:18,weight:.semibold,design:.rounded)).tracking(-0.4); Spacer(); SidebarToggle() }.padding(.leading,18).padding(.trailing,14).frame(height:52)
-            if searching || !model.query.isEmpty {
-                HStack(spacing:8) { Image(systemName:"magnifyingglass").font(.system(size:12)); TextField(model.localized("搜索页面与内容"),text:$model.query).textFieldStyle(.plain).font(.system(size:12)).focused($searchFocused).onExitCommand { model.query = ""; searching = false }; Button { model.query = ""; searching = false } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.plain).help(model.localized("清除搜索")) }.foregroundStyle(.secondary).padding(.horizontal,10).frame(height:32).background(Color.wash,in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(Color.faint)).padding(.horizontal,10).padding(.bottom,12)
-            }
-            ModuleDock { editingModule = $0 }.padding(.horizontal,10).padding(.bottom,home ? 0 : 16)
-            if !home {
-                SidebarSectionHeader(title:!model.query.isEmpty ? model.localized("搜索结果") : model.activeModule?.name ?? model.localized("页面"),highlighted:rootDropTargeted) {
-                    Button { model.refresh() } label: { Image(systemName:"arrow.clockwise") }.help(model.localized("刷新页面"))
-                    Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹"))
-                    Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N"))
-                }
-                .onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
-                    let target = PageDropTarget(folder:model.activeModule?.folder ?? "")
-                    model.endSidebarDrop()
-                    return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }
-                }
-                .padding(.horizontal,10).padding(.bottom,2)
-            }
+            SidebarFilterField(focused:$searchFocused).padding(.horizontal,10).padding(.bottom,8)
             ScrollView {
                 ThinScrollBar().frame(width:0,height:0)
-                if home { EmptyView() }
-                else if model.query.isEmpty { SidebarTree(entries:model.sidebarEntries).padding(.horizontal,10).padding(.bottom,20) }
-                else {
-                    let matches = model.matches
-                    LazyVStack(spacing:2) { ForEach(matches.prefix(500)) { entry in FileRow(entry:entry,indent:0,showPath:true) }; if matches.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.caption).foregroundStyle(.tertiary).padding(.top,25) } }
-                        .padding(.horizontal,10).padding(.bottom,20)
-                }
+                VStack(alignment:.leading,spacing:6) {
+                    ModuleDock { editingModule = $0 }
+                    FacetGroups()
+                    if filtering { results } else if model.activeModule != nil { modulePages }
+                }.padding(.horizontal,10).padding(.bottom,20)
             }.scrollIndicators(.never)
             Spacer(minLength:0)
             Rectangle().fill(Color.faint).frame(height:1)
@@ -429,11 +410,38 @@ struct SidebarView: View {
             }.padding(.horizontal,12).padding(.vertical,9)
         }.background(Color.rail)
         .sheet(item:$editingModule) { target in ModuleEditor(target:target).environmentObject(model) }
-        .onChange(of:searchFocused) { _,focused in if !focused && model.query.isEmpty { searching = false } }
         .onReceive(NotificationCenter.default.publisher(for:Notification.Name("acdianSearch"))) { _ in
-            model.showSidebar = true; searching = true
-            // The field is new on this pass, so it takes focus on the next.
+            model.showSidebar = true
             DispatchQueue.main.async { searchFocused = true }
+        }
+    }
+    private var results: some View {
+        let files = model.filteredFiles
+        return VStack(alignment:.leading,spacing:1) {
+            SidebarSectionHeader(title:model.activeModule?.name ?? model.localized("全部页面")) { EmptyView() }
+            LazyVStack(spacing:2) {
+                ForEach(files.prefix(500)) { entry in FileRow(entry:entry,indent:0) }
+                if files.isEmpty { Text(model.localized("没有找到匹配的文件")).font(.caption).foregroundStyle(.tertiary).padding(.top,25) }
+            }
+        }
+    }
+    private var modulePages: some View {
+        VStack(alignment:.leading,spacing:1) {
+            SidebarSectionHeader(title:model.activeModule?.name ?? model.localized("页面"),highlighted:rootDropTargeted) {
+                Button { listMode.toggle() } label: { Image(systemName:listMode ? "list.bullet" : "folder") }.help(model.localized(listMode ? "按文件夹显示" : "按修改时间列出"))
+                Button { model.newFolder(in:model.activeModule?.folder ?? "") } label: { Image(systemName:"folder.badge.plus") }.help(model.localized("新建文件夹"))
+                Button { model.newPageFromEditor() } label: { Image(systemName:"square.and.pencil") }.help(model.localized("新建页面 ⌘N"))
+            }
+            .onDrop(of:SidebarDrops.types,isTargeted:$rootDropTargeted) { providers in
+                let target = PageDropTarget(folder:model.activeModule?.folder ?? "")
+                model.endSidebarDrop()
+                return SidebarDrops.perform(providers,target:target,model:model) { model.movePage($0,to:target) }
+            }
+            if listMode {
+                LazyVStack(spacing:2) { ForEach(model.filteredFiles.prefix(500)) { entry in FileRow(entry:entry,indent:0) } }
+            } else {
+                SidebarTree(entries:model.sidebarEntries)
+            }
         }
     }
 }

@@ -1559,6 +1559,112 @@ struct PageTab: Identifiable { let id = UUID(); var path: String? }
     var allPagesSearched: Bool { (index?.files.filter { $0.ext == "md" && $0.size < 2_000_000 }.count ?? 0) <= searchCache.count }
     var searchedPageCount: Int { searchCache.count }
 
+    // MARK: Facets and links
+    enum FileKind: String, CaseIterable { case page, component, pdf, media }
+    enum FileAge: Int, CaseIterable { case today = 1, week = 7, month = 30 }
+    @Published var facetKinds: Set<FileKind> = []
+    @Published var facetTags: Set<String> = []
+    @Published var facetAge: FileAge?
+    @Published var showingJump = false
+    var facetsActive: Bool { !facetKinds.isEmpty || !facetTags.isEmpty || facetAge != nil }
+    func clearFacets() { facetKinds = []; facetTags = []; facetAge = nil }
+    static func kind(of entry: VaultEntry) -> FileKind? {
+        if entry.ext == "md" { return .page }
+        if entry.ext == ComponentStore.fileExtension { return .component }
+        if entry.ext == "pdf" { return .pdf }
+        return MediaKinds.isMedia(entry.ext) ? .media : nil
+    }
+    static func tag(of entry: VaultEntry) -> String? {
+        guard entry.name.hasPrefix("【"), let end = entry.name.firstIndex(of:"】") else { return nil }
+        let tag = entry.name[entry.name.index(after:entry.name.startIndex)..<end].trimmingCharacters(in:.whitespaces)
+        return tag.isEmpty ? nil : tag
+    }
+    var scopedFiles: [VaultEntry] {
+        guard let index else { return [] }
+        let scope = activeModule.map { $0.folder + "/" }, hidden = hiddenFolders, covered = componentHiddenFolders
+        return memo("scoped:\(scope ?? "")|\(hidden.joined(separator:"\n"))|\(covered.sorted().joined(separator:"\n"))") {
+            index.files.filter { file in
+                if let scope, !file.relativePath.hasPrefix(scope) { return false }
+                if scope == nil, hidden.contains(where: { file.relativePath.hasPrefix($0 + "/") }) { return false }
+                return !covered.contains(where: { file.relativePath.hasPrefix($0 + "/") })
+            }
+        }
+    }
+    var scopedTags: [String] {
+        let files = scopedFiles
+        return memo("tags:\(activeModuleID ?? "")|\(files.count)") {
+            var counts: [String:Int] = [:]
+            for file in files { if let tag = Self.tag(of:file) { counts[tag,default:0] += 1 } }
+            return counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map(\.key)
+        }
+    }
+    var filteredFiles: [VaultEntry] {
+        let base = query.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? scopedFiles : matches
+        let now = Date()
+        return base.filter { file in
+            if !facetKinds.isEmpty { guard let kind = Self.kind(of:file), facetKinds.contains(kind) else { return false } }
+            if !facetTags.isEmpty { guard let tag = Self.tag(of:file), facetTags.contains(tag) else { return false } }
+            if let age = facetAge { guard let modified = file.modified, now.timeIntervalSince(modified) < Double(age.rawValue) * 86400 else { return false } }
+            return true
+        }.sorted { ($0.modified ?? .distantPast) > ($1.modified ?? .distantPast) }
+    }
+    struct LinkFacts { var incoming = 0; var from: String?; var to: String? }
+    private var linkMemo: (key: String, facts: [String:LinkFacts])?
+    var linkFacts: [String:LinkFacts] {
+        let key = "\(indexGeneration)|\(searchRevision)"
+        if let linkMemo, linkMemo.key == key { return linkMemo.facts }
+        var byTitle: [String:String] = [:]
+        for file in index?.files ?? [] where file.ext == "md" {
+            let title = String(file.name.dropLast(3))
+            if byTitle[title] == nil { byTitle[title] = file.relativePath }
+        }
+        var incoming: [String:[String:Int]] = [:], outgoing: [String:[String:Int]] = [:]
+        for (path,text) in searchCache where text.contains("[[") {
+            var rest = text[...]
+            while let open = rest.range(of:"[["), let close = rest.range(of:"]]",range:open.upperBound..<rest.endIndex) {
+                let inner = rest[open.upperBound..<close.lowerBound]
+                rest = rest[close.upperBound...]
+                let name = inner.split(separator:"|",maxSplits:1,omittingEmptySubsequences:false).first.map { $0.split(separator:"#",maxSplits:1,omittingEmptySubsequences:false).first ?? "" } ?? ""
+                let title = name.trimmingCharacters(in:.whitespaces)
+                guard !title.isEmpty, let target = byTitle[title], target != path else { continue }
+                incoming[target,default:[:]][path,default:0] += 1
+                outgoing[path,default:[:]][target,default:0] += 1
+            }
+        }
+        func top(_ counts: [String:Int]?) -> String? {
+            counts?.max { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }.map { String(($0.key as NSString).lastPathComponent.dropLast(3)) }
+        }
+        var facts: [String:LinkFacts] = [:]
+        for path in Set(incoming.keys).union(outgoing.keys) {
+            facts[path] = LinkFacts(incoming:incoming[path]?.values.reduce(0,+) ?? 0,from:top(incoming[path]),to:top(outgoing[path]))
+        }
+        linkMemo = (key,facts)
+        return facts
+    }
+    func jumpResults(_ text: String, everywhere: Bool) -> (titles: [VaultEntry], body: [VaultEntry]) {
+        guard let index else { return ([],[]) }
+        let needle = Self.searchFold(text.trimmingCharacters(in:.whitespacesAndNewlines))
+        let facts = linkFacts
+        let scope = everywhere ? nil : activeModule.map { $0.folder + "/" }
+        let hidden = hiddenFolders
+        let files = index.files.filter { file in
+            guard Self.kind(of:file) != nil else { return false }
+            if let scope { return file.relativePath.hasPrefix(scope) }
+            return !hidden.contains(where: { file.relativePath.hasPrefix($0 + "/") })
+        }
+        func rank(_ a: VaultEntry, _ b: VaultEntry) -> Bool {
+            let x = facts[a.relativePath]?.incoming ?? 0, y = facts[b.relativePath]?.incoming ?? 0
+            return x != y ? x > y : (a.modified ?? .distantPast) > (b.modified ?? .distantPast)
+        }
+        if needle.isEmpty {
+            return (Array(files.filter { $0.ext == "md" }.sorted { ($0.modified ?? .distantPast) > ($1.modified ?? .distantPast) }.prefix(8)),[])
+        }
+        let titles = files.filter { Self.searchFold(Self.editableName($0)).contains(needle) }.sorted(by:rank)
+        let named = Set(titles.map(\.relativePath))
+        let body = files.filter { !named.contains($0.relativePath) && (searchFolded[$0.relativePath].map { $0.range(of:needle,options:.literal).location != NSNotFound } ?? false) }.sorted(by:rank)
+        return (Array(titles.prefix(8)),Array(body.prefix(6)))
+    }
+
     // MARK: Attachment cleanup
     /// After a save: images and videos no longer linked from the page are
     /// queued for the trash, and links typed again to a trashed one bring it back.

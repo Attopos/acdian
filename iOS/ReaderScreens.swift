@@ -36,54 +36,72 @@ struct ModuleTileIcon: View {
     }
 }
 
-/// The home screen: every module as a tile, then the pages outside any module.
 struct LauncherScreen: View {
     @EnvironmentObject private var store: ReaderStore
-    @EnvironmentObject private var router: ReaderRouter
     @State private var query = ""
-    @State private var showHidden = false
-    private let columns = [GridItem(.adaptive(minimum:104,maximum:140),spacing:14,alignment:.top)]
+    @AppStorage("phoneModule") private var chosen = ""
     var body: some View {
+        let modules = store.presentModules.filter { !$0.hidden }
+        let module = modules.first { $0.folder == chosen } ?? modules.first
         Group {
             if !query.isEmpty { SearchResults(query:query,module:nil) }
             else if store.index == nil { ProgressView().frame(maxWidth:.infinity,maxHeight:.infinity).background(Color.canvas) }
-            else { grid }
+            else { home(modules,module) }
         }
-        .navigationTitle(store.localized("模块"))
-        .searchable(text:$query,prompt:store.localized("搜索"))
+        .navigationTitle(module?.name ?? store.localized("模块"))
+        .searchable(text:$query,prompt:store.localized("跳转到页面"))
         .autocorrectionDisabled()
     }
-    private var grid: some View {
-        let present = store.presentModules, hidden = present.filter(\.hidden)
-        // As on the Mac's launcher, only modules show here; pages at the top level
-        // (such as AGENTS.md) are found through search.
-        return ScrollView {
-            VStack(alignment:.leading,spacing:24) {
+    private func home(_ modules: [PageModule], _ module: PageModule?) -> some View {
+        ScrollView {
+            VStack(alignment:.leading,spacing:16) {
+                ScrollView(.horizontal,showsIndicators:false) {
+                    HStack(alignment:.top,spacing:12) {
+                        ForEach(modules) { item in
+                            ModuleSwitchTile(module:item,selected:item.id == module?.id) { chosen = item.folder }
+                        }
+                    }.padding(.horizontal,20).padding(.vertical,4)
+                }
                 if !store.usesICloud {
-                    Label(store.localized("iCloud 不可用，正在显示本机文件夹。"),systemImage:"icloud.slash").font(.footnote).foregroundStyle(.secondary)
+                    Label(store.localized("iCloud 不可用，正在显示本机文件夹。"),systemImage:"icloud.slash").font(.footnote).foregroundStyle(.secondary).padding(.horizontal,20)
                 }
-                LazyVGrid(columns:columns,spacing:22) {
-                    ForEach(present.filter { !$0.hidden || showHidden }) { module in
-                        NavigationLink(value:module.home.flatMap { home in store.file(home).map { _ in Route.file(home,fragment:"") } } ?? Route.folder(module.folder)) {
-                            VStack(spacing:8) {
-                                ModuleTileIcon(icon:module.icon,color:module.color)
-                                Text(module.name).font(.footnote.weight(.medium)).lineLimit(1).truncationMode(.middle).foregroundStyle(Color.ink)
-                            }.frame(maxWidth:.infinity).contentShape(Rectangle())
-                        }.buttonStyle(.plain).opacity(module.hidden ? 0.45 : 1)
+                if let module, let folder = store.folder(module.folder) {
+                    let entries = store.visible(folder.children ?? [])
+                    VStack(spacing:0) {
+                        ForEach(Array(entries.enumerated()),id:\.element.id) { i,entry in
+                            if i > 0 { Rectangle().fill(Color.faint).frame(height:1).padding(.leading,50) }
+                            HStack(spacing:0) {
+                                EntryRow(entry:entry)
+                                Image(systemName:"chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                            }.padding(.horizontal,14).frame(minHeight:50)
+                        }
                     }
+                    .background(Color.wash,in:RoundedRectangle(cornerRadius:12,style:.continuous))
+                    .padding(.horizontal,16)
                 }
-                if !hidden.isEmpty {
-                    Button { withAnimation(.easeInOut(duration:0.15)) { showHidden.toggle() } } label: {
-                        Label(showHidden ? store.localized("收起已隐藏的模块") : store.localized("显示已隐藏的模块 (%@)",store.language.number(hidden.count)),systemImage:showHidden ? "eye.slash" : "eye").font(.caption)
-                    }.buttonStyle(.plain).foregroundStyle(.secondary)
-                }
-                if present.isEmpty {
-                    ReaderEmptyState(icon:"tray",message:store.localized("没有找到匹配的文件")).frame(height:260)
-                }
-            }.padding(.horizontal,20).padding(.vertical,12).frame(maxWidth:820).frame(maxWidth:.infinity)
+            }.padding(.vertical,8)
         }
         .background(Color.canvas)
         .refreshable { await store.reload() }
+    }
+}
+
+private struct ModuleSwitchTile: View {
+    let module: PageModule
+    let selected: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action:action) {
+            VStack(spacing:5) {
+                Image(systemName:ModuleStyle.symbol(module.icon)).font(.system(size:19,weight:.medium))
+                    .foregroundStyle(selected ? Color.white : ModuleStyle.tile(module.color))
+                    .frame(width:46,height:46)
+                    .background(selected ? ModuleStyle.tile(module.color) : ModuleStyle.tile(module.color).opacity(0.16),in:RoundedRectangle(cornerRadius:12,style:.continuous))
+                    .overlay { if selected { RoundedRectangle(cornerRadius:15,style:.continuous).strokeBorder(Color.acPink,lineWidth:1.5).padding(-3.5) } }
+                Text(module.name).font(.system(size:10,weight:selected ? .semibold : .regular)).lineLimit(1).truncationMode(.tail)
+                    .foregroundStyle(selected ? Color.ink : Color.secondary).frame(width:56)
+            }.contentShape(Rectangle())
+        }.buttonStyle(.plain)
     }
 }
 
