@@ -14,9 +14,8 @@ Mac 和 iOS 版 1.7.2（iOS 构建号 1）。
 
 ## 下一步
 
-- iPhone 新首页还没在真机上看过（需要连上并解锁 iPhone，或者上传 TestFlight）。
 - 路线图网页测试 `node Tests/roadmap-tests.cjs` 已按新布局改了断言，但本机没有 Playwright，没跑。
-- 页面里 18 处坏链接待用户决定怎么改。
+- 页面里 18 处坏链接待用户决定怎么改；iPhone 新首页还没在真机上看过。
 
 ## 注意
 
