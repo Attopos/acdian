@@ -597,3 +597,8 @@ test('code blocks get a header with language, wrap and copy, line numbers, and n
  assert.equal(r.w.document.querySelectorAll('.cm-code-line').length,0,'folding hides the code');
  assert.equal(r.get().text,source,'switches do not touch the file');r.close();
 });
+test('emphasis next to Chinese punctuation is parsed while English keeps CommonMark rules',()=>{
+ const source='一**「本地轻量触发 → 120 中心构建推送」**的三段式，这是**“引号”**里，一*「斜」*的，一__「下划」__的。\n\nsnake_case_name and foo**bar**baz\n\na**"x"**b\n',r=setup(source);
+ assert.deepEqual(Array.from(r.w.document.querySelectorAll('.cm-live-strong'),node=>node.textContent),['**「本地轻量触发 → 120 中心构建推送」**','**“引号”**','__「下划」__','**bar**']);
+ assert.equal(r.w.document.querySelectorAll('.cm-live-bold-delimiter').length,8);r.close();
+});

@@ -3,7 +3,8 @@ import { EditorView, ViewPlugin, Decoration, WidgetType, keymap, placeholder, dr
 import { history, historyKeymap, defaultKeymap, indentWithTab, undo, redo } from '@codemirror/commands';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
 import { syntaxTree, ensureSyntaxTree, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-import { GFM } from '@lezer/markdown';
+import { GFM, InlineContext } from '@lezer/markdown';
+import './cjk-emphasis.js';
 import { slashCommands } from './slash-commands.js';
 import { formatToolbar } from './format-toolbar.js';
 import { touchInput, installTouchCommands, composing } from './touch-input.js';
@@ -199,6 +200,17 @@ class TaskWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
+const cjkEmphasis={parseInline:[{name:'Emphasis',parse(cx,next,start){
+  if(next!==95&&next!==42)return -1;
+  let end=start+1;
+  while(cx.char(end)===next)end++;
+  const before=[...cx.slice(Math.max(cx.offset,start-2),start)].pop()||'',after=[...cx.slice(end,end+2)][0]||'';
+  const {open,close}=globalThis.acdianEmphasis.flags(before,after,String.fromCharCode(next));
+  return cx.addDelimiter(next===95?InlineContext.emphasisUnderscore:InlineContext.emphasisAsterisk,start,end,open,close);
+}}]};
+let markdownEngine=null;
+const markdownHTML=text=>(markdownEngine??=new marked.Marked({gfm:true,tokenizer:globalThis.acdianEmphasis.markedTokenizer(marked)})).parse(text);
+
 function fragment(source,state,kind='') {
   const html=kind==='html';
   const holder = document.createElement('div'); holder.className = 'markdown-body cm-rendered-content';
@@ -214,7 +226,7 @@ function fragment(source,state,kind='') {
   if(html) prepared = prepared
     .replace(/(?<!\\)\$\$([\s\S]+?)\$\$|(?<![\\$\d])\$(?![\s$])([^$\n]+?)(?<![\s\\])\$(?![$\d])/g,(_,display,inline)=>`<span data-tex="${escapeHTML(display??inline)}"${display===undefined?'':' data-display="1"'}></span>`)
     .replace(/(<\/summary>)[ \t]*\n?/gi,'$1\n\n').replace(/\n?[ \t]*(<\/details>)/gi,'\n\n$1');
-  holder.innerHTML = DOMPurify.sanitize(marked.parse(prepared,{gfm:true}), {USE_PROFILES:{html:true},FORBID_TAGS:['script','style','iframe','object','embed','form','input'],FORBID_ATTR:html?['srcset']:['style','srcset'],ALLOW_DATA_ATTR:true});
+  holder.innerHTML = DOMPurify.sanitize(markdownHTML(prepared), {USE_PROFILES:{html:true},FORBID_TAGS:['script','style','iframe','object','embed','form','input'],FORBID_ATTR:html?['srcset']:['style','srcset'],ALLOW_DATA_ATTR:true});
   if(html) {
     holder.querySelectorAll('[style]').forEach(element => { const style=safeBlockStyle(element.getAttribute('style')); if(style)element.setAttribute('style',style); else element.removeAttribute('style'); });
     holder.querySelectorAll('[data-tex]').forEach(element => { try { katex.render(element.dataset.tex,element,{displayMode:!!element.dataset.display,throwOnError:false,trust:false}); } catch { element.textContent=element.dataset.tex; } });
@@ -1196,7 +1208,7 @@ function simpleListBackspace(view) {
 }
 function inCode(state,pos){for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)if(node.name==='FencedCode'||node.name==='CodeBlock')return true;return false;}
 function extensions() {return [
-  boundaryCaretFilter,EditorView.scrollMargins.of(view=>{const height=view.scrollDOM.clientHeight;return {top:Math.min(56,height*.08),bottom:Math.min(96,height*.12)};}),history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:GFM,codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,codePrefs,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,listClickFilter,leftBlankFilter,emptiedLineFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
+  boundaryCaretFilter,EditorView.scrollMargins.of(view=>{const height=view.scrollDOM.clientHeight;return {top:Math.min(56,height*.08),bottom:Math.min(96,height*.12)};}),history(),drawSelection({drawRangeCursor:false}),EditorView.lineWrapping,markdown({extensions:[GFM,cjkEmphasis],codeLanguages}),codeHighlight,syntaxHighlighting(defaultHighlightStyle),folding,windowField,windowTracker,boldDelimiterField,inputBlankField,tableWidthField,codePrefs,liveField,dividerCaret,tableSelectionFilter,tableColumnResize,tableAddControls,blockHandles,formatSelectionFilter,listClickFilter,leftBlankFilter,emptiedLineFilter,blankSelectionFilter,blankTypingFilter,blankTypingComposition,
   slashCommands({image:()=>post({type:'pickImage',currentPath:metadata.currentPath})}),editorExtras(post),formatToolbar(),touchInput(post),Prec.highest(keymap.of([{key:'Enter',run:view=>enterAbove(view)||splitFormatting(view)}])),markdownInput(),comments({post,path:()=>metadata.currentPath}),
   localization.of(localeExtensions()),
   editability.of([EditorView.editable.of(metadata.editable),EditorState.readOnly.of(!metadata.editable)]),

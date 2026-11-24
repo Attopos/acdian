@@ -19,7 +19,7 @@ function reader() {
   window.webkit = { messageHandlers: { acdian: { postMessage: value => messages.push(value) } } };
   window.scrollTo = () => {};
   window.HTMLElement.prototype.scrollIntoView = function() { window.lastScrolled = this; };
-  for (const name of ['vendor/marked.umd.js', 'vendor/purify.min.js', 'vendor/katex.min.js', 'renderer.js']) {
+  for (const name of ['vendor/marked.umd.js', 'vendor/purify.min.js', 'vendor/katex.min.js', 'cjk-emphasis.js', 'renderer.js']) {
     window.eval(fs.readFileSync(path.join(resources, name), 'utf8'));
   }
   const render = (text, extra = {}) => window.acdianRender({ text, currentPath: '日记/今天.md', ...extra });
@@ -165,5 +165,15 @@ test('display formulas written back to back render one by one', () => {
   assert.equal(r.document.querySelectorAll('.katex-error').length, 0);
   assert.ok(!r.document.body.textContent.includes('$$'));
   assert.equal(r.document.querySelector('p').textContent, '之后的文字。');
+  r.close();
+});
+
+test('emphasis next to Chinese punctuation renders while English keeps CommonMark rules', () => {
+  const r = reader();
+  r.render('一**「本地轻量触发」**的，这是**“引号”**里，一*「斜」*的，一***「粗斜」***的。\n\nsnake_case_name and foo**bar**baz and `一**「x」**的`\n\na**"x"**b');
+  assert.deepEqual(Array.from(r.document.querySelectorAll('strong'), node => node.textContent), ['「本地轻量触发」', '“引号”', '「粗斜」', 'bar']);
+  assert.deepEqual(Array.from(r.document.querySelectorAll('em'), node => node.textContent), ['「斜」', '「粗斜」']);
+  assert.match(r.document.querySelector('code').textContent, /\*\*「x」\*\*/);
+  assert.match(r.document.body.textContent, /snake_case_name/);
   r.close();
 });

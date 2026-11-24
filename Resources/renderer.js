@@ -124,7 +124,7 @@
   }
 
   const engine = new marked.Marked({
-    gfm: true, breaks: false, extensions,
+    gfm: true, breaks: false, extensions, tokenizer: acdianEmphasis.markedTokenizer(marked),
     renderer: {
       link({ href, title, tokens }) {
         const label = this.parser.parseInline(tokens);
