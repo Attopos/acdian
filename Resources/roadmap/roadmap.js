@@ -674,13 +674,9 @@ function focus(id, options = {}) {
   applyState();
   if (node) { renderPanel(); if (options.fly !== false) flyTo(node, options.scale); }
 }
-function relation(edge, other, label) {
-  return `<li class="rel"><button class="chip${other.d.draft ? ' draft' : ''}" data-focus="${esc(other.id)}">${esc(other.d.title)}</button><span class="kind">${esc(label)}</span><p>${esc(edge.d.why || '')}</p></li>`;
-}
 function renderPanel() {
   const node = S.byId.get(S.focus); if (!node) return;
   const domain = S.domains.find(d => d.id === node.d.domain), figures = figuresOf(node);
-  const related = [...S.ins.get(node.id), ...S.outs.get(node.id)].filter(e => e.d.kind === 'related');
   const pages = (node.d.pages || []).map(key => ({ key, info: S.pages.get(key) }));
   const pageIcon = ic('file-text'), goIcon = ic('chevron-right', 'go');
   const h3 = (name, text) => `<h3>${ic(name)}<span>${esc(T(text))}</span></h3>`;
@@ -694,18 +690,10 @@ function renderPanel() {
     const groups = [];
     points.forEach((k, i) => { const last = groups[groups.length - 1]; if (last && last.page === (k.page || '')) last.items.push([k, i]); else groups.push({ page: k.page || '', items: [[k, i]] }); });
     const pageTitle = key => S.pages.get(key)?.title || key.split('/').pop();
-    main += `<section class="points">${h3('list-checks', '要点')}${groups.map(g => `${g.page && groups.length > 1 ? `<button class="source" data-page="${esc(g.page)}">${pageIcon}<span>${tagged(pageTitle(g.page))}</span>${goIcon}</button>` : ''}<ol>${g.items.map(([k, i]) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}${k.heading ? `<small>§ ${esc(k.heading)}</small>` : ''}</span></button></li>`).join('')}</ol>`).join('')}</section>`;
+    main += `<section class="points">${h3('list-checks', '要点')}${groups.map(g => `${g.page && groups.length > 1 ? `<button class="source" data-page="${esc(g.page)}">${pageIcon}<span>${tagged(pageTitle(g.page))}</span>${goIcon}</button>` : ''}<ol>${g.items.map(([k, i]) => `<li><button class="point" data-page="${esc(k.page)}" data-heading="${esc(k.heading)}"><i>${i + 1}</i><span>${esc(k.text)}</span></button></li>`).join('')}</ol>`).join('')}</section>`;
   }
   side += block('file-text', '页面', pages.length ? `<ul>${pages.map(({ key, info }) => `<li><button class="page${info && info.exists === false ? ' missing' : ''}" data-page="${esc(key)}">${pageIcon}<span>${tagged(info?.title || key.split('/').pop())}</span>${info && info.exists === false ? `<span class="tag">${esc(T('页面不存在'))}</span>` : goIcon}</button></li>`).join('')}</ul>`
     : `<p class="hint">${esc(node.d.note || T('这个节点还没有页面，摘要是通用常识。'))}</p>${S.editing ? `<button class="page" data-new-page>${pageIcon}<span>${esc(T('新建页面'))}</span></button>` : ''}`);
-  const groupOf = (label, items) => items.length ? `<div class="relgroup"><h4>${esc(T(label))}</h4><ul>${items.join('')}</ul></div>` : '';
-  const ins = S.ins.get(node.id), outs = S.outs.get(node.id);
-  const rels = groupOf('依赖', ins.filter(e => e.d.kind === 'requires').map(e => relation(e, e.a, '')))
-    + groupOf('被依赖', outs.filter(e => e.d.kind === 'requires').map(e => relation(e, e.b, '')))
-    + groupOf('用到', ins.filter(e => e.d.kind === 'applies').map(e => relation(e, e.a, '')))
-    + groupOf('用在', outs.filter(e => e.d.kind === 'applies').map(e => relation(e, e.b, '')))
-    + groupOf('相关', related.map(e => relation(e, e.a.id === node.id ? e.b : e.a, '')));
-  side = (rels ? block('link-2', '关系', rels) : '') + side;
   if (S.editing) side += block('pencil', '编辑', `<ul><li><button class="page" data-edit-node>${esc(T('节点标题'))}…</button></li><li><button class="page" data-remove-node>${esc(T('移除节点'))}</button></li></ul>`);
   const html = `<div class="scroll">${top}<div class="cols solo"><div class="side">${side}</div>${main ? `<div class="main">${main}</div>` : ''}</div></div>`;
   const panel = $('panel'), keep = panel.dataset.node === node.id ? panel.querySelector('.scroll')?.scrollTop : 0;

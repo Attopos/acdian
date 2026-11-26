@@ -230,7 +230,6 @@ svg text { font-family: var(--acd-font); }
 #app #panel .point { display: grid; grid-template-columns: 22px 1fr; padding: 9px 10px 9px 8px; margin: 0 -8px; width: calc(100% + 16px); border-radius: 9px; color: var(--rm-ink); font-size: 14.5px; line-height: 1.66; text-wrap: pretty; transition: background .15s ease-out; }
 #app #panel .point:hover { background: var(--rm-faint); }
 #panel .point i { font-style: normal; font-size: 11.5px; font-weight: 650; line-height: 24px; color: var(--rm-muted); font-variant-numeric: tabular-nums; }
-#panel .point small { display: block; margin-top: 3px; color: var(--rm-muted); font-size: 11.5px; line-height: 1.4; }
 #panel .point:hover small { color: var(--rm-accent-ink); }
 #app #panel .page { display: flex; align-items: center; gap: 9px; width: calc(100% + 16px); margin: 0 -8px; padding: 7px 8px; border-radius: 8px; color: var(--rm-ink); font-size: 13.5px; font-weight: 500; }
 #app #panel .page:hover { background: var(--rm-faint); }
@@ -239,14 +238,6 @@ svg text { font-family: var(--acd-font); }
 #panel .page:hover .go { opacity: 1; }
 #panel .page.missing { color: var(--rm-muted); }
 #panel .hint { color: var(--rm-muted); font-size: 12.5px; line-height: 1.65; text-wrap: pretty; }
-#panel .rel { padding: 8px 0; }
-#panel .rel + .rel { margin-top: 4px; }
-#app #panel .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 7px; border-radius: 7px; color: var(--rm-ink); font-size: 12.5px; font-weight: 550; box-shadow: inset 0 0 0 1px var(--rm-stroke); transition: box-shadow .15s ease-out, background .15s ease-out; }
-#app #panel .chip:hover { box-shadow: inset 0 0 0 1px var(--rm-stroke-strong); background: var(--rm-faint); }
-#app #panel .chip.draft { box-shadow: none; border: 1px dashed var(--rm-stroke-strong); color: var(--rm-muted); }
-#panel .chip svg { width: 8px; height: 8px; overflow: visible; }
-#panel .rel .kind { margin-left: 7px; color: var(--rm-muted); font-size: 11px; }
-#panel .rel p { margin: 6px 0 0; color: var(--rm-text); font-size: 13px; line-height: 1.65; text-wrap: pretty; }
 #panel .path li { position: relative; padding: 0 0 14px 24px; }
 #panel .path li::before { content: counter(step); counter-increment: step; position: absolute; left: 0; top: 2px; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 650; color: var(--rm-muted); box-shadow: inset 0 0 0 1px var(--rm-stroke); background: var(--rm-float); z-index: 1; }
 #panel .path li::after { content: ""; position: absolute; left: 7.5px; top: 20px; bottom: 0; width: 1px; background: var(--rm-hair); }
@@ -315,11 +306,6 @@ svg text { font-family: var(--acd-font); }
 #panel .source:first-of-type { margin-top: 0; }
 #panel .source svg { width: 14px; height: 14px; color: var(--rm-muted); }
 #panel .source .go { margin-left: auto; opacity: .5; }
-#panel .relgroup + .relgroup { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rm-hair); }
-#panel .relgroup h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; color: var(--rm-muted); font-size: 11.5px; font-weight: 650; letter-spacing: .04em; }
-#panel .relgroup h4 span { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--rm-ink) 7%, transparent); font-size: 10.5px; font-variant-numeric: tabular-nums; }
-#panel .block .rel { padding: 6px 0; }
-#panel .block .rel p { margin-top: 4px; font-size: 12.5px; color: var(--rm-muted); }
 #app #panel .block .page { width: calc(100% + 12px); margin: 0 -6px; padding: 6px; }
 
 #hilite { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; display: none; }
@@ -372,7 +358,6 @@ svg text { font-family: var(--acd-font); }
 #results button.page { color: var(--rm-accent-ink); }
 #results mark { background: color-mix(in srgb, var(--rm-accent) 22%, transparent); color: inherit; border-radius: 2px; }
 #panel .cols { display: block; }
-#panel .relgroup h4 span { display: none; }
 
 #app.panel-open:not(.compact):not(.sheet):not(.touch) #results { left: calc((100% - var(--panel-w) - 24px) / 2); }
 #app.compact #results, #app.touch #results { margin-left: 0; top: 56px; }
@@ -393,5 +378,4 @@ tspan.ttag { font-size: 11px; font-weight: 500; fill: var(--rm-muted); }
 #panel-grip:hover::after, .resizing #panel-grip::after { background: var(--rm-accent); }
 .resizing, .resizing * { cursor: col-resize !important; user-select: none !important; }
 .resizing #panel { transition: none; }
-#app #panel .chip { height: auto; min-height: 24px; max-width: 100%; white-space: normal; text-align: left; line-height: 1.35; padding: 3px 9px 3px 7px; }
 #panel .scroll { padding-right: 28px; }
