@@ -1633,6 +1633,24 @@ test('commented text inside a table cell stays inside that cell', async t => {
   assert.ok(layout.mark.left >= layout.cell.left && layout.mark.right <= layout.cell.right + 1, 'the mark stays in its column');
 });
 
+test('a comment being typed looks unsent until it is sent', async t => {
+  const text = '一段文字，正在写评论。\n';
+  const { page } = await editor(t, text, { documentID: 'doc', tabID: 'tab', pageTitle: '评论', language: 'zh-Hans' });
+  const at = text.indexOf('正在写评论');
+  await page.evaluate(at => { window.acdianEditor.dispatch({ selection: { anchor: at, head: at + 5 } }); window.acdianLiveEditorTest.comments.startComment(window.acdianEditor); }, at);
+  await page.waitForSelector('.cm-comment-card.draft .cm-comment-input');
+  const state = () => page.evaluate(() => {
+    const card = document.querySelector('.cm-comment-card');
+    return { typing: card.classList.contains('typing'), draft: card.classList.contains('draft'), pending: getComputedStyle(card.querySelector('.cm-comment-pending')).display !== 'none', border: getComputedStyle(card).borderLeftStyle };
+  });
+  assert.deepEqual(await state(), { typing: false, draft: true, pending: false, border: 'dashed' });
+  await page.keyboard.type('一条备注');
+  assert.deepEqual(await state(), { typing: true, draft: true, pending: true, border: 'dashed' });
+  await page.click('.cm-comment-send');
+  await page.waitForSelector('.cm-comment-text');
+  assert.deepEqual(await state(), { typing: false, draft: false, pending: false, border: 'solid' });
+});
+
 async function lineBoxes(page) {
   return page.evaluate(() => {
     const content = document.querySelector('.cm-content').getBoundingClientRect();

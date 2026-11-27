@@ -11,7 +11,7 @@ Mac 和 iOS 版 1.7.2（iOS 构建号 1）。
 - iPhone 首页（方案 A 的样式）：顶部横排模块切换，下面是当前模块的文件夹和页面，搜索框跳转全库。iPad 不受影响。
 - 页面编辑器手感（2026-11-23）：空行和段落同高、离开行时版面不动、只含空格的行照常显示；左右键一次走一个看得见的字（隐藏的 ** ` [ ] 不再多占一次按键，光标不消失），上下键不跳行、能进表格；行首回车把标题/列表整块下推，退格跨过隐藏空行直接合并，代码块边缘的退格不再破坏围栏。
 - 中文旁的强调（2026-11-24）：`**`、`*`、`__`、`_` 一侧贴着「」“”等标点、另一侧是汉字时也算加粗/斜体，如 `一**「本地」**的`；编辑器（lezer）和渲染（marked）共用 `Resources/cjk-emphasis.js` 的放宽规则，没有中日韩字符的地方仍按 CommonMark。
-- 表格单元格里的评论（2026-11-27）：评论高亮的装饰优先级设为最高，包在单元格 span 里面，不再把单元格拆成几个格子挤出表格。
+- 评论（2026-11-27）：评论高亮嵌在表格单元格 span 里面，不再把单元格拆开挤出表格；输入中的评论卡片是虚线框、输入框淡黄底，下面有「未发送 · ↵ 发送」和发送按钮，发出后变成普通文字。
 - 知识路线图（CS 模块首页 `CS/CS 路线图.acdian`）改成地铁图（Kombai 方向 R1）：Mac 上流程横排、阶段成列；只有点击选中节点时才画它自己的关系线，悬停不画线、不弹卡片；顶部搜索直接列出结果（节点 / 要点里提到 / 页面），点结果落到节点或打开页面；详情面板和画布并排，默认占一半，左边沿可拖动调宽（双击恢复一半），宽度存在 UserDefaults `roadmapPanel`；详情面板不再列关系（依赖 / 被依赖 / 用到 / 用在 / 相关），要点下也不再显示「§ 小节名」，不再有学习路径、图例和计数。iPhone 仍是单列布局。
 
 ## 下一步
@@ -20,6 +20,6 @@ Mac 和 iOS 版 1.7.2（iOS 构建号 1）。
 
 ## 注意
 
-- 编辑器浏览器测试 `node --test live-editor-integration-tests.cjs`（177 项，其中附件插入一项在 main 上本来就失败）要 Playwright：本机可用 `playwright-core` 加 `chromium-headless-shell`，用 `ACDIAN_PLAYWRIGHT` 和 `PLAYWRIGHT_BROWSERS_PATH` 指过去；WebKit 也能下，App 里的行为以 WebKit 为准。
+- 编辑器浏览器测试 `node --test live-editor-integration-tests.cjs`（178 项，其中附件插入一项在 main 上本来就失败）要 Playwright：本机可用 `playwright-core` 加 `chromium-headless-shell`，用 `ACDIAN_PLAYWRIGHT` 和 `PLAYWRIGHT_BROWSERS_PATH` 指过去；WebKit 也能下，App 里的行为以 WebKit 为准。
 - Swift 测试编译要带上 `Sources/Roadmap.swift`；`TabTests`、`EditorSnapshotTests` 各有一处在 main 上本来就失败。
 - 旧版本 App 改模块设置会写掉 `home`；旧版本保存路线图会写掉 `flows`、`topic`。
