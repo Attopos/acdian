@@ -1633,22 +1633,28 @@ test('commented text inside a table cell stays inside that cell', async t => {
   assert.ok(layout.mark.left >= layout.cell.left && layout.mark.right <= layout.cell.right + 1, 'the mark stays in its column');
 });
 
-test('a comment being typed looks unsent until it is sent', async t => {
+test('a comment changes only colour when it is sent, not layout', async t => {
   const text = '一段文字，正在写评论。\n';
   const { page } = await editor(t, text, { documentID: 'doc', tabID: 'tab', pageTitle: '评论', language: 'zh-Hans' });
+  await page.setViewportSize({ width: 1500, height: 760 });
   const at = text.indexOf('正在写评论');
   await page.evaluate(at => { window.acdianEditor.dispatch({ selection: { anchor: at, head: at + 5 } }); window.acdianLiveEditorTest.comments.startComment(window.acdianEditor); }, at);
   await page.waitForSelector('.cm-comment-card.draft .cm-comment-input');
-  const state = () => page.evaluate(() => {
-    const card = document.querySelector('.cm-comment-card');
-    return { typing: card.classList.contains('typing'), draft: card.classList.contains('draft'), pending: getComputedStyle(card.querySelector('.cm-comment-pending')).display !== 'none', border: getComputedStyle(card).borderLeftStyle };
-  });
-  assert.deepEqual(await state(), { typing: false, draft: true, pending: false, border: 'dashed' });
   await page.keyboard.type('一条备注');
-  assert.deepEqual(await state(), { typing: true, draft: true, pending: true, border: 'dashed' });
-  await page.click('.cm-comment-send');
+  const box = () => page.evaluate(() => {
+    const card = document.querySelector('.cm-comment-card'), box = card.getBoundingClientRect();
+    const text = card.querySelector('.cm-comment-text') || card.querySelector('.cm-comment-composer .cm-comment-input');
+    const style = getComputedStyle(text), rect = text.getBoundingClientRect();
+    return { top: Math.round(rect.top + parseFloat(style.paddingTop) + parseFloat(style.borderTopWidth) - box.top), left: Math.round(rect.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth) - box.left), height: Math.round(box.height), color: style.color, extras: card.querySelectorAll('.cm-comment-pending,.cm-comment-send').length };
+  });
+  const typing = await box();
+  await page.keyboard.press('Enter');
   await page.waitForSelector('.cm-comment-text');
-  assert.deepEqual(await state(), { typing: false, draft: false, pending: false, border: 'solid' });
+  await page.waitForTimeout(250);
+  const sent = await box();
+  assert.equal(typing.extras, 0, 'no hint row or send button while typing');
+  assert.deepEqual({ top: sent.top, left: sent.left, height: sent.height }, { top: typing.top, left: typing.left, height: typing.height }, 'the text and card keep their place');
+  assert.notEqual(sent.color, typing.color, 'only the colour changes');
 });
 
 async function lineBoxes(page) {

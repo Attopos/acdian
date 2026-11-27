@@ -346,31 +346,23 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     const replies=document.createElement('div');replies.className='cm-comment-replies';
     const composer=document.createElement('div');composer.className='cm-comment-composer';
     const input=document.createElement('textarea');input.className='cm-comment-input';input.rows=1;input.spellcheck=false;
-    const pending=document.createElement('div');pending.className='cm-comment-pending';
-    const status=document.createElement('span');status.className='cm-comment-pending-status';
-    const hint=document.createElement('span');hint.className='cm-comment-pending-hint';
-    const send=document.createElement('button');send.type='button';send.className='cm-comment-send';
-    send.addEventListener('mousedown',event=>event.preventDefault());
-    send.addEventListener('click',event=>{event.stopPropagation();this.submit(id,input);});
-    pending.append(status,hint,send);
-    composer.append(input,pending);
+    composer.append(input);
     dom.append(head,replies,composer);
-    const typing=()=>dom.classList.toggle('typing',!!input.value.trim());
     dom.addEventListener('mousedown',event=>{
       if(event.target.closest('button'))return;
       if(this.view.state.field(commentsField).active!==id)this.dispatch(setActive.of(id));
     });
-    input.addEventListener('input',()=>{this.drafts.set(id,input.value);typing();autosize(input);this.schedule();});
+    input.addEventListener('input',()=>{this.drafts.set(id,input.value);autosize(input);this.schedule();});
     input.addEventListener('keydown',event=>{
       if(event.isComposing||event.keyCode===229)return;
       if(event.key==='Enter'&&!event.shiftKey&&!event.altKey){event.preventDefault();this.submit(id,input);}
-      else if(event.key==='Escape'){event.preventDefault();input.value='';this.drafts.delete(id);typing();this.leave(id);}
+      else if(event.key==='Escape'){event.preventDefault();input.value='';this.drafts.delete(id);this.leave(id);}
     });
     input.addEventListener('blur',()=>setTimeout(()=>{
       const thread=this.thread(id);
       if(thread&&!thread.replies.length&&!input.value.trim()&&document.activeElement!==input)this.dispatch(removeThread.of(id));
     },200));
-    return {dom,quote,resolve,remove,replies,input,status,hint,send,typing,thread:null};
+    return {dom,quote,resolve,remove,replies,input,thread:null};
   }
   tool(run) {
     const button=document.createElement('button');button.type='button';button.className='cm-comment-tool';
@@ -381,8 +373,10 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     const text=input.value.replace(/\s+$/,'');
     if(!text.trim())return;
     const thread=this.thread(id);if(!thread)return;
-    input.value='';this.drafts.delete(id);this.cards.get(id)?.typing();autosize(input);
-    this.dispatch(updateThread.of({id,replies:[...thread.replies,{id:newID(),text,created:Date.now()}]}));
+    input.value='';this.drafts.delete(id);autosize(input);
+    const reply=updateThread.of({id,replies:[...thread.replies,{id:newID(),text,created:Date.now()}]});
+    if(thread.replies.length||globalThis.acdianTouch){this.dispatch(reply);return;}
+    this.dispatch(reply,setActive.of(null));this.view.focus();
   }
   leave(id) {
     const thread=this.thread(id);
@@ -402,10 +396,9 @@ function commentsPanel(config) {return ViewPlugin.fromClass(class {
     card.resolve.hidden=!thread.replies.length;
     card.remove.innerHTML=icons.remove;card.remove.title=strings.deleteThread;card.remove.setAttribute('aria-label',strings.deleteThread);
     card.input.placeholder=thread.replies.length?strings.reply:strings.placeholder;
+    card.input.parentElement.dataset.time=strings.justNow;
     card.input.setAttribute('aria-label',card.input.placeholder);
     if(document.activeElement!==card.input)card.input.value=this.drafts.get(thread.id)||'';
-    card.status.textContent=strings.unsent;card.hint.textContent=strings.sendHint;card.send.textContent=strings.send;
-    card.typing();
     const items=[];
     for(const reply of thread.replies) {
       const item=document.createElement('div');item.className='cm-comment-reply';

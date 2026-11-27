@@ -379,14 +379,10 @@ body.cm-block-dragging,body.cm-block-dragging * { cursor:grabbing !important; us
 .cm-comment-input:focus { border-color:var(--comment-line); }
 .cm-comment-input::placeholder { color:var(--placeholder); }
 .cm-comment-composer { margin-top:6px; }
-.cm-comment-card.draft, .cm-comment-card.draft.active { border:1px dashed var(--comment-line); padding-top:9px; }
-.cm-comment-card.typing .cm-comment-composer .cm-comment-input, .cm-comment-reply .cm-comment-input.cm-comment-editor { border-color:var(--comment-accent); background:var(--comment-mark-bg); }
-.cm-comment-pending { display:none; align-items:center; gap:8px; margin-top:6px; font-size:11px; line-height:22px; color:var(--subtle); }
-.cm-comment-card.typing .cm-comment-pending { display:flex; }
-.cm-comment-pending-status { display:inline-flex; align-items:center; gap:5px; font-weight:600; color:var(--comment-badge-text); }
-.cm-comment-pending-status::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--comment-accent); }
-.cm-comment-send { margin:0 0 0 auto; padding:0 10px; height:22px; border:0; border-radius:11px; background:var(--comment-accent); color:#1b1a1f; font:600 12px/22px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; cursor:pointer; }
-.cm-comment-send:hover { filter:brightness(1.08); }
+.cm-comment-card.draft { border-color:var(--comment-line); }
+.cm-comment-card.draft .cm-comment-composer { margin-top:0; }
+.cm-comment-card.draft .cm-comment-composer::before { content:attr(data-time); display:flex; align-items:center; min-height:24px; margin-top:8px; font-size:11px; color:var(--comment-badge-text); opacity:.75; }
+.cm-comment-card.draft .cm-comment-composer .cm-comment-input { min-height:0; padding:0 0 4px; border:0; border-radius:0; background:transparent; color:var(--comment-badge-text); font-size:14px; line-height:1.55; }
 .cm-comment-card:not(.active):not(.draft) .cm-comment-composer { display:none; }
 .cm-comments-solved { position:absolute; z-index:2; display:none; width:280px; margin:0; padding:4px 0; border:0; background:transparent; color:var(--faint); font:inherit; font-size:12px; text-align:left; cursor:pointer; }
 .cm-comments-wide .cm-comments-solved:not([hidden]) { display:block; }
