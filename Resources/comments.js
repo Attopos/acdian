@@ -73,14 +73,14 @@ export const commentsField=StateField.define({
     if(threads===value.threads&&active===value.active&&discarded===value.discarded)return value;
     return {threads,active,discarded};
   },
-  provide:field=>EditorView.decorations.from(field,value=>{
+  provide:field=>Prec.highest(EditorView.decorations.from(field,value=>{
     const ranges=[];
     for(const thread of value.threads) {
       if(floating(thread)||thread.solved||thread.to<=thread.from)continue;
       ranges.push(Decoration.mark({class:'cm-comment-mark'+(thread.id===value.active?' cm-comment-active':''),attributes:{'data-comment':thread.id}}).range(thread.from,thread.to));
     }
     return Decoration.set(ranges,true);
-  })
+  }))
 });
 
 // Every edit that touches a comment's text records where the comment was, so

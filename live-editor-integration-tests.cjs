@@ -1615,6 +1615,24 @@ test('comment cards sit beside their text in a wide window and float below it in
   assert.ok(narrow.width <= 680, 'no sideways scrolling');
 });
 
+test('commented text inside a table cell stays inside that cell', async t => {
+  const text = '| 方向 | 说明 |\n|---|---|\n| 进流量（北京可用区 J） | 入口 |\n| 出流量 | 出口 |\n';
+  const quote = '（北京可用区 J）', at = text.indexOf(quote);
+  const comments = JSON.stringify({ version: 1, threads: [{ id: 'a', from: at, to: at + quote.length, quote, created: 1, replies: [{ id: 'r1', text: '备注', created: 1 }] }] });
+  const { page } = await editor(t, text, { documentID: 'doc', tabID: 'tab', pageTitle: '评论', comments, language: 'zh-Hans' });
+  await page.waitForSelector('.cm-comment-mark');
+  const layout = await page.evaluate(() => {
+    const row = document.querySelectorAll('.cm-table-row')[2], mark = row.querySelector('.cm-comment-mark');
+    const cells = [...row.querySelectorAll('.cm-table-cell')];
+    const box = element => element.getBoundingClientRect();
+    return { cells: cells.map(cell => cell.textContent.replace('|', '').trim()), inside: mark.closest('.cm-table-cell') === cells[0], row: box(row), mark: box(mark), cell: box(cells[0]) };
+  });
+  assert.deepEqual(layout.cells, ['进流量（北京可用区 J）', '入口']);
+  assert.ok(layout.inside, 'the comment mark sits inside the cell');
+  assert.ok(layout.mark.top >= layout.row.top && layout.mark.bottom <= layout.row.bottom + 1, 'the mark stays on its row');
+  assert.ok(layout.mark.left >= layout.cell.left && layout.mark.right <= layout.cell.right + 1, 'the mark stays in its column');
+});
+
 async function lineBoxes(page) {
   return page.evaluate(() => {
     const content = document.querySelector('.cm-content').getBoundingClientRect();
