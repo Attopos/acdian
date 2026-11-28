@@ -388,7 +388,10 @@ tspan.ttag { font-size: 11px; font-weight: 500; fill: var(--rm-muted); }
 .tokens .node .summary { paint-order: stroke; stroke: var(--rm-bg); stroke-width: 3px; stroke-linejoin: round; text-anchor: middle; font-size: 9.5px; font-weight: 550; fill: var(--rm-text); }
 .tokens .node.draft .summary { fill: var(--rm-muted); }
 .tokens .node.selected .summary { fill: var(--rm-accent-ink); }
-.tokens .edge.lit path.line { stroke: var(--rm-accent); stroke-opacity: .75; }
+.tokens .edge.lit path.line { stroke: var(--rm-accent); stroke-opacity: .7; stroke-width: 1.2; }
+.tokens .edge[data-kind="applies"].lit path.line { stroke-dasharray: 1.5 4; }
+.tokens.panel-open .sketch { opacity: .28; }
+.tokens.panel-open .spine { opacity: .28; }
 .tokens .edge.lit .head { fill: var(--rm-accent); }
 #hover.name { width: auto; max-width: 280px; padding: 6px 10px 7px; border-radius: 8px; animation: none; }
 #hover.name b { display: block; color: var(--rm-ink); font-size: 13px; font-weight: 600; line-height: 1.35; }

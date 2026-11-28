@@ -373,6 +373,15 @@ function routeAll() {
     if (!arrow && (a.x > b.x || (Math.abs(a.x - b.x) < 1 && a.y > b.y))) [a, b] = [b, a];
     const skip = new Set([a.id, b.id]), ay = a.y + NODE_H / 2, by = b.y + NODE_H / 2;
     edge.head = null;
+    if (tokens()) {
+      const p = [a.x + a.w / 2, a.y + NODE_H / 2], q = [b.x + b.w / 2, b.y + NODE_H / 2], dx = q[0] - p[0], dy = q[1] - p[1], length = Math.hypot(dx, dy) || 1;
+      const bend = Math.min(56, length * 0.16), c = [(p[0] + q[0]) / 2 - dy / length * bend, (p[1] + q[1]) / 2 + dx / length * bend];
+      const toward = (from, to, by) => { const l = Math.hypot(to[0] - from[0], to[1] - from[1]) || 1; return [from[0] + (to[0] - from[0]) / l * by, from[1] + (to[1] - from[1]) / l * by]; };
+      const start = toward(p, c, 27), tip = toward(q, c, 27), end = arrow ? toward(q, c, 27 + HEAD) : tip;
+      edge.path = `M${start}Q${c} ${end}`; edge.mid = c;
+      if (arrow) edge.head = { x: tip[0], y: tip[1], angle: Math.atan2(q[1] - c[1], q[0] - c[0]) * 180 / Math.PI };
+      continue;
+    }
     if (Math.abs(a.x - b.x) < a.w * 0.6) {
       const down = b.y > a.y, x = a.x + a.w / 2, between = S.nodes.some(n => n !== a && n !== b && Math.abs(n.x - a.x) < a.w * 0.6 && n.y > Math.min(a.y, b.y) && n.y < Math.max(a.y, b.y));
       if (!between) {
