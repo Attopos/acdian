@@ -70,7 +70,8 @@ const roadmap = {
   s = await state();
   same(s.highlighted, ['chain', 'gateway', 'gfw', 'http', 'proxy'], 'Related nodes light on focus');
   await page.waitForTimeout(400);
-  check(await page.$eval('g.edge[data-id="proxy~chain"]', e => getComputedStyle(e).opacity === '1'), 'A related edge shows while one of its ends is focused');
+  check(await page.$eval('g.edge[data-id="proxy~chain"]', e => getComputedStyle(e).opacity === '0'), 'No relation lines are drawn on focus');
+  same(await page.$$eval('g.node.rel', nodes => nodes.map(n => n.dataset.id).sort()), ['chain', 'gateway', 'gfw', 'http'], 'Related nodes get an outline instead');
 
   await page.keyboard.press('3');
   await page.waitForTimeout(600);

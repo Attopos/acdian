@@ -9,7 +9,7 @@ const now = () => Math.floor(Date.now() / 1000);
 const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 56, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
 const IN_GAP = 40, BAND_GAP = 76, FLOW_HEAD = 76, COLUMN_GAP = 220, GUTTER = 40;
 const CELL_W = 72, CELL_H = 66, STAGE_PAD = 14, STAGE_TOP = 50, STAGE_GAP = 24, STAGE_HEAD = 84, STAGE_BAND = 56, WRAP = 1700, WRAP_GAP = 30, STAGE_ROWS = 4, BESIDE = 96;
-const NEAR = 1.2;
+const NEAR = 1.5;
 const MARGIN = 600, margin = () => compact() || rasterOn() ? 0 : MARGIN;
 const toZoom = t => d3.zoomIdentity.translate(t.x + margin(), t.y + margin()).scale(t.k);
 const tokens = () => !compact();
@@ -315,14 +315,14 @@ function layout() {
       cursor = right; widest = Math.max(widest, cursor); rowBottom = Math.max(rowBottom, top + tallest);
     });
   }
-  const summaryFont = `400 9px ${FONT}`, captionFont = `550 9.5px ${FONT}`;
+  const summaryFont = `400 9px ${FONT}`, captionFont = `500 8px ${FONT}`;
   for (const node of S.nodes) {
     node.w ||= W; node.gx ??= 0; node.gy ??= 0;
     node.x = Number.isFinite(node.d.x) ? node.d.x : node.gx; node.y = Number.isFinite(node.d.y) ? node.d.y : node.gy;
     if (narrow) { node.lines = wrap(node.d.summary || '', node.w - 24, summaryFont).slice(0, 6); node.hNear = node.lines.length ? NODE_H + node.lines.length * 12.5 + 8 : NODE_H; continue; }
     const room = CELL_W - 4, caption = wrap(titleParts(node.d.title).rest.replace(/-(?=\S)/g, '- '), room, captionFont).map(line => line.replace(/- /g, '-').replace(/-$/, '-'));
     const clip = text => { if (textWidth(text, captionFont) <= room) return text; let cut = text; while (cut.length > 1 && textWidth(cut + '…', captionFont) > room) cut = cut.slice(0, -1); return cut.trimEnd() + '…'; };
-    node.lines = caption.length > 2 ? [clip(caption[0]), clip(caption.slice(1).join(' ').replace(/- /g, '-'))] : caption.map(clip); node.hNear = NODE_H;
+    node.lines = [clip(caption.join(' ').replace(/- /g, '-'))]; node.hNear = NODE_H;
   }
   for (const region of regions) {
     for (const node of region.nodes) {
@@ -573,7 +573,7 @@ function applyState() {
     for (const e of S.outs.get(S.focus)) S.highlighted.add(e.b.id);
     for (const e of S.ins.get(S.focus)) S.highlighted.add(e.a.id);
     const touches = e => e.a.id === S.focus || e.b.id === S.focus;
-    node.classed('selected', d => d.id === S.focus).classed('dim', d => !S.highlighted.has(d.id)).classed('match', false).classed('target', false);
+    node.classed('selected', d => d.id === S.focus).classed('rel', d => d.id !== S.focus && S.highlighted.has(d.id)).classed('dim', d => !S.highlighted.has(d.id)).classed('match', false).classed('target', false);
     edge.classed('dim', e => !touches(e)).classed('lit', touches).classed('flow', false);
   } else {
     const query = fold(S.query.trim());
@@ -582,7 +582,7 @@ function applyState() {
       S.matches = S.nodes.filter(n => text(n).includes(query)).sort((a, b) => (fold(b.d.title).startsWith(query) - fold(a.d.title).startsWith(query)) || (fold(b.d.title).includes(query) - fold(a.d.title).includes(query)) || a.i - b.i).map(n => n.id);
     }
     const matched = new Set(S.matches);
-    node.classed('selected', false).classed('target', false).classed('dim', d => !!query && !matched.has(d.id)).classed('match', d => matched.has(d.id));
+    node.classed('selected', false).classed('rel', false).classed('target', false).classed('dim', d => !!query && !matched.has(d.id)).classed('match', d => matched.has(d.id));
     edge.classed('dim', !!query).classed('lit', false).classed('flow', false);
   }
   renderResults();
@@ -710,7 +710,7 @@ function flyTo(node, scale) {
     scroller.scrollTo({ left: cx - (w - side) / 2, top: cy - (top + (h - top - bottom) / 2), behavior: dur(300) ? 'smooth' : 'auto' });
     return;
   }
-  scale = Math.min(1.7, Math.max(NEAR + 0.1, S.t.k));
+  scale = S.t.k;
   const below = sheet() && app.classList.contains('panel-open') ? $('panel').getBoundingClientRect().height + 16 : 0;
   const left = 40, right = 40 + (open ? panelSpace() : 0), top = 84, bottom = 56 + below;
   const group = scale ? [node] : S.nodes.filter(n => n === node || S.highlighted.has(n.id));
