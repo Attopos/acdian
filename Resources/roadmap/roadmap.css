@@ -369,15 +369,13 @@ tspan.ttag { font-size: 11px; font-weight: 500; fill: var(--rm-muted); }
 
 .tokens .region > rect { fill: transparent; stroke: none; }
 .tokens.editing .region > rect { stroke: var(--rm-stroke); stroke-opacity: 1; stroke-dasharray: 3 5; }
-.sketch path { fill: none; stroke: var(--rm-muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.sketch .t { stroke: var(--tint); }
+.sketch path { fill: none; stroke: var(--rm-muted); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.sketch .t { stroke: var(--tint); stroke-opacity: .85; }
+.sketch .d { stroke-opacity: .7; }
 .sketch .d { stroke-dasharray: 2.5 4.5; }
-.sketch .fill { stroke: none; fill: color-mix(in srgb, var(--rm-ink) 9%, var(--rm-bg)); }
-.sketch .fill.tf { fill: color-mix(in srgb, var(--tint) 20%, var(--rm-bg)); }
-.sketch .lone { stroke: var(--tint); }
 .tokens .region .label .name { text-anchor: middle; font-size: 13.5px; }
 .tokens .region .label .sub { font-size: 11.5px; font-weight: 500; }
-.tokens .spine .shaft { stroke: var(--rm-line-strong); stroke-width: 1.5; opacity: .6; fill: none; }
+.tokens .spine .shaft { stroke: var(--rm-muted); stroke-width: 1.4; opacity: .8; fill: none; stroke-dasharray: 1.5 4; }
 .tokens .spine .tip { fill: var(--rm-line-strong); opacity: .6; }
 .tokens .node .card { fill: transparent; stroke: none; }
 .tokens .node .icon { stroke: var(--rm-ink); stroke-width: 1.7; }
@@ -387,7 +385,7 @@ tspan.ttag { font-size: 11px; font-weight: 500; fill: var(--rm-muted); }
 .tokens .node.selected .card { fill: color-mix(in srgb, var(--rm-accent) 16%, var(--rm-bg)); stroke: var(--rm-accent); }
 .tokens .node.selected .icon { stroke: var(--rm-accent-ink); opacity: 1; }
 .tokens .node.match .card, .tokens .node.target .card { stroke: var(--rm-accent); }
-.tokens .node .summary { text-anchor: middle; font-size: 9.5px; font-weight: 550; fill: var(--rm-text); }
+.tokens .node .summary { paint-order: stroke; stroke: var(--rm-bg); stroke-width: 3px; stroke-linejoin: round; text-anchor: middle; font-size: 9.5px; font-weight: 550; fill: var(--rm-text); }
 .tokens .node.draft .summary { fill: var(--rm-muted); }
 .tokens .node.selected .summary { fill: var(--rm-accent-ink); }
 .tokens .edge.lit path.line { stroke: var(--rm-accent); stroke-opacity: .75; }

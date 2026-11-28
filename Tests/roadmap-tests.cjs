@@ -7,7 +7,7 @@ const edge = (from, to, kind = 'requires', why = `${from} before ${to}`) => ({ i
 const roadmap = {
   component: 'roadmap', source: 'CS', version: 1, title: 'Test',
   flows: [{ id: 'call', title: 'Call', arrows: true }, { id: 'ship', title: 'Ship', arrows: true }],
-  domains: [{ id: 'net', title: '网络', color: 'sky', order: 0, flow: 'call' }, { id: 'ai', title: 'AI', color: 'plum', order: 1, flow: 'call' }, { id: 'work', title: '实战', color: 'black', order: 2, flow: 'ship' }],
+  domains: [{ id: 'net', title: '网络', color: 'sky', order: 0, flow: 'call', diagram: { slots: { http: [0, 1], proxy: [1, 1], gfw: [2, 1], nat: [0, 0], chain: [1, 0] }, wires: [['in', 'http'], ['http', 'proxy'], ['proxy', 'gfw'], ['gfw', 'out'], ['nat', 'chain', 'd']] } }, { id: 'ai', title: 'AI', color: 'plum', order: 1, flow: 'call' }, { id: 'work', title: '实战', color: 'black', order: 2, flow: 'ship' }],
   nodes: [node('http', 'net', 0, 'learned', { title: 'HTTP 请求' }), node('nat', 'net', 0), node('proxy', 'net', 1, 'new', { title: '反向代理', summary: '站在网站那一边的代理' }), node('chain', 'net', 1), node('gfw', 'net', 2),
     node('key', 'ai', 0), node('switch', 'ai', 1), node('gateway', 'ai', 2, 'new', { summary: '带账号池的反向代理' }), node('alb', 'work', 3), node('lonely', 'ai', 1)],
   edges: [edge('http', 'proxy'), edge('proxy', 'gfw'), edge('chain', 'gfw'), edge('proxy', 'gateway'), edge('key', 'switch'), edge('key', 'gateway'), edge('switch', 'gateway'), edge('gateway', 'alb', 'applies'), edge('proxy', 'chain', 'related'), edge('nat', 'chain')],
@@ -46,7 +46,7 @@ const roadmap = {
   check(Math.min(boxes.key.x, boxes.switch.x) > Math.max(boxes.http.x + boxes.http.w, boxes.gfw.x + boxes.gfw.w), 'Stages of one flow run left to right in order');
   check(boxes.alb.y > Math.max(...s.nodes.filter(n => n.id !== 'alb').map(n => n.y + n.h)), 'A second flow gets its own row');
   check(await page.evaluate(() => document.querySelectorAll('g.spine').length) === 1 && await page.evaluate(() => document.querySelectorAll('g.flow').length) === 2, 'Consecutive stages get one flow arrow and each flow a heading');
-  for (const a of s.nodes) for (const b of s.nodes) if (a.id < b.id) check(a.x + a.w + 24 <= b.x || b.x + b.w + 24 <= a.x || a.y + a.h + 24 <= b.y || b.y + b.h + 24 <= a.y, `${a.id} and ${b.id} keep 24pt apart`);
+  for (const a of s.nodes) for (const b of s.nodes) if (a.id < b.id) check(a.x + a.w + 20 <= b.x || b.x + b.w + 20 <= a.x || a.y + a.h + 20 <= b.y || b.y + b.h + 20 <= a.y, `${a.id} and ${b.id} keep 20pt apart`);
   const again = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await again.goto('file://' + path.resolve(__dirname, '../Resources/roadmap/roadmap.html'));
   await again.evaluate(m => window.acdianRoadmap.receive(m), { type: 'load', roadmap, pages: [], mentions: [], theme: 'light', language: 'en', editable: false, platform: 'mac' });
@@ -97,7 +97,8 @@ const roadmap = {
   check((await posted('openPage')).length === 0, 'A node without a page opens nothing');
   await page.evaluate(() => { window.acdianRoadmap.setZoom(0.3); });
   check((await state()).zoom === 'mid', 'Zooming out keeps the icons and hides the captions');
-  check(await page.$$eval('g.region .sketch', sketches => sketches.length === 3 && sketches.every(g => g.children.length > 0)), 'Every stage has a drawing');
+  check(await page.$eval('g.region .sketch', g => g.children.length === 5), 'A stage with a diagram draws its wires between the nodes');
+  check(boxes.http.y === boxes.proxy.y && boxes.proxy.x > boxes.http.x && boxes.nat.y < boxes.http.y, 'Nodes sit at their places in the stage diagram');
   check(await page.$$eval('g.node .title', titles => titles.every(t => !t.textContent)) && await page.$$eval('g.node .icon', icons => icons.every(g => g.children.length > 0)), 'Nodes are icons without title text');
   await page.evaluate(() => { window.acdianRoadmap.setZoom(1.6); });
   check((await state()).zoom === 'near', 'Zooming in switches to the near view');

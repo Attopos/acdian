@@ -8,6 +8,12 @@ struct RoadmapDomain: Codable, Equatable {
     var order: Int
     var subtitle: String? = nil
     var flow: String? = nil
+    var diagram: RoadmapDiagram? = nil
+}
+struct RoadmapDiagram: Codable, Equatable {
+    var slots: [String: [Double]]?
+    var wires: [[String]]?
+    var row: Double?
 }
 struct RoadmapFlow: Codable, Equatable {
     var id: String
@@ -125,6 +131,7 @@ extension RoadmapDomain {
         order = Int(values.number("order") ?? 0)
         subtitle = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("subtitle"))) ?? nil
         flow = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("flow"))) ?? nil
+        diagram = (try? values.decodeIfPresent(RoadmapDiagram.self,forKey:RoadmapKey("diagram"))) ?? nil
     }
 }
 extension RoadmapPoint {
