@@ -123,12 +123,12 @@ struct RoadmapScreen: View {
                     router.push(page.relativePath,fragment:value["heading"] as? String ?? "")
                 }
                 if type == "viewChanged", let x = value["x"] as? Double, let y = value["y"] as? Double, let k = value["k"] as? Double {
-                    UserDefaults.standard.set([x,y,k],forKey:"roadmapView:" + file.relativePath)
+                    UserDefaults.standard.set([x,y,k],forKey:"roadmapView2:" + file.relativePath)
                 }
                 return false
             }
             host.savedView = {
-                guard let saved = UserDefaults.standard.array(forKey:"roadmapView:" + file.relativePath) as? [Double], saved.count == 3 else { return nil }
+                guard let saved = UserDefaults.standard.array(forKey:"roadmapView2:" + file.relativePath) as? [Double], saved.count == 3 else { return nil }
                 return ["x":saved[0],"y":saved[1],"k":saved[2]]
             }
             host.resolve = { [weak store] target,from in store?.index?.resolve(target,from:from) }

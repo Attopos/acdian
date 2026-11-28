@@ -80,20 +80,7 @@ svg text { font-family: var(--acd-font); }
 .flow .sub { fill: var(--rm-muted); font-size: 13.5px; font-weight: 500; }
 .spine .shaft { stroke: var(--tint); stroke-width: 3; stroke-linecap: round; opacity: .75; }
 .spine .tip { fill: var(--tint); opacity: .75; }
-[data-zoom="far"] .flow .sub { opacity: 0; }
-[data-zoom="far"] .flow .title { font-size: 56px; }
 .panel-open .spine { opacity: .35; }
-.region .far text { text-anchor: middle; }
-.region .far .name { fill: var(--rm-ink); font-size: 42px; font-weight: 680; letter-spacing: .01em; paint-order: stroke; stroke: var(--rm-bg); stroke-width: 12px; stroke-opacity: .8; stroke-linejoin: round; }
-.region .far, .region .label, .region .levels, .node, .node > *, .edge, .link, .mention { transition: opacity .2s ease-out; }
-.region .far { opacity: 0; pointer-events: none; }
-[data-zoom="far"] .region .far { opacity: 1; }
-[data-zoom="far"] .region .label, [data-zoom="far"] .region .levels { opacity: 0; }
-[data-zoom="far"] .edge, [data-zoom="far"] .mention { opacity: 0 !important; pointer-events: none; }
-[data-zoom="far"] .node { pointer-events: none; opacity: .5 !important; }
-[data-zoom="far"] .node > :not(.card) { opacity: 0 !important; }
-[data-zoom="far"] .node .card { fill: var(--rm-muted); fill-opacity: .16; stroke: none; filter: none; }
-[data-zoom="far"] .node.draft .card { fill-opacity: .06; stroke: none; }
 .link .line { fill: none; stroke: color-mix(in srgb, var(--tint) 55%, var(--rm-bg)); stroke-opacity: 1; stroke-linecap: round; stroke-linejoin: round; transition: stroke-opacity .18s ease-out; }
 .link .tip { fill: color-mix(in srgb, var(--tint) 70%, var(--rm-bg)); fill-opacity: 1; stroke: none; }
 .link .hit { fill: none; stroke: transparent; stroke-width: 18; pointer-events: stroke; }
@@ -379,3 +366,32 @@ tspan.ttag { font-size: 11px; font-weight: 500; fill: var(--rm-muted); }
 .resizing, .resizing * { cursor: col-resize !important; user-select: none !important; }
 .resizing #panel { transition: none; }
 #panel .scroll { padding-right: 28px; }
+
+.tokens .region > rect { fill: transparent; stroke: none; }
+.tokens.editing .region > rect { stroke: var(--rm-stroke); stroke-opacity: 1; stroke-dasharray: 3 5; }
+.sketch path { fill: none; stroke: var(--rm-muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.sketch .t { stroke: var(--tint); }
+.sketch .d { stroke-dasharray: 2.5 4.5; }
+.sketch .fill { stroke: none; fill: color-mix(in srgb, var(--rm-ink) 9%, var(--rm-bg)); }
+.sketch .fill.tf { fill: color-mix(in srgb, var(--tint) 20%, var(--rm-bg)); }
+.sketch .lone { stroke: var(--tint); }
+.tokens .region .label .name { text-anchor: middle; font-size: 13.5px; }
+.tokens .region .label .sub { font-size: 11.5px; font-weight: 500; }
+.tokens .spine .shaft { stroke: var(--rm-line-strong); stroke-width: 1.5; opacity: .6; fill: none; }
+.tokens .spine .tip { fill: var(--rm-line-strong); opacity: .6; }
+.tokens .node .card { fill: transparent; stroke: none; }
+.tokens .node .icon { stroke: var(--rm-ink); stroke-width: 1.7; }
+.tokens .node.draft .card { fill: transparent; stroke: none; }
+.tokens .node.draft .icon { stroke: var(--rm-muted); opacity: .5; }
+.tokens .node.hover .card, .tokens .node.draft.hover .card { fill: var(--rm-faint); stroke: none; }
+.tokens .node.selected .card { fill: color-mix(in srgb, var(--rm-accent) 16%, var(--rm-bg)); stroke: var(--rm-accent); }
+.tokens .node.selected .icon { stroke: var(--rm-accent-ink); opacity: 1; }
+.tokens .node.match .card, .tokens .node.target .card { stroke: var(--rm-accent); }
+.tokens .node .summary { text-anchor: middle; font-size: 9.5px; font-weight: 550; fill: var(--rm-text); }
+.tokens .node.draft .summary { fill: var(--rm-muted); }
+.tokens .node.selected .summary { fill: var(--rm-accent-ink); }
+.tokens .edge.lit path.line { stroke: var(--rm-accent); stroke-opacity: .75; }
+.tokens .edge.lit .head { fill: var(--rm-accent); }
+#hover.name { width: auto; max-width: 280px; padding: 6px 10px 7px; border-radius: 8px; animation: none; }
+#hover.name b { display: block; color: var(--rm-ink); font-size: 13px; font-weight: 600; line-height: 1.35; }
+#hover.name small { display: block; color: var(--rm-muted); font-size: 12px; line-height: 1.35; }

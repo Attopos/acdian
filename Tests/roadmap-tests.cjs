@@ -45,7 +45,7 @@ const roadmap = {
   check(before(boxes.http, boxes.proxy) && before(boxes.proxy, boxes.gfw) && before(boxes.key, boxes.switch) && before(boxes.switch, boxes.gateway), 'Inside a stage, prerequisites come first in reading order');
   check(Math.min(boxes.key.x, boxes.switch.x) > Math.max(boxes.http.x + boxes.http.w, boxes.gfw.x + boxes.gfw.w), 'Stages of one flow run left to right in order');
   check(boxes.alb.y > Math.max(...s.nodes.filter(n => n.id !== 'alb').map(n => n.y + n.h)), 'A second flow gets its own row');
-  check(await page.evaluate(() => document.querySelectorAll('g.spine').length) === 0 && await page.evaluate(() => document.querySelectorAll('g.flow').length) === 2, 'Consecutive stages get one flow arrow and each flow a heading');
+  check(await page.evaluate(() => document.querySelectorAll('g.spine').length) === 1 && await page.evaluate(() => document.querySelectorAll('g.flow').length) === 2, 'Consecutive stages get one flow arrow and each flow a heading');
   for (const a of s.nodes) for (const b of s.nodes) if (a.id < b.id) check(a.x + a.w + 24 <= b.x || b.x + b.w + 24 <= a.x || a.y + a.h + 24 <= b.y || b.y + b.h + 24 <= a.y, `${a.id} and ${b.id} keep 24pt apart`);
   const again = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await again.goto('file://' + path.resolve(__dirname, '../Resources/roadmap/roadmap.html'));
@@ -64,7 +64,7 @@ const roadmap = {
   same(s.highlighted, ['alb', 'gateway', 'key', 'proxy', 'switch'], 'Focusing lights only the node and its direct relations');
   same(await page.$$eval('g.node.dim', nodes => nodes.map(n => n.dataset.id).sort()), ['chain', 'gfw', 'http', 'lonely', 'nat'], 'Everything else dims');
   check(await page.$eval('#panel', panel => !/先学|学完|学习路径/.test(panel.textContent)), 'The panel lists relations without study guidance');
-  check(await page.$eval('#panel', panel => panel.textContent.includes('proxy before gateway')), 'The panel gives the reason for each relation');
+  check(await page.$eval('#panel', panel => !panel.textContent.includes('proxy before gateway')), 'The panel no longer lists relations');
 
   await page.evaluate(() => window.acdianRoadmap.focus('proxy'));
   s = await state();
@@ -96,7 +96,9 @@ const roadmap = {
   await page.mouse.dblclick(lonely[0], lonely[1]);
   check((await posted('openPage')).length === 0, 'A node without a page opens nothing');
   await page.evaluate(() => { window.acdianRoadmap.setZoom(0.3); });
-  check((await state()).zoom === 'far', 'Zooming out switches to the far view');
+  check((await state()).zoom === 'mid', 'Zooming out keeps the icons and hides the captions');
+  check(await page.$$eval('g.region .sketch', sketches => sketches.length === 3 && sketches.every(g => g.children.length > 0)), 'Every stage has a drawing');
+  check(await page.$$eval('g.node .title', titles => titles.every(t => !t.textContent)) && await page.$$eval('g.node .icon', icons => icons.every(g => g.children.length > 0)), 'Nodes are icons without title text');
   await page.evaluate(() => { window.acdianRoadmap.setZoom(1.6); });
   check((await state()).zoom === 'near', 'Zooming in switches to the near view');
 

@@ -8,9 +8,11 @@ const now = () => Math.floor(Date.now() / 1000);
 
 const NODE_H = 44, COL_GAP = 40, ROW_GAP = 80, PAD_X = 20, PAD_TOP = 56, PAD_BOTTOM = 24, REGION_GAP = 104, ARC_ROOM = 44;
 const IN_GAP = 40, BAND_GAP = 76, FLOW_HEAD = 76, COLUMN_GAP = 220, GUTTER = 40;
-const FAR = 0.5, NEAR = 1.3;
+const CELL_W = 72, CELL_H = 72, SK_W = 160, SK_H = 92, STAGE_PAD = 14, STAGE_TOP = 144, STAGE_GAP = 24, STAGE_ROWS = 4, BESIDE = 96;
+const NEAR = 1.2;
 const MARGIN = 600, margin = () => compact() || rasterOn() ? 0 : MARGIN;
 const toZoom = t => d3.zoomIdentity.translate(t.x + margin(), t.y + margin()).scale(t.k);
+const tokens = () => !compact();
 const compact = () => (innerWidth || 1024) < 700 || (S.platform === 'ios' && Math.min(innerWidth || 1024, innerHeight || 1024) < 500);
 const wide = () => compact() && (innerWidth || 0) > (innerHeight || 0) * 1.3;
 const sheet = () => !compact() && S.platform === 'ios' && (innerHeight || 0) > (innerWidth || 0) * 1.05;
@@ -70,11 +72,154 @@ const ICONS = {
   'sparkles': '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" /><path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" />',
   'workflow': '<rect width="8" height="8" x="3" y="3" rx="2" /><path d="M7 11v4a2 2 0 0 0 2 2h4" /><rect width="8" height="8" x="13" y="13" rx="2" />',
   'x': '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
+  'alarm-clock': '<circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2" /><path d="M5 3 2 6" /><path d="m22 6-3-3" /><path d="M6.38 18.7 4 21" /><path d="M17.64 18.67 20 21" />',
+  'arrow-down-wide-narrow': '<path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="M11 4h10" /><path d="M11 8h7" /><path d="M11 12h4" />',
+  'arrow-left-right': '<path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" />',
+  'arrow-right-left': '<path d="m16 3 4 4-4 4" /><path d="M20 7H4" /><path d="m8 21-4-4 4-4" /><path d="M4 17h16" />',
+  'atom': '<circle cx="12" cy="12" r="1" /><path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z" /><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z" />',
+  'bell-ring': '<path d="M10.268 21a2 2 0 0 0 3.464 0" /><path d="M22 8c0-2.3-.8-4.3-2-6" /><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /><path d="M4 2C2.8 3.7 2 5.7 2 8" />',
+  'binary': '<rect x="14" y="14" width="4" height="6" rx="2" /><rect x="6" y="4" width="4" height="6" rx="2" /><path d="M6 20h4" /><path d="M14 10h4" /><path d="M6 14h2v6" /><path d="M14 4h2v6" />',
+  'book-marked': '<path d="M10 2v7.751a.25.25 0 00.407.195l2.28-1.834a.5.5 0 01.627 0l2.28 1.834A.25.25 0 0016 9.751V2" /><path d="M4 19.5v-15A2.5 2.5 0 016.5 2H19a1 1 0 011 1v18a1 1 0 01-1 1H6.5a1 1 0 010-5H20" />',
+  'box': '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" />',
+  'boxes': '<path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z" /><path d="m7 16.5-4.74-2.85" /><path d="m7 16.5 5-3" /><path d="M7 16.5v5.17" /><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z" /><path d="m17 16.5-5-3" /><path d="m17 16.5 4.74-2.85" /><path d="M17 16.5v5.17" /><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z" /><path d="M12 8 7.26 5.15" /><path d="m12 8 4.74-2.85" /><path d="M12 13.5V8" />',
+  'brain': '<path d="M12 18V5" /><path d="M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4" /><path d="M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294" /><path d="M17.996 5.125a4 4 0 012.526 5.77" /><path d="M18 18a4 4 0 002-7.465" /><path d="M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517" /><path d="M6 18a4 4 0 01-2-7.465" /><path d="M6.004 5.125a4 4 0 00-2.526 5.77" />',
+  'brick-wall': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M12 9v6" /><path d="M16 15v6" /><path d="M16 3v6" /><path d="M3 15h18" /><path d="M3 9h18" /><path d="M8 15v6" /><path d="M8 3v6" />',
+  'cable': '<path d="M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1z" /><path d="M17 21v-2" /><path d="M19 14V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V10" /><path d="M21 21v-2" /><path d="M3 5V3" /><path d="M4 10a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2a2 2 0 0 1-2 2z" /><path d="M7 5V3" />',
+  'calendar-clock': '<path d="M16 2v3" /><path d="M17 15.5v1.7l1 .625" /><path d="M21 8.936V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h3.935" /><path d="M3 9h9.873" /><path d="M8 2v3" /><circle cx="17" cy="17" r="5" />',
+  'calendar-days': '<path d="M8 2v3" /><path d="M16 2v3" /><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M8 13h.01" /><path d="M12 13h.01" /><path d="M16 13h.01" /><path d="M8 17h.01" /><path d="M12 17h.01" /><path d="M16 17h.01" />',
+  'camera': '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" /><circle cx="12" cy="13" r="3" />',
+  'chart-area': '<path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M7 11.207a.5.5 0 0 1 .146-.353l2-2a.5.5 0 0 1 .708 0l3.292 3.292a.5.5 0 0 0 .708 0l4.292-4.292a.5.5 0 0 1 .854.353V16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1z" />',
+  'chart-no-axes-column': '<path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" />',
+  'chart-spline': '<path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M7 16c.5-2 1.5-7 4-7 2 0 2 3 4 3 2.5 0 4.5-5 5-7" />',
+  'coins': '<path d="M13.744 17.736a6 6 0 1 1-7.48-7.48" /><path d="M15 6h1v4" /><path d="m6.134 14.768.866-.5 2 3.464" /><circle cx="16" cy="8" r="6" />',
+  'container': '<path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z" /><path d="M10 21.9V14L2.1 9.1" /><path d="m10 14 11.9-6.9" /><path d="M14 19.8v-8.1" /><path d="M18 17.5V9.4" />',
+  'dices': '<rect width="12" height="12" x="2" y="10" rx="2" ry="2" /><path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6" /><path d="M6 18h.01" /><path d="M10 14h.01" /><path d="M15 6h.01" /><path d="M18 9h.01" />',
+  'diff': '<path d="M12 3v14" /><path d="M5 10h14" /><path d="M5 21h14" />',
+  'door-closed': '<path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16" /><path d="M2 21h20" /><path d="M9 12h.01" />',
+  'door-open': '<path d="M10 21H2" /><path d="M10 3H7a2 2 0 00-2 2v16" /><path d="M14 12h.01" /><path d="M19 21V5a2 2 0 00-1.675-1.974l-6.163-1.013A1 1 0 0010 3v18a1 1 0 001.124.992z" /><path d="M22 21h-3" />',
+  'eye-off': '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" /><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" /><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" /><path d="m2 2 20 20" />',
+  'fence': '<path d="M4 3 2 5v15c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V5Z" /><path d="M6 8h4" /><path d="M6 18h4" /><path d="m12 3-2 2v15c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V5Z" /><path d="M14 8h4" /><path d="M14 18h4" /><path d="m20 3-2 2v15c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V5Z" />',
+  'file-check-2': '<path d="M10.5 22H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v6" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="m14 20 2 2 4-4" />',
+  'flame': '<path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4" />',
+  'flask-conical': '<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2" /><path d="M6.453 15h11.094" /><path d="M8.5 2h7" />',
+  'funnel': '<path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" />',
+  'git-commit-horizontal': '<circle cx="12" cy="12" r="3" /><line x1="3" x2="9" y1="12" y2="12" /><line x1="15" x2="21" y1="12" y2="12" />',
+  'git-compare': '<circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M13 6h3a2 2 0 0 1 2 2v7" /><path d="M11 18H8a2 2 0 0 1-2-2V9" />',
+  'git-compare-arrows': '<circle cx="5" cy="6" r="3" /><path d="M12 6h5a2 2 0 0 1 2 2v7" /><path d="m15 9-3-3 3-3" /><circle cx="19" cy="18" r="3" /><path d="M12 18H7a2 2 0 0 1-2-2V9" /><path d="m9 15 3 3-3 3" />',
+  'git-fork': '<circle cx="12" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9" /><path d="M12 12v3" />',
+  'git-pull-request': '<circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M13 6h3a2 2 0 0 1 2 2v7" /><line x1="6" x2="6" y1="9" y2="21" />',
+  'globe': '<circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" />',
+  'grid-2x2': '<path d="M12 3v18" /><path d="M3 12h18" /><rect x="3" y="3" width="18" height="18" rx="2" />',
+  'grip': '<circle cx="12" cy="5" r="1" /><circle cx="19" cy="5" r="1" /><circle cx="5" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /><circle cx="12" cy="19" r="1" /><circle cx="19" cy="19" r="1" /><circle cx="5" cy="19" r="1" />',
+  'hammer': '<path d="m15 12-9.373 9.373a1 1 0 0 1-3.001-3L12 9" /><path d="m18 15 4-4" /><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172v-.344a2 2 0 0 0-.586-1.414l-1.657-1.657A6 6 0 0 0 12.516 3H9l1.243 1.243A6 6 0 0 1 12 8.485V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5" />',
+  'hard-drive': '<path d="M10 16h.01" /><path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /><path d="M21.946 12.013H2.054" /><path d="M6 16h.01" />',
+  'heart-pulse': '<path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" /><path d="M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27" />',
+  'hourglass': '<path d="M5 22h14" /><path d="M5 2h14" /><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" /><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />',
+  'id-card': '<path d="M13 19a4 4 0 00-8 0" /><path d="M16 10h2" /><path d="M16 14h2" /><circle cx="9" cy="12" r="3" /><rect x="2" y="5" width="20" height="14" rx="2" />',
+  'key-round': '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />',
+  'layout-dashboard': '<rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" />',
+  'layout-template': '<rect width="18" height="7" x="3" y="3" rx="1" /><rect width="9" height="7" x="3" y="14" rx="1" /><rect width="5" height="7" x="16" y="14" rx="1" />',
+  'life-buoy': '<circle cx="12" cy="12" r="10" /><path d="m4.93 4.93 4.24 4.24" /><path d="m14.83 9.17 4.24-4.24" /><path d="m14.83 14.83 4.24 4.24" /><path d="m9.17 14.83-4.24 4.24" /><circle cx="12" cy="12" r="4" />',
+  'link': '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />',
+  'list-ordered': '<path d="M11 5h10" /><path d="M11 12h10" /><path d="M11 19h10" /><path d="M4 4h1v5" /><path d="M4 9h2" /><path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" />',
+  'list-tree': '<path d="M8 5h13" /><path d="M13 12h8" /><path d="M13 19h8" /><path d="M3 10a2 2 0 0 0 2 2h3" /><path d="M3 5v12a2 2 0 0 0 2 2h3" />',
+  'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />',
+  'lock-keyhole': '<circle cx="12" cy="16" r="1" /><rect x="3" y="10" width="18" height="12" rx="2" /><path d="M7 10V7a5 5 0 0 1 10 0v3" />',
+  'logs': '<path d="M3 5h1" /><path d="M3 12h1" /><path d="M3 19h1" /><path d="M8 5h1" /><path d="M8 12h1" /><path d="M8 19h1" /><path d="M13 5h8" /><path d="M13 12h8" /><path d="M13 19h8" />',
+  'mailbox': '<path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z" /><polyline points="15,9 18,9 18,11" /><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2" /><line x1="6" x2="7" y1="10" y2="10" />',
+  'parentheses': '<path d="M8 21s-4-3-4-9 4-9 4-9" /><path d="M16 3s4 3 4 9-4 9-4 9" />',
+  'plane-takeoff': '<path d="M2 22h20" /><path d="M6.36 17.4 4 17l-2-4 1.1-.55a2 2 0 0 1 1.8 0l.17.1a2 2 0 0 0 1.8 0L8 12 5 6l.9-.45a2 2 0 0 1 2.09.2l4.02 3a2 2 0 0 0 2.1.2l4.19-2.06a2.41 2.41 0 0 1 1.73-.17L21 7a1.4 1.4 0 0 1 .87 1.99l-.38.76c-.23.46-.6.84-1.07 1.08L7.58 17.2a2 2 0 0 1-1.22.18Z" />',
+  'plug': '<path d="M12 22v-5" /><path d="M15 8V2" /><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z" /><path d="M9 8V2" />',
+  'refresh-cw': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" />',
+  'rocket': '<path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09" /><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05" />',
+  'rotate-ccw-key': '<path d="M12 7v6" /><path d="M12 9h2" /><path d="M3 12a9 9 0 1 0 9-9 9.74 9.74 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><circle cx="12" cy="15" r="2" />',
+  'router': '<rect width="20" height="8" x="2" y="14" rx="2" /><path d="M6.01 18H6" /><path d="M10.01 18H10" /><path d="M15 10v4" /><path d="M17.84 7.17a4 4 0 0 0-5.66 0" /><path d="M20.66 4.34a8 8 0 0 0-11.31 0" />',
+  'rows-3': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M21 9H3" /><path d="M21 15H3" />',
+  'ruler': '<path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /><path d="m14.5 12.5 2-2" /><path d="m11.5 9.5 2-2" /><path d="m8.5 6.5 2-2" /><path d="m17.5 15.5 2-2" />',
+  'scale': '<path d="M12 3v18" /><path d="m19 8 3 8a5 5 0 0 1-6 0zV7" /><path d="M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1" /><path d="m5 8 3 8a5 5 0 0 1-6 0zV7" /><path d="M7 21h10" />',
+  'scaling': '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M14 15H9v-5" /><path d="M16 3h5v5" /><path d="M21 3 9 15" />',
+  'scissors': '<circle cx="6" cy="6" r="3" /><path d="M8.12 8.12 12 12" /><path d="M20 4 8.12 15.88" /><circle cx="6" cy="18" r="3" /><path d="M14.8 14.8 20 20" />',
+  'scroll': '<path d="M19 17V5a2 2 0 0 0-2-2H4" /><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3" />',
+  'server': '<rect width="20" height="8" x="2" y="2" rx="2" ry="2" /><rect width="20" height="8" x="2" y="14" rx="2" ry="2" /><line x1="6" x2="6.01" y1="6" y2="6" /><line x1="6" x2="6.01" y1="18" y2="18" />',
+  'shield': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />',
+  'shield-alert': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="M12 8v4" /><path d="M12 16h.01" />',
+  'shield-ban': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m4.243 5.21 14.39 12.472" />',
+  'ship': '<path d="M12 2v2" /><path d="M12 9.189V13" /><path d="M19 12V6a2 2 0 00-2-2H7a2 2 0 00-2 2v6" /><path d="M19.38 19A11.6 11.6 0 0021 13l-8.188-3.639a2 2 0 00-1.624 0L3 13.001a11.6 11.6 0 002.81 7.76" /><path d="M2 20c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1s1.2 1 2.5 1c2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />',
+  'ship-wheel': '<circle cx="12" cy="12" r="8" /><path d="M12 2v7.5" /><path d="m19 5-5.23 5.23" /><path d="M22 12h-7.5" /><path d="m19 19-5.23-5.23" /><path d="M12 14.5V22" /><path d="M10.23 13.77 5 19" /><path d="M9.5 12H2" /><path d="M10.23 10.23 5 5" /><circle cx="12" cy="12" r="2.5" />',
+  'shrink': '<path d="m15 15 6 6m-6-6v4.8m0-4.8h4.8" /><path d="M9 19.8V15m0 0H4.2M9 15l-6 6" /><path d="M15 4.2V9m0 0h4.8M15 9l6-6" /><path d="M9 4.2V9m0 0H4.2M9 9 3 3" />',
+  'sigma': '<path d="M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2" />',
+  'signpost': '<path d="M12 13v8" /><path d="M12 3v3" /><path d="M2.354 10.354a1.207 1.207 0 0 1 0-1.708l2.06-2.06A2 2 0 0 1 5.828 6h12.344a2 2 0 0 1 1.414.586l2.06 2.06a1.207 1.207 0 0 1 0 1.708l-2.06 2.06a2 2 0 0 1-1.414.586H5.828a2 2 0 0 1-1.414-.586z" />',
+  'sliders-horizontal': '<path d="M10 5H3" /><path d="M12 19H3" /><path d="M14 3v4" /><path d="M16 17v4" /><path d="M21 12h-9" /><path d="M21 19h-5" /><path d="M21 5h-7" /><path d="M8 10v4" /><path d="M8 12H3" />',
+  'split': '<path d="M16 3h5v5" /><path d="M8 3H3v5" /><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3" /><path d="m15 9 6-6" />',
+  'square-play': '<rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z" />',
+  'square-split-horizontal': '<path d="M12 2v20" /><path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3" /><path d="M8 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3" />',
+  'table-properties': '<path d="M15 3v18" /><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M21 9H3" /><path d="M21 15H3" />',
+  'tags': '<path d="M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 6 9.172V3a1 1 0 0 1 1-1z" /><path d="M2 7v6.172a2 2 0 0 0 .586 1.414l6.71 6.71a2.4 2.4 0 0 0 3.191.193" /><circle cx="10.5" cy="6.5" r=".5" fill="currentColor" />',
+  'text-cursor': '<path d="M17 22h-1a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4h1" /><path d="M7 22h1a4 4 0 0 0 4-4" /><path d="M7 2h1a4 4 0 0 1 4 4" />',
+  'ticket': '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" /><path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" />',
+  'timer': '<line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" />',
+  'toggle-right': '<circle cx="15" cy="12" r="3" /><rect width="20" height="14" x="2" y="5" rx="7" />',
+  'unplug': '<path d="m19 5 3-3" /><path d="m2 22 3-3" /><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z" />',
+  'users-round': '<path d="M18 21a8 8 0 0 0-16 0" /><circle cx="10" cy="8" r="5" /><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3" />',
+  'warehouse': '<path d="M18 21V10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v11" /><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8z" /><path d="M6 13h12" /><path d="M6 17h12" />',
+  'waypoints': '<path d="m10.586 5.414-5.172 5.172" /><path d="m18.586 13.414-5.172 5.172" /><path d="M6 12h12" /><circle cx="12" cy="20" r="2" /><circle cx="12" cy="4" r="2" /><circle cx="20" cy="12" r="2" /><circle cx="4" cy="12" r="2" />',
+  'wrench': '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />',
+  'zap-off': '<path d="M10.768 5.111 13.44 2.44a1.5 1.5 0 012.474 1.561l-1.633 4.625" /><path d="m18.889 13.232.672-.672A1.5 1.5 0 0018.5 10h-2.844" /><path d="m2 2 20 20" /><path d="m7.94 7.94-3.5 3.499A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l5.5-5.5" />',
 };
 const GLYPH_ICONS = { network: 'network', spark: 'sparkles', pulse: 'activity', cloud: 'cloud', window: 'app-window', database: 'database', prism: 'pyramid', nodes: 'workflow', chip: 'cpu', gauge: 'gauge', braces: 'braces', shield: 'shield-check', layers: 'layers', dot: 'circle', chart: 'chart-line', checks: 'list-checks' };
 const glyph = name => ICONS[GLYPH_ICONS[name] || name] || ICONS.circle;
 const ic = (name, cls = '') => `<svg viewBox="0 0 24 24" class="ic${cls ? ' ' + cls : ''}" aria-hidden="true">${ICONS[name] || ICONS.circle}</svg>`;
 const glyphSVG = name => `<svg viewBox="0 0 24 24" class="ic glyph" aria-hidden="true">${glyph(name)}</svg>`;
+
+const SKETCHES = {
+  laptop: [['r', '', 14, 26, 40, 28], ['l', '', 8, 59, 60, 59], ['a', '', 58, 46, 96, 46], ['l', 't d', 76, 14, 76, 78], ['c', 't', 118, 46, 20], ['p', 't', 'M118,26C107,36 107,56 118,66'], ['p', 't', 'M118,26C129,36 129,56 118,66'], ['l', 't', 98, 46, 138, 46], ['l', '', 138, 46, 158, 46]],
+  network: [['a', '', 2, 46, 32, 46], ['r', 't tf', 34, 34, 26, 24], ['a', '', 60, 41, 102, 19], ['a', '', 60, 46, 102, 46], ['a', '', 60, 51, 102, 73], ['r', 'f', 104, 10, 24, 16], ['r', 'f', 104, 38, 24, 16], ['r', 'f', 104, 66, 24, 16], ['l', '', 128, 46, 158, 46]],
+  shield: [['a', '', 2, 46, 54, 46], ['p', 't tf', 'M80,18L102,26V46C102,62 92,72 80,78C68,72 58,62 58,46V26Z'], ['c', '', 80, 42, 5], ['l', '', 80, 47, 80, 59], ['a', 'd', 44, 50, 30, 76], ['a', '', 104, 46, 158, 46]],
+  gauge: [['a', '', 2, 46, 50, 46], ['n', 't', 52, 24, 60, 70, 100, 70, 108, 24], ['l', 't', 57, 50, 103, 50], ['c', 'f', 70, 60, 3.5], ['c', 'f', 82, 62, 3.5], ['c', 'f', 92, 59, 3.5], ['a', 'd', 80, 4, 80, 20], ['c', '', 80, 30, 3.5], ['a', '', 110, 46, 158, 46]],
+  route: [['l', '', 2, 46, 34, 46], ['c', 't tf', 40, 46, 6], ['p', '', 'M46,46C70,46 80,18 110,18'], ['p', 't', 'M46,46H110'], ['p', 'd', 'M46,46C70,46 80,74 110,74'], ['c', '', 120, 18, 9], ['c', 't', 120, 46, 9], ['c', 'd', 120, 74, 9], ['l', '', 129, 46, 158, 46]],
+  pulse: [['l', '', 14, 24, 130, 24], ['l', '', 14, 20, 14, 28], ['l', '', 54, 20, 54, 28], ['l', '', 130, 20, 130, 28], ['r', 'f', 14, 39, 10, 14], ['r', 't tf', 30, 39, 18, 14], ['r', 'f', 54, 39, 8, 14], ['r', 't tf', 68, 39, 22, 14], ['r', 'f', 96, 39, 12, 14], ['r', 't tf', 114, 39, 16, 14], ['l', 't', 138, 35, 138, 57], ['l', 'd', 2, 64, 158, 64]],
+  receipt: [['a', '', 2, 46, 52, 46], ['p', 'f', 'M56,12H104V76L98,71L92,76L86,71L80,76L74,71L68,76L62,71L56,76Z'], ['l', '', 64, 26, 96, 26], ['l', '', 64, 36, 88, 36], ['l', '', 64, 46, 96, 46], ['l', 't', 64, 60, 96, 60], ['c', 't tf', 26, 68, 8], ['c', 't', 40, 73, 6], ['a', '', 108, 46, 158, 46]],
+  database: [['a', '', 2, 46, 26, 46], ['c', 't', 52, 22, 22, 7], ['p', 't', 'M30,22V66C30,76 74,76 74,66V22'], ['p', 't', 'M30,44C30,54 74,54 74,44'], ['l', '', 74, 46, 92, 46], ['r', 'f', 92, 18, 48, 56], ['l', '', 92, 32, 140, 32], ['l', '', 92, 46, 140, 46], ['l', '', 92, 60, 140, 60], ['l', '', 108, 18, 108, 74], ['l', '', 140, 46, 158, 46]],
+  chart: [['a', '', 2, 46, 26, 46], ['l', '', 30, 14, 30, 72], ['l', '', 30, 72, 134, 72], ['l', 'd', 30, 30, 134, 30], ['n', 't', 34, 60, 50, 52, 62, 56, 78, 36, 92, 42, 108, 22, 128, 30], ['c', 't tf', 108, 22, 3.5]],
+  package: [['p', '', 'M22,36L12,46L22,56'], ['p', '', 'M30,36L40,46L30,56'], ['a', '', 44, 46, 60, 46], ['p', 't tf', 'M96,20L128,32L96,44L64,32Z'], ['p', '', 'M64,44L96,56L128,44'], ['p', '', 'M64,56L96,68L128,56'], ['a', '', 132, 46, 158, 46]],
+  layers: [['r', 't tf', 24, 10, 112, 16], ['c', 't', 36, 18, 3], ['c', 't', 48, 18, 3], ['c', 't', 60, 18, 3], ['l', '', 40, 26, 40, 40], ['l', '', 80, 26, 80, 40], ['l', '', 120, 26, 120, 40], ['r', '', 24, 40, 32, 40], ['r', '', 64, 40, 32, 40], ['r', '', 104, 40, 32, 40], ['r', 'f', 30, 48, 8, 8], ['r', 'f', 42, 48, 8, 8], ['r', 'f', 30, 62, 8, 8], ['r', 'f', 70, 48, 8, 8], ['r', 'f', 82, 62, 8, 8], ['r', 'f', 110, 48, 8, 8], ['r', 'f', 122, 48, 8, 8], ['r', 'f', 110, 62, 8, 8], ['r', 'f', 122, 62, 8, 8], ['a', '', 2, 60, 22, 60], ['l', '', 138, 60, 158, 60]],
+  cloud: [['a', '', 2, 46, 32, 46], ['p', 't', 'M52,62C38,62 34,46 46,42C46,28 64,22 72,32C80,20 102,24 102,38C116,38 118,62 104,62Z'], ['r', 'f', 58, 43, 10, 10], ['r', 'f', 73, 43, 10, 10], ['r', 'f', 88, 43, 10, 10], ['a', 'd', 78, 86, 78, 68], ['a', '', 116, 46, 158, 46]],
+  window: [['a', '', 2, 46, 32, 46], ['r', '', 36, 14, 88, 64], ['l', '', 36, 28, 124, 28], ['c', '', 44, 21, 2], ['c', '', 51, 21, 2], ['c', '', 58, 21, 2], ['r', 't tf', 44, 36, 30, 34], ['l', '', 82, 40, 116, 40], ['l', '', 82, 50, 108, 50], ['l', '', 82, 60, 116, 60]],
+  spark: [['c', '', 44, 34, 9], ['p', '', 'M28,66C28,50 60,50 60,66'], ['p', 'f', 'M78,22H126V54H96L86,64V54H78Z'], ['p', 't tf', 'M102,28L105,36L113,38L105,40L102,48L99,40L91,38L99,36Z'], ['a', '', 60, 34, 74, 34], ['a', '', 74, 44, 60, 44]],
+  checks: [['r', 'f', 30, 22, 18, 14], ['r', 'f', 56, 22, 18, 14], ['r', 'f', 82, 22, 18, 14], ['r', 'f', 30, 56, 18, 14], ['r', 'f', 56, 56, 18, 14], ['r', 't tf', 82, 56, 18, 14], ['l', '', 36, 43, 42, 43], ['l', '', 36, 48, 42, 48], ['l', '', 62, 43, 68, 43], ['l', '', 62, 48, 68, 48], ['l', 't', 88, 43, 94, 43], ['l', 't', 88, 48, 94, 48], ['l', 't', 89, 51, 93, 40], ['l', '', 102, 29, 122, 43], ['l', '', 102, 63, 122, 49], ['c', '', 131, 46, 8]],
+};
+function pen(seed) {
+  let s = 7; for (const ch of seed) s = (s * 31 + ch.charCodeAt(0)) >>> 0;
+  const rnd = () => { s = (s + 0x6D2B79F5) >>> 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 - 0.5; };
+  const f = n => Math.round(n * 10) / 10;
+  const line = (x1, y1, x2, y2, exact) => {
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len, over = Math.min(1.5, len * 0.05), bow = Math.min(1.6, len * 0.035) * rnd() * 2;
+    const a = over * (0.5 + rnd()), b = exact ? 0 : over * (0.5 + rnd());
+    return `M${f(x1 - ux * a)},${f(y1 - uy * a)}Q${f((x1 + x2) / 2 - uy * bow)},${f((y1 + y2) / 2 + ux * bow)} ${f(x2 + ux * b)},${f(y2 + uy * b)}`;
+  };
+  const ring = (cx, cy, rx, ry = rx) => { const a = 1 + rnd() * 0.08, gap = Math.min(1.2, rx * 0.12) * (0.6 + rnd()); return `M${f(cx - rx)},${f(cy)}A${f(rx * a)},${f(ry * a)} 0 1 1 ${f(cx + rx)},${f(cy + gap * 0.4)}A${f(rx / a)},${f(ry / a)} 0 1 1 ${f(cx - rx + gap * 0.5)},${f(cy - gap)}`; };
+  return { line, ring };
+}
+const sketches = new Map();
+function sketchSVG(name) {
+  if (sketches.has(name)) return sketches.get(name);
+  const parts = SKETCHES[name], draw = pen(String(name)), out = [];
+  if (!parts) { const html = `<g class="lone" transform="translate(${SK_W / 2 - 24},${SK_H / 2 - 24})scale(2)">${glyph(name)}</g>`; sketches.set(name, html); return html; }
+  for (const [kind, cls, ...v] of parts) {
+    const filled = /f/.test(cls), stroke = `sk ${cls.replace(/\b(f|tf)\b/g, '').trim()}`.trim(), fill = /tf/.test(cls) ? 'fill tf' : 'fill';
+    let d = '', solid = '';
+    if (kind === 'l') d = draw.line(...v);
+    else if (kind === 'a') { const [x1, y1, x2, y2] = v, angle = Math.atan2(y2 - y1, x2 - x1), wing = t => [x2 - 5.5 * Math.cos(angle + t), y2 - 5.5 * Math.sin(angle + t)]; d = draw.line(x1, y1, x2, y2, true) + draw.line(...wing(0.48), x2, y2, true) + draw.line(...wing(-0.48), x2, y2, true); }
+    else if (kind === 'r') { const [x, y, w, h] = v; d = draw.line(x, y, x + w, y) + draw.line(x + w, y, x + w, y + h) + draw.line(x + w, y + h, x, y + h) + draw.line(x, y + h, x, y); solid = `M${x},${y}h${w}v${h}h${-w}Z`; }
+    else if (kind === 'c') { const [cx, cy, rx, ry = rx] = v; d = draw.ring(cx, cy, rx, ry); solid = `M${cx - rx},${cy}A${rx},${ry} 0 1 1 ${cx + rx},${cy}A${rx},${ry} 0 1 1 ${cx - rx},${cy}Z`; }
+    else if (kind === 'n') { for (let i = 0; i + 3 < v.length; i += 2) d += draw.line(v[i], v[i + 1], v[i + 2], v[i + 3]); }
+    else if (kind === 'p') { d = v[0]; solid = v[0]; }
+    if (filled && solid) out.push(`<path class="${fill}" d="${solid}" />`);
+    out.push(`<path class="${stroke}" d="${d}" />`);
+  }
+  const html = out.join(''); sketches.set(name, html); return html;
+}
+const nodeGlyph = d => ICONS[GLYPH_ICONS[d.glyph] || d.glyph] || ICONS[d.draft ? 'circle-dashed' : 'file-text'];
 
 const S = { doc: null, pages: new Map(), mentions: [], theme: 'dark', editable: false, platform: 'mac', nodes: [], edges: [], byId: new Map(), domains: [], layout: null,
   zoom: 'mid', focus: null, query: '', matches: [], showMentions: false, editing: false, t: d3.zoomIdentity, chain: new Set(), highlighted: new Set(), dirtyNodes: new Set(), dirtyEdges: new Set(), removed: {}, undo: [], legendClosed: true, loaded: false };
@@ -147,29 +292,35 @@ function layout() {
       y -= BAND_GAP;
     });
   } else {
-    const colW = W + 2 * PAD_X, ROW = NODE_H + 12; let y = 0;
-    lines.forEach(line => {
-      if (line.flow) heads.push({ id: line.flow.id, flow: line.flow, x: 0, y });
-      const top = y + (line.flow ? FLOW_HEAD : 0);
-      const arrows = line.flow?.arrows !== false && !!line.flow;
-      let tallest = 0;
+    const widthOf = line => line.groups.reduce((sum, group) => sum + Math.max(2, Math.ceil(group.nodes.length / STAGE_ROWS)) * CELL_W + 2 * STAGE_PAD + STAGE_GAP, -STAGE_GAP);
+    let rowTop = 0, rowBottom = 0, cursor = 0, widest = 0;
+    lines.forEach((line, li) => {
+      const width = widthOf(line), beside = li > 1 && cursor + BESIDE + width <= widest;
+      if (li && !beside) { rowTop = rowBottom + BAND_GAP; cursor = 0; }
+      let x = beside ? cursor + BESIDE : 0, tallest = 0;
+      if (line.flow) heads.push({ id: line.flow.id, flow: line.flow, x, y: rowTop });
+      const top = rowTop + (line.flow ? FLOW_HEAD : 0), arrows = line.flow?.arrows !== false && !!line.flow;
       line.groups.forEach((group, step) => {
         order(group);
-        const count = group.nodes.length, h = PAD_TOP + count * NODE_H + Math.max(0, count - 1) * 12 + PAD_BOTTOM;
-        const x = step * (colW + COL_GAP);
-        regions.push({ id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y: top, w: colW, h, col: step, flow: line.flow?.id || '', step: arrows ? step + 1 : 0 });
-        group.nodes.forEach((node, i) => { node.w = W; node.col = step; node.gx = x + PAD_X; node.gy = top + PAD_TOP + i * ROW; });
-        tallest = Math.max(tallest, h);
+        const count = group.nodes.length, cols = Math.max(2, Math.ceil(count / STAGE_ROWS)), rows = Math.max(1, Math.ceil(count / cols));
+        const w = cols * CELL_W + 2 * STAGE_PAD, h = STAGE_TOP + rows * CELL_H + 8;
+        const region = { id: group.domain.id, domain: group.domain, nodes: group.nodes, x, y: top, w, h, col: step, flow: line.flow?.id || '', step: arrows ? step + 1 : 0 };
+        if (step && arrows) spine.push({ key: regions[regions.length - 1].id + '>' + region.id, from: regions[regions.length - 1], to: region });
+        regions.push(region);
+        group.nodes.forEach((node, i) => { node.w = NODE_H; node.col = step; node.gx = x + STAGE_PAD + (i % cols) * CELL_W + (CELL_W - NODE_H) / 2; node.gy = top + STAGE_TOP + Math.floor(i / cols) * CELL_H; });
+        x += w + STAGE_GAP; tallest = Math.max(tallest, h);
       });
-      y = top + tallest + BAND_GAP;
+      cursor = x - STAGE_GAP; widest = Math.max(widest, cursor); rowBottom = Math.max(rowBottom, top + tallest);
     });
   }
-  const summaryFont = `400 9px ${FONT}`;
+  const summaryFont = `400 9px ${FONT}`, captionFont = `550 9.5px ${FONT}`;
   for (const node of S.nodes) {
     node.w ||= W; node.gx ??= 0; node.gy ??= 0;
     node.x = Number.isFinite(node.d.x) ? node.d.x : node.gx; node.y = Number.isFinite(node.d.y) ? node.d.y : node.gy;
-    node.lines = wrap(node.d.summary || '', node.w - 24, summaryFont).slice(0, 6);
-    node.hNear = node.lines.length ? NODE_H + node.lines.length * 12.5 + 8 : NODE_H;
+    if (narrow) { node.lines = wrap(node.d.summary || '', node.w - 24, summaryFont).slice(0, 6); node.hNear = node.lines.length ? NODE_H + node.lines.length * 12.5 + 8 : NODE_H; continue; }
+    const room = CELL_W - 4, caption = wrap(titleParts(node.d.title).rest.replace(/-(?=\S)/g, '- '), room, captionFont).map(line => line.replace(/- /g, '-').replace(/-$/, '-'));
+    const clip = text => { if (textWidth(text, captionFont) <= room) return text; let cut = text; while (cut.length > 1 && textWidth(cut + '…', captionFont) > room) cut = cut.slice(0, -1); return cut.trimEnd() + '…'; };
+    node.lines = caption.length > 2 ? [clip(caption[0]), clip(caption.slice(1).join(' ').replace(/- /g, '-'))] : caption.map(clip); node.hNear = NODE_H;
   }
   for (const region of regions) {
     for (const node of region.nodes) {
@@ -293,36 +444,30 @@ function routeAll() {
 // ---------- drawing ----------
 const headPath = 'M0,0L-7.5,-3.6L-7.5,3.6Z';
 function draw(animate = false) {
-  const { regions, links, mentions } = S.layout, t = animate && !rasterOn() ? dur(240) : 0;
+  const { regions, links, mentions } = S.layout, t = animate && !rasterOn() ? dur(240) : 0, tk = tokens();
+  app.classList.toggle('tokens', tk);
   const move = selection => t ? selection.transition().duration(t).ease(d3.easeCubicOut) : selection;
 
   const region = d3.select('#regions').selectAll('g.region').data(regions, d => d.id).join(enter => {
     const g = enter.append('g').attr('class', 'region');
     g.append('rect').attr('rx', 18);
+    g.append('g').attr('class', 'sketch');
     const label = g.append('g').attr('class', 'label');
     label.append('circle').attr('class', 'badge').attr('cx', 11).attr('cy', -5).attr('r', 11);
     label.append('text').attr('class', 'step').attr('x', 11).attr('y', -5);
     label.append('g').attr('class', 'glyph');
     label.append('text').attr('class', 'name');
-    const far = g.append('g').attr('class', 'far');
-    far.append('text').attr('class', 'name');
     return g;
   });
   region.style('--tint', d => d.tint);
   move(region.select('rect')).attr('x', d => d.x).attr('y', d => d.y).attr('width', d => d.w).attr('height', d => d.h);
-  move(region.select('.label')).attr('transform', d => `translate(${d.x + PAD_X},${d.y + 30})`);
-  region.select('.label .glyph').html(d => glyph(d.domain.glyph)).attr('transform', d => `translate(${d.step ? 32 : 0},-13)scale(.6667)`);
-  region.select('.label .badge').attr('display', d => d.step ? null : 'none');
-  region.select('.label .step').text(d => d.step || '');
-  region.select('.label .name').attr('x', d => d.step ? 56 : 24);
-  region.select('.label .name').each(function (d) { d3.select(this).html(`${esc(d.domain.title)}${d.domain.subtitle ? `<tspan class="sub" dx="8">${esc(d.domain.subtitle)}</tspan>` : ''}`); });
-
-  move(region.select('.far')).attr('transform', d => `translate(${d.x + d.w / 2},${d.y + d.h / 2 + 14})`);
-  region.select('.far .name').text(d => (d.step ? d.step + '  ' : '') + d.domain.title).each(function (d) {
-    const room = d.w - 24, width = textWidth(this.textContent, `680 42px ${FONT}`);
-    if (width > room) d3.select(this).attr('textLength', room).attr('lengthAdjust', 'spacingAndGlyphs').style('font-size', `${Math.max(24, 42 * room / width)}px`);
-    else d3.select(this).attr('textLength', null).attr('lengthAdjust', null).style('font-size', null);
-  });
+  region.select('.sketch').attr('display', tk ? null : 'none').attr('transform', d => `translate(${d.x + d.w / 2 - SK_W / 2},${d.y + 8})`).html(d => tk ? sketchSVG(d.domain.glyph || 'dot') : '');
+  move(region.select('.label')).attr('transform', d => tk ? `translate(${d.x + d.w / 2},${d.y + SK_H + 30})` : `translate(${d.x + PAD_X},${d.y + 30})`);
+  region.select('.label .glyph').html(d => tk ? '' : glyph(d.domain.glyph)).attr('transform', d => `translate(${d.step ? 32 : 0},-13)scale(.6667)`);
+  region.select('.label .badge').attr('display', d => d.step && !tk ? null : 'none');
+  region.select('.label .step').text(d => tk ? '' : d.step || '');
+  region.select('.label .name').attr('x', d => tk ? 0 : d.step ? 56 : 24);
+  region.select('.label .name').each(function (d) { d3.select(this).html(`${esc(d.domain.title)}${d.domain.subtitle ? tk ? `<tspan class="sub" x="0" y="17">${esc(d.domain.subtitle)}</tspan>` : `<tspan class="sub" dx="8">${esc(d.domain.subtitle)}</tspan>` : ''}`); });
 
   const flowHead = d3.select('#regions').selectAll('g.flow').data(S.layout.heads || [], d => d.id).join(enter => {
     const g = enter.append('g').attr('class', 'flow');
@@ -338,8 +483,9 @@ function draw(animate = false) {
     return g;
   });
   spine.style('--tint', d => d.to.tint);
-  spine.select('.shaft').attr('d', d => `M${d.from.x + PAD_X + 11},${d.from.y + d.from.h + 8}V${d.to.y - 16}`);
-  spine.select('.tip').attr('d', d => { const x = d.from.x + PAD_X + 11, y = d.to.y - 6; return `M${x},${y}L${x - 7},${y - 11}L${x + 7},${y - 11}Z`; });
+  const port = d => ({ x0: d.from.x + d.from.w / 2 + SK_W / 2 + 4, x1: d.to.x + d.to.w / 2 - SK_W / 2 - 4, y: d.to.y + 8 + SK_H / 2 });
+  spine.select('.shaft').attr('d', d => { if (!tk) return `M${d.from.x + PAD_X + 11},${d.from.y + d.from.h + 8}V${d.to.y - 16}`; const { x0, x1, y } = port(d); return `M${x0},${y}H${x1 - 5}`; });
+  spine.select('.tip').attr('d', d => { if (!tk) { const x = d.from.x + PAD_X + 11, y = d.to.y - 6; return `M${x},${y}L${x - 7},${y - 11}L${x + 7},${y - 11}Z`; } const { x1, y } = port(d); return `M${x1},${y}L${x1 - 8},${y - 4}L${x1 - 8},${y + 4}Z`; });
 
   d3.select('#links').selectAll('g.link').data(links, d => d.key).join(enter => {
     const g = enter.append('g').attr('class', 'link');
@@ -383,11 +529,12 @@ function draw(animate = false) {
   const near = S.zoom === 'near';
   node.select('.halo').attr('width', d => d.w + 8).attr('height', d => (near ? d.hNear : NODE_H) + 8);
   node.select('.card').attr('width', d => d.w).attr('height', d => near ? d.hNear : NODE_H);
-  node.select('.icon').html(d => ICONS[d.d.draft ? 'circle-dashed' : 'file-text']);
+  node.select('.icon').html(d => nodeGlyph(d.d)).attr('transform', tk ? 'translate(7,7)scale(1.25)' : `translate(11,${NODE_H / 2 - 7.5})scale(.625)`);
   const fit = (text, room) => { const font = `600 14px ${FONT}`; if (textWidth(text, font) <= room) return text; let s = text; while (s.length > 1 && textWidth(s + '…', font) > room) s = s.slice(0, -1); return s.trimEnd() + '…'; };
-  node.select('.sub').text(d => d.d.subtitle || '');
-  node.select('.title').attr('y', d => d.d.subtitle ? NODE_H / 2 - 6.5 : NODE_H / 2 + 0.5).html(d => { const { tags, rest } = titleParts(d.d.title); const lead = tags.map(tag => `<tspan class="ttag">${esc(tag)}</tspan><tspan> </tspan>`).join(''); return lead + esc(fit(rest, d.w - 45 - tags.reduce((w, tag) => w + textWidth(tag + '  ', `500 11px ${FONT}`), 0))); }).each(function (d) { d3.select(this).selectAll('title').data([d.d.subtitle ? `${d.d.title} · ${d.d.subtitle}` : d.d.title]).join('title').text(t => t); });
-  node.select('.summary').each(function (d) { d3.select(this).selectAll('tspan').data(d.lines).join('tspan').attr('x', 12).attr('y', (_, i) => NODE_H + 7 + i * 12.5).text(line => line); });
+  node.select('.sub').text(d => tk ? '' : d.d.subtitle || '');
+  if (tk) node.select('.title').html('');
+  else node.select('.title').attr('y', d => d.d.subtitle ? NODE_H / 2 - 6.5 : NODE_H / 2 + 0.5).html(d => { const { tags, rest } = titleParts(d.d.title); const lead = tags.map(tag => `<tspan class="ttag">${esc(tag)}</tspan><tspan> </tspan>`).join(''); return lead + esc(fit(rest, d.w - 45 - tags.reduce((w, tag) => w + textWidth(tag + '  ', `500 11px ${FONT}`), 0))); }).each(function (d) { d3.select(this).selectAll('title').data([d.d.subtitle ? `${d.d.title} · ${d.d.subtitle}` : d.d.title]).join('title').text(t => t); });
+  node.select('.summary').each(function (d) { d3.select(this).selectAll('tspan').data(d.lines).join('tspan').attr('x', tk ? NODE_H / 2 : 12).attr('y', (_, i) => tk ? NODE_H + 9 + i * 11.5 : NODE_H + 7 + i * 12.5).text(line => line); });
   drawHandles(); drawMinimap(); drawHead(); applyState();
   $('empty').hidden = S.nodes.length > 0;
   if (!S.nodes.length) $('empty').innerHTML = `<div><b>${esc(T('这张路线图还是空的'))}</b>${S.editable ? esc(T('打开「编辑」，双击空白处新建节点。')) : ''}</div>`;
@@ -506,7 +653,7 @@ function paint() {
   frame = 0;
   if (raster && rasterOn()) {
     drawn = null; paintRaster();
-    if (!live()) { world.attr('transform', S.t); setZoomMode(S.t.k >= NEAR ? 'near' : S.t.k < FAR ? 'far' : 'mid'); }
+    if (!live()) { world.attr('transform', S.t); setZoomMode(S.t.k >= NEAR ? 'near' : 'mid'); }
     if (raster.dirty) paintRaster();
     drawViewport(); viewChanged();
     return;
@@ -517,7 +664,7 @@ function paint() {
   } else {
     drawn = z; world.attr('transform', z); svg.style('transform', null); backdrop();
   }
-  setZoomMode(S.t.k >= NEAR ? 'near' : S.t.k < FAR && !compact() ? 'far' : 'mid');
+  setZoomMode(S.t.k >= NEAR ? 'near' : 'mid');
   drawViewport(); viewChanged();
 }
 function zoomLimits() { zoom.scaleExtent([compact() && S.layout ? Math.max(0.18, fitTransform().k * 0.45) : 0.18, 2.6]); }
@@ -552,6 +699,7 @@ function flyTo(node, scale) {
     scroller.scrollTo({ left: cx - (w - side) / 2, top: cy - (top + (h - top - bottom) / 2), behavior: dur(300) ? 'smooth' : 'auto' });
     return;
   }
+  scale = Math.min(1.7, Math.max(NEAR + 0.1, S.t.k));
   const below = sheet() && app.classList.contains('panel-open') ? $('panel').getBoundingClientRect().height + 16 : 0;
   const left = 40, right = 40 + (open ? panelSpace() : 0), top = 84, bottom = 56 + below;
   const group = scale ? [node] : S.nodes.filter(n => n === node || S.highlighted.has(n.id));
@@ -641,6 +789,21 @@ function hideHover() {
   clearTimeout(hoverTimer); hoveredNode = hoveredLink = hoveredEdge = null;
   $('hover').hidden = true; $('edge-tip').hidden = true; mark();
 }
+function nodeHover(node) {
+  if (node && (!hoverable() || S.editing)) node = null;
+  if (node === hoveredNode) return;
+  hoveredNode = node; mark();
+  const tip = $('hover');
+  if (!node) { tip.hidden = true; return; }
+  tip.className = 'float name';
+  tip.innerHTML = `<b>${tagged(node.d.title)}</b>${node.d.subtitle ? `<small>${esc(node.d.subtitle)}</small>` : ''}`;
+  tip.hidden = false;
+  const box = tip.getBoundingClientRect(), { w, h } = viewport(), x = S.t.applyX(node.x + node.w / 2), y = S.t.applyY(node.y + NODE_H) + 8;
+  tip.style.left = Math.max(8, Math.min(w - box.width - 8, x - box.width / 2)) + 'px';
+  tip.style.top = (y + box.height > h - 8 ? S.t.applyY(node.y) - box.height - 8 : y) + 'px';
+}
+$('canvas').addEventListener('pointermove', event => { if (tokens() && event.pointerType !== 'touch') nodeHover(event.buttons ? null : nodeAtClient(event.clientX, event.clientY)); });
+$('canvas').addEventListener('pointerleave', () => nodeHover(null));
 function follow(tip, event) { place(tip, ...d3.pointer(event, app).map((v, i) => v + (i ? 14 : 4))); }
 function linkHover(link, event) {
   const tip = $('edge-tip');

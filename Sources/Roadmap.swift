@@ -37,6 +37,7 @@ struct RoadmapNode: Codable, Equatable {
     var note: String?
     var subtitle: String? = nil
     var topic: String? = nil
+    var glyph: String? = nil
 }
 struct RoadmapEdge: Codable, Equatable {
     var id: String
@@ -150,6 +151,7 @@ extension RoadmapNode {
         note = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("note"))) ?? nil
         subtitle = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("subtitle"))) ?? nil
         topic = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("topic"))) ?? nil
+        glyph = (try? values.decodeIfPresent(String.self,forKey:RoadmapKey("glyph"))) ?? nil
     }
 }
 extension RoadmapEdge {
@@ -418,12 +420,12 @@ extension AppModel {
         if type == "newPage", let id = value["id"] as? String { return newRoadmapPage(file,node:id,title:value["title"] as? String ?? "") != nil }
         if type == "panelWidth", let fraction = value["fraction"] as? Double { UserDefaults.standard.set(fraction,forKey:"roadmapPanel") }
         if type == "viewChanged", let x = value["x"] as? Double, let y = value["y"] as? Double, let k = value["k"] as? Double {
-            UserDefaults.standard.set([x,y,k],forKey:"roadmapView:" + file.relativePath)
+            UserDefaults.standard.set([x,y,k],forKey:"roadmapView2:" + file.relativePath)
         }
         return false
     }
     func roadmapView(_ file: VaultEntry) -> [String: Double]? {
-        guard let saved = UserDefaults.standard.array(forKey:"roadmapView:" + file.relativePath) as? [Double], saved.count == 3 else { return nil }
+        guard let saved = UserDefaults.standard.array(forKey:"roadmapView2:" + file.relativePath) as? [Double], saved.count == 3 else { return nil }
         return ["x":saved[0],"y":saved[1],"k":saved[2]]
     }
 }
